@@ -68,6 +68,7 @@ class ThoroughStrategy:
 
     name = "thorough"
     description = "完整逐像素变换（现状管线，优化前原样保留）"
+    frame_dtype = "float32"
 
     def apply(
         self,
@@ -98,51 +99,129 @@ class ThoroughStrategy:
         return frames
 
 
-def _fast_recrop(frames: np.ndarray, crop_frac: float) -> np.ndarray:
-    """重新构图（快速档）：PIL 原生双线性重采样替代 scipy zoom。
+def _u8_to_f32(frames: np.ndarray) -> np.ndarray:
+    return frames.astype(np.float32) / 255.0
 
-    在 uint8 域一次性完成裁剪与缩放，省去 scipy 样条预滤波的开销。
-    """
+
+def _f32_to_u8(frames: np.ndarray) -> np.ndarray:
+    return (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+
+
+def _u8_roundtrip(frames: np.ndarray, fn) -> np.ndarray:
+    """对尚无 uint8 原语的操作做一次 float32 往返，保证语义可用。"""
+    return _f32_to_u8(fn(_u8_to_f32(frames)))
+
+
+def _fast_recrop_u8(frames: np.ndarray, crop_frac: float) -> np.ndarray:
+    """重新构图（uint8 直通）：PIL 原生双线性重采样，免精度转换。"""
     h, w = frames.shape[1:]
     cy0, cy1 = int(h * crop_frac), h - int(h * crop_frac)
     cx0, cx1 = int(w * crop_frac), w - int(w * crop_frac)
 
     def resize(frame: np.ndarray) -> np.ndarray:
-        image = Image.fromarray((frame * 255.0).round().astype(np.uint8), mode="L")
+        image = Image.fromarray(frame, mode="L")
         resized = image.resize((w, h), Image.BILINEAR, box=(cx0, cy0, cx1, cy1))
-        return np.asarray(resized, dtype=np.float32) / 255.0
+        return np.asarray(resized, dtype=np.uint8)
 
     from cthulhu_backend.transform.parallel import map_frames
 
     return map_frames(resize, frames)
 
 
-def _fast_sharpen(frames: np.ndarray, amount: float = 0.25, radius: float = 1.2) -> np.ndarray:
-    """锐度补偿（快速档）：PIL UnsharpMask 替代 scipy gaussian_filter。
+def _fast_regrade_u8(
+    frames: np.ndarray,
+    gammas: np.ndarray,
+    deltas: np.ndarray,
+    levels: int = 16,
+) -> np.ndarray:
+    """重调光（uint8 查表）：连续 gamma 量化到有限档位，逐帧查表加速。"""
+    gamma_lo = float(np.min(gammas))
+    gamma_hi = float(np.max(gammas))
+    grid = np.array([gamma_lo]) if gamma_hi - gamma_lo < 1e-9 else np.linspace(gamma_lo, gamma_hi, levels)
+    level_idx = np.argmin(np.abs(grid[:, None] - np.asarray(gammas, dtype=np.float32)[None, :]), axis=0)
+    lut = np.stack(
+        [(np.arange(256, dtype=np.float32) / 255.0) ** gamma * 255.0 for gamma in grid]
+    )
+    tables = lut[level_idx]
+
+    def apply_one(pair: tuple[np.ndarray, np.ndarray, float]) -> np.ndarray:
+        table, frame, delta = pair
+        out = np.take(table, frame, mode="clip") + delta * 255.0
+        return np.clip(out, 0.0, 255.0).astype(np.uint8)
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    return map_frames(apply_one, list(zip(tables, frames, deltas)))
+
+
+def _fast_color_restore_u8(
+    frames: np.ndarray,
+    ref_mean: float,
+    ref_std: float,
+) -> np.ndarray:
+    """色彩还原（uint8 域）：统计与校正全程 float32，结果截断回 uint8。"""
+    work = frames.astype(np.float32)
+    means = work.mean(axis=(1, 2), keepdims=True)
+    stds = work.std(axis=(1, 2), keepdims=True)
+    ref_mean8 = ref_mean * 255.0
+    ref_std8 = ref_std * 255.0
+    valid = (stds > 1e-6) & (ref_std8 > 1e-6)
+    scale = np.where(valid, ref_std8 / np.where(valid, stds, 1.0), 1.0).astype(np.float32)
+    corrected = work * scale + (ref_mean8 - means * scale)
+    return np.clip(corrected, 0.0, 255.0).astype(np.uint8)
+
+
+def _fast_sharpen_u8(frames: np.ndarray, amount: float = 0.25, radius: float = 1.2) -> np.ndarray:
+    """锐度补偿（uint8 直通）：PIL UnsharpMask，免 float 往返。
 
     percent 为 0~255 亮度域百分比口径，threshold≈0.01×255 与原阈值对应。
     """
     percent = round(amount * 100)
 
     def unsharp(frame: np.ndarray) -> np.ndarray:
-        image = Image.fromarray((frame * 255.0).round().astype(np.uint8), mode="L")
+        image = Image.fromarray(frame, mode="L")
         out = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=3))
-        return np.asarray(out, dtype=np.float32) / 255.0
+        return np.asarray(out, dtype=np.uint8)
 
     from cthulhu_backend.transform.parallel import map_frames
 
     return map_frames(unsharp, frames)
 
 
-class FastStrategy:
-    """快速档第一步：与 thorough 同语义，仅替换更快的原语。
+def _fast_banner_u8(frames: np.ndarray, text: str, seed: int = 0, margin_frac: float = 0.04) -> np.ndarray:
+    """贴纸条（uint8 直通）：与 float 版本同布局参数的 PIL 绘制。"""
+    from PIL import ImageDraw, ImageFont
 
-    目前只动了 recrop（PIL 重采样）与 sharpen（PIL UnsharpMask），
-    其余序列与 thorough 完全一致；是否保留由检测基准 A/B 决定。
+    rng = np.random.default_rng(seed)
+    h, w = frames.shape[1:]
+    margin = int(w * margin_frac)
+    box_h = int(h * 0.12)
+    y0 = int(rng.uniform(margin, max(margin + 1, h - box_h - margin)))
+    font = ImageFont.load_default(size=max(12, box_h - 10))
+
+    def draw_frame(frame: np.ndarray) -> np.ndarray:
+        image = Image.fromarray(frame, mode="L").convert("RGB")
+        draw = ImageDraw.Draw(image, "RGBA")
+        draw.rectangle([margin, y0, w - margin, y0 + box_h], fill=(0, 0, 0, 120))
+        draw.text((margin + 12, y0 + (box_h - 16) // 2), text, fill=(255, 255, 255, 220), font=font)
+        return np.asarray(image.convert("L"), dtype=np.uint8)
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    return map_frames(draw_frame, frames)
+
+
+class FastStrategy:
+    """快速档：整条主链在 uint8 域端到端执行，免去多次精度往返。
+
+    recrop/sharpen/banner 走 PIL 直通，regrade 走查表，color_restore 仅
+    在 uint8 上做 float32 校正；无 uint8 原语的少数操作按需往返 float32。
+    变换序列与 thorough 顺序一致，是否保留由检测基准 A/B 决定。
     """
 
     name = "fast"
-    description = "快速档：轻量重采样与锐化，其余序列同 thorough（A/B 验证中）"
+    description = "快速档：uint8 端到端 + 查表/LUT/PIL 原语（A/B 验证中）"
+    frame_dtype = "uint8"
 
     def apply(
         self,
@@ -152,23 +231,28 @@ class FastStrategy:
         options: TransformOptions,
     ) -> np.ndarray:
         if options.recrop > 0:
-            frames = _fast_recrop(frames, options.recrop)
+            frames = _fast_recrop_u8(frames, options.recrop)
         if options.regrade:
-            frames = video_transform.regrade_with_params(
+            frames = _fast_regrade_u8(
                 frames, ctx.gammas[output_ids], ctx.deltas[output_ids],
             )
         if ctx.banner:
-            frames = video_transform.overlay_banner(frames, ctx.banner, ctx.seed)
+            frames = _fast_banner_u8(frames, ctx.banner, ctx.seed)
         if options.anti_reembed:
-            frames = video_transform.midband_perturb(frames, strength=0.4, rng=ctx.mid_rng)
+            frames = _u8_roundtrip(
+                frames, lambda f: video_transform.midband_perturb(f, strength=0.4, rng=ctx.mid_rng)
+            )
         if options.denoise:
-            frames = spatial_attacks.wiener_denoise(frames, size=5)
+            frames = _u8_roundtrip(frames, lambda f: spatial_attacks.wiener_denoise(f, size=5))
         if options.color_restore:
-            frames = video_transform.color_restore(frames, ctx.ref_mean, ctx.ref_std)
+            frames = _fast_color_restore_u8(frames, ctx.ref_mean, ctx.ref_std)
         if options.sharpness:
-            frames = _fast_sharpen(frames, amount=0.25, radius=1.2)
+            frames = _fast_sharpen_u8(frames, amount=0.25, radius=1.2)
         if options.spoof and ctx.spoof_bits is not None:
-            frames = np.stack([qim.embed(frame, ctx.spoof_bits, delta=6) for frame in frames])
+            frames = _u8_roundtrip(
+                frames,
+                lambda f: np.stack([qim.embed(frame, ctx.spoof_bits, delta=6) for frame in f]),
+            )
         return frames
 
 

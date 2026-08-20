@@ -70,7 +70,7 @@ def test_get_strategy_defaults_and_falls_back():
 
 
 def test_fast_with_all_off_is_identity():
-    frames = samples.make_video_frames(3, 32, 32, seed=4)
+    frames = (samples.make_video_frames(3, 32, 32, seed=4) * 255).round().astype(np.uint8)
     context = make_context(len(frames))
     options = strategies.TransformOptions(
         regrade=False,
@@ -81,10 +81,11 @@ def test_fast_with_all_off_is_identity():
         frames.copy(), list(range(len(frames))), context, options
     )
     np.testing.assert_allclose(actual, frames)
+    assert actual.dtype == np.uint8
 
 
 def test_fast_recrop_and_sharpen_keep_shape_and_change_pixels():
-    frames = samples.make_video_frames(4, 96, 64, seed=5)
+    frames = (samples.make_video_frames(4, 96, 64, seed=5) * 255).round().astype(np.uint8)
     context = make_context(len(frames))
     options = strategies.TransformOptions(
         recrop=0.06,
@@ -96,7 +97,20 @@ def test_fast_recrop_and_sharpen_keep_shape_and_change_pixels():
         frames.copy(), list(range(len(frames))), context, options
     )
     assert actual.shape == frames.shape
+    assert actual.dtype == np.uint8
     assert float(np.mean(np.abs(actual - frames))) > 0.001
+
+
+def test_fast_regrade_close_to_thorough():
+    frames_f = samples.make_video_frames(8, 64, 64, seed=6)
+    gammas = np.full(8, 1.05, dtype=np.float32)
+    deltas = np.zeros(8, dtype=np.float32)
+    expected = video_transform.regrade_with_params(frames_f.copy(), gammas, deltas)
+    u8 = (frames_f * 255).round().astype(np.uint8)
+    actual = strategies._fast_regrade_u8(u8, gammas, deltas)
+    assert actual.dtype == np.uint8
+    diff = np.abs(actual.astype(np.float32) / 255.0 - expected)
+    assert float(diff.mean()) < 0.02
 
 
 def test_baseline_compare_roundtrip(tmp_path):

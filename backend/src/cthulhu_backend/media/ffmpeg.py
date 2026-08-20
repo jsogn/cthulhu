@@ -202,10 +202,15 @@ class StreamingDecoder:
         )
         self._closed = False
 
-    def read(self, count: int) -> np.ndarray:
-        """读取至多 count 帧，返回 float32 帧数组（可能少于请求量）。"""
+    def read(self, count: int, dtype: str = "float32") -> np.ndarray:
+        """读取至多 count 帧（可能少于请求量）。
+
+        dtype 为 "float32" 时返回 [0,1] 浮点帧；"uint8" 时直接返回
+        原始灰度字节，省去一次缩放转换，供 uint8 端到端管线使用。
+        """
         if self._closed or self._remaining <= 0 or count <= 0:
-            return np.empty((0, self.info["height"], self.info["width"]), dtype=np.float32)
+            empty_dtype = np.uint8 if dtype == "uint8" else np.float32
+            return np.empty((0, self.info["height"], self.info["width"]), dtype=empty_dtype)
         want = min(count, self._remaining)
         raw = bytearray()
         needed = want * self.frame_bytes
@@ -217,10 +222,13 @@ class StreamingDecoder:
         total = len(raw) // self.frame_bytes
         self._remaining -= total
         if total == 0:
-            return np.empty((0, self.info["height"], self.info["width"]), dtype=np.float32)
+            empty_dtype = np.uint8 if dtype == "uint8" else np.float32
+            return np.empty((0, self.info["height"], self.info["width"]), dtype=empty_dtype)
         frames = np.frombuffer(bytes(raw[: total * self.frame_bytes]), dtype=np.uint8).reshape(
             total, self.info["height"], self.info["width"]
         )
+        if dtype == "uint8":
+            return frames
         return frames.astype(np.float32) / 255.0
 
     def close(self) -> None:
@@ -319,7 +327,10 @@ class StreamingEncoder:
     def write(self, frames: np.ndarray) -> None:
         if self._stop and self._stop():
             raise InterruptedError("任务已取消")
-        payload = (np.clip(frames, 0, 1) * 255).round().astype(np.uint8).tobytes()
+        if frames.dtype == np.uint8:
+            payload = np.ascontiguousarray(frames).tobytes()
+        else:
+            payload = (np.clip(frames, 0, 1) * 255).round().astype(np.uint8).tobytes()
         self._proc.stdin.write(payload)
 
     def finish(self) -> None:

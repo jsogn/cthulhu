@@ -374,7 +374,8 @@ def run_desensitize(
 
     # 分块大小：按内存预算自适应（float32 每帧 4 字节，预留 8 倍中间量余量）。
     budget = _memory_budget_bytes()
-    frame_bytes = info["width"] * info["height"] * 4
+    frame_dtype = getattr(strategy, "frame_dtype", "float32")
+    frame_bytes = info["width"] * info["height"] * (1 if frame_dtype == "uint8" else 4)
     chunk = max(8, min(480, int(budget // 8 // max(frame_bytes, 1))))
 
     # 音轨独立准备（整段重混后统一 mux）。
@@ -417,7 +418,7 @@ def run_desensitize(
                 try:
                     pos = 0
                     while pos < seg_len:
-                        batch = decoder.read(min(chunk, seg_len - pos))
+                        batch = decoder.read(min(chunk, seg_len - pos), dtype=frame_dtype)
                         if len(batch) == 0:
                             break
                         output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
@@ -475,6 +476,8 @@ def run_desensitize(
                 ).astype(int)
                 frames = block_frames[source_ids]
                 del block_frames
+                if frame_dtype == "uint8":
+                    frames = (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
                 frames = strategy.apply(frames, output_ids, transform_context, transform_options)
                 encoder.write(frames)
                 if progress_cb and total_out:
