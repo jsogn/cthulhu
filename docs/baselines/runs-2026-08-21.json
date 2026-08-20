@@ -120,6 +120,66 @@
       "psnr_db": 21.3,
       "ssim": 0.703,
       "vmaf_aligned": 65.935312
+    },
+    {
+      "schema_version": 1,
+      "created_at": "2026-08-20T16:43:01.501447+00:00",
+      "strategy": "thorough",
+      "input": "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4",
+      "output": "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4",
+      "input_size": 20742698,
+      "output_size": 22405373,
+      "wall_seconds": 46.289,
+      "scores": {
+        "ss": 0.9551,
+        "qim": 0.9248,
+        "lsb": 1.0,
+        "echo": 0.5998
+      },
+      "similarity_after": {
+        "content_cosine": 0.9961,
+        "motion_cosine": 0.9433,
+        "dhash_agreement": 0.7465,
+        "ssim_mean": 0.5414,
+        "reduction": {
+          "content": 0.0039,
+          "motion": 0.0567,
+          "dhash": 0.2535
+        }
+      },
+      "psnr_db": 21.28,
+      "ssim": 0.7025,
+      "vmaf_aligned": 66.035865
+    },
+    {
+      "schema_version": 1,
+      "created_at": "2026-08-20T16:43:57.614407+00:00",
+      "strategy": "fast",
+      "input": "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4",
+      "output": "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast2.mp4",
+      "input_size": 20742698,
+      "output_size": 22293986,
+      "wall_seconds": 46.308,
+      "scores": {
+        "ss": 0.9555,
+        "qim": 0.9255,
+        "lsb": 1.0,
+        "echo": 0.5998
+      },
+      "similarity_after": {
+        "content_cosine": 0.9961,
+        "motion_cosine": 0.9432,
+        "dhash_agreement": 0.7431,
+        "ssim_mean": 0.5417,
+        "reduction": {
+          "content": 0.0039,
+          "motion": 0.0568,
+          "dhash": 0.2569
+        }
+      },
+      "psnr_db": 21.3,
+      "ssim": 0.703,
+      "vmaf_aligned": 65.935312
     }
   ]
 }

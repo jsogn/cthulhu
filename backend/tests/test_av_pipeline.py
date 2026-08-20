@@ -57,6 +57,25 @@ def test_desensitize_remixes_audio(tmp_path):
 
 
 @needs_ffmpeg
+def test_streaming_decoder_matches_range_decode(tmp_path):
+    video = samples.make_cut_video(3, 40, 160, 120, seed=33)
+    path = tmp_path / "src.mp4"
+    ffmpeg.encode_video(video, str(path), fps=30)
+    expected, _ = ffmpeg.decode_video_range(str(path), 30, 50)
+    decoder = ffmpeg.StreamingDecoder(str(path), 30, 50)
+    chunks = []
+    while True:
+        batch = decoder.read(17)
+        if len(batch) == 0:
+            break
+        chunks.append(batch)
+    decoder.close()
+    actual = np.concatenate(chunks, axis=0) if chunks else np.empty_like(expected)
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(actual, expected)
+
+
+@needs_ffmpeg
 def test_desensitize_fps_out(tmp_path):
     """输出帧率参数应真实改变产物帧率。"""
     video = samples.make_video_frames(24, 160, 120, seed=42)

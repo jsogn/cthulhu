@@ -408,39 +408,65 @@ def run_desensitize(
     )
     out_index = 0
     try:
-        for reord_block_start in range(0, reord_total, chunk):
-            check_cancelled()
-            reord_block_end = min(reord_total, reord_block_start + chunk)
-            # 组装该重排块对应的原始帧（可能跨越镜头边界）。
-            block_parts: list[np.ndarray] = []
+        if speed == 1.0:
+            # 默认路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
+            # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
             for seg_start, orig_start, seg_len in segments:
-                overlap_start = max(reord_block_start, seg_start)
-                overlap_end = min(reord_block_end, seg_start + seg_len)
-                if overlap_start >= overlap_end:
+                check_cancelled()
+                decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len)
+                try:
+                    pos = 0
+                    while pos < seg_len:
+                        batch = decoder.read(min(chunk, seg_len - pos))
+                        if len(batch) == 0:
+                            break
+                        output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
+                        frames = strategy.apply(
+                            batch, output_ids, transform_context, transform_options
+                        )
+                        encoder.write(frames)
+                        pos += len(batch)
+                        out_index += len(batch)
+                        if progress_cb and total_out:
+                            progress_cb(
+                                8 + int(out_index / total_out * 82),
+                                f"处理中 {out_index}/{total_out} 帧",
+                            )
+                finally:
+                    decoder.close()
+        else:
+            # 变速路径：保留逐块随机访问解码（地板映射要求精确帧对齐）。
+            for reord_block_start in range(0, reord_total, chunk):
+                check_cancelled()
+                reord_block_end = min(reord_total, reord_block_start + chunk)
+                block_parts: list[np.ndarray] = []
+                for seg_start, orig_start, seg_len in segments:
+                    overlap_start = max(reord_block_start, seg_start)
+                    overlap_end = min(reord_block_end, seg_start + seg_len)
+                    if overlap_start >= overlap_end:
+                        continue
+                    part, _ = ffmpeg.decode_video_range(
+                        path,
+                        orig_start + (overlap_start - seg_start),
+                        overlap_end - overlap_start,
+                    )
+                    if len(part):
+                        block_parts.append(part)
+                if not block_parts:
                     continue
-                part, _ = ffmpeg.decode_video_range(
-                    path,
-                    orig_start + (overlap_start - seg_start),
-                    overlap_end - overlap_start,
+                block_frames = (
+                    np.concatenate(block_parts, axis=0) if len(block_parts) > 1 else block_parts[0]
                 )
-                if len(part):
-                    block_parts.append(part)
-            if not block_parts:
-                continue
-            block_frames = (
-                np.concatenate(block_parts, axis=0) if len(block_parts) > 1 else block_parts[0]
-            )
-            del block_parts
-            # 变速：收集本块对应的全局输出帧号（floor(j*speed) 落在块内）。
-            output_ids: list[int] = []
-            while out_index < total_out:
-                if int(np.floor(out_index * speed)) >= reord_block_end:
-                    break
-                output_ids.append(out_index)
-                out_index += 1
-            if not output_ids:
-                continue
-            if speed != 1.0:
+                del block_parts
+                # 变速：收集本块对应的全局输出帧号（floor(j*speed) 落在块内）。
+                output_ids: list[int] = []
+                while out_index < total_out:
+                    if int(np.floor(out_index * speed)) >= reord_block_end:
+                        break
+                    output_ids.append(out_index)
+                    out_index += 1
+                if not output_ids:
+                    continue
                 source_ids = np.clip(
                     np.floor(np.asarray(output_ids, dtype=np.float64) * speed)
                     - reord_block_start,
@@ -448,16 +474,14 @@ def run_desensitize(
                     len(block_frames) - 1,
                 ).astype(int)
                 frames = block_frames[source_ids]
-            else:
-                frames = block_frames
-            del block_frames
-            frames = strategy.apply(frames, output_ids, transform_context, transform_options)
-            encoder.write(frames)
-            if progress_cb and total_out:
-                progress_cb(
-                    8 + int(out_index / total_out * 82),
-                    f"处理中 {out_index}/{total_out} 帧",
-                )
+                del block_frames
+                frames = strategy.apply(frames, output_ids, transform_context, transform_options)
+                encoder.write(frames)
+                if progress_cb and total_out:
+                    progress_cb(
+                        8 + int(out_index / total_out * 82),
+                        f"处理中 {out_index}/{total_out} 帧",
+                    )
         encoder.finish()
         if audio_signal is not None:
             audio_payload = (

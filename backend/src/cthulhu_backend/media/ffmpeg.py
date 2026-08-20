@@ -169,6 +169,76 @@ def decode_video_range(
     return frames, info
 
 
+class StreamingDecoder:
+    """从指定帧区间顺序流式解码：单次 FFmpeg 进程 + 单次 seek。
+
+    与逐块调用 decode_video_range 的差别：只 seek 一次到区间起点，之后
+    顺序读取，把「每块都从头解码再丢弃」的 O(N²) 开销降为 O(N)。
+    调用方必须按帧顺序完整消费区间，不支持随机跳转。
+    """
+
+    def __init__(
+        self,
+        path: str,
+        start_frame: int,
+        count: int,
+        grayscale: bool = True,
+    ) -> None:
+        self.info = video_info(path)
+        start = max(0.0, start_frame / self.info["fps"])
+        pix_fmt = "gray" if grayscale else "rgb24"
+        channels = 1 if grayscale else 3
+        self.frame_bytes = self.info["height"] * self.info["width"] * channels
+        self._remaining = max(0, count)
+        cmd = [
+            FFMPEG_BIN, "-v", "error",
+            "-i", path,
+            "-ss", str(start),
+            "-frames:v", str(self._remaining),
+            "-f", "rawvideo", "-pix_fmt", pix_fmt, "-",
+        ]
+        self._proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
+        self._closed = False
+
+    def read(self, count: int) -> np.ndarray:
+        """读取至多 count 帧，返回 float32 帧数组（可能少于请求量）。"""
+        if self._closed or self._remaining <= 0 or count <= 0:
+            return np.empty((0, self.info["height"], self.info["width"]), dtype=np.float32)
+        want = min(count, self._remaining)
+        raw = bytearray()
+        needed = want * self.frame_bytes
+        while len(raw) < needed:
+            chunk = self._proc.stdout.read(needed - len(raw))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        total = len(raw) // self.frame_bytes
+        self._remaining -= total
+        if total == 0:
+            return np.empty((0, self.info["height"], self.info["width"]), dtype=np.float32)
+        frames = np.frombuffer(bytes(raw[: total * self.frame_bytes]), dtype=np.uint8).reshape(
+            total, self.info["height"], self.info["width"]
+        )
+        return frames.astype(np.float32) / 255.0
+
+    def close(self) -> None:
+        """结束解码进程并释放资源（幂等）。"""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._proc.stdout.close()
+        except OSError:
+            pass
+        try:
+            self._proc.terminate()
+            self._proc.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            self._proc.kill()
+
+
 def decode_sampled(
     path: str,
     cap: int = 200,
