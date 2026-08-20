@@ -19,17 +19,19 @@ def _run_detect(path: str, options: dict, progress=None, stop=None, pause=None) 
 
 
 def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
-    # 变换策略：任务选项优先，其次设置项，最后默认 thorough。
+    # 变换策略与编码档：任务选项优先，其次设置项，最后取模块默认。
+    # 默认策略为 fast（经检测基准 A/B 验证与 thorough 信号等价，约快 2 倍）。
     # 结果中的 transform_strategy 由 services.run_desensitize 写回，随任务持久化。
     strategy_name = (
         options.get("transform_strategy")
         or db.load_settings().get("transform_strategy")
         or strategies.DEFAULT_STRATEGY
     )
+    preset_name = options.get("preset") or db.load_settings().get("preset") or "medium"
     params = {
         key: value
         for key, value in options.items()
-        if key not in {"output", "transform_strategy"}
+        if key not in {"output", "transform_strategy", "preset"}
     }
     # 编码加速策略：设置里的 GPU 选项控制 H.265 是否走 VideoToolbox 硬编；
     # 实测 H.264 硬编更慢且更大，因此始终软件编码。
@@ -42,6 +44,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         should_stop=stop,
         hardware=hardware,
         transform_strategy=strategy_name,
+        preset=preset_name,
         **params,
     )
     # 自动复检：对清洗产物跑盲检测，量化残留风险供界面反馈。

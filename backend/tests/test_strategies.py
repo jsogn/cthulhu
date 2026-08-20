@@ -63,8 +63,8 @@ def test_thorough_with_all_off_is_identity():
 
 
 def test_get_strategy_defaults_and_falls_back():
-    assert strategies.get_strategy(None).name == "thorough"
-    assert strategies.get_strategy("不存在的策略").name == "thorough"
+    assert strategies.get_strategy(None).name == "fast"
+    assert strategies.get_strategy("不存在的策略").name == "fast"
     assert "thorough" in strategies.STRATEGIES
     assert "fast" in strategies.STRATEGIES
 
@@ -153,4 +153,16 @@ def test_desensitize_records_strategy(tmp_path):
         sharpness=False,
         color_restore=False,
     )
-    assert result["transform_strategy"] == "thorough"
+    assert result["transform_strategy"] == "fast"
+    thorough = services.run_desensitize(
+        str(source),
+        str(tmp_path / "thorough.mp4"),
+        reorder=False,
+        speed=1.0,
+        regrade=True,
+        audio_remix=False,
+        sharpness=False,
+        color_restore=False,
+        transform_strategy="thorough",
+    )
+    assert thorough["transform_strategy"] == "thorough"

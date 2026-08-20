@@ -227,8 +227,21 @@ function JobCard({
                   return residual?.ss != null ? (
                     <span className="text-xs text-muted-foreground">
                       空间水印残留 {residual.ss.toFixed(2)}（干净基线约 0.28）
-                    </span>
+                      </span>
                   ) : null;
+                })()}
+                {(() => {
+                  const meta = task.result as {
+                    transform_strategy?: string;
+                    preset?: string;
+                  } | null;
+                  if (!meta?.transform_strategy) return null;
+                  const strategyLabel = meta.transform_strategy === "fast" ? "快速" : "完整";
+                  return (
+                    <span className="text-xs text-muted-foreground">
+                      管线：{strategyLabel} · 编码 {meta.preset ?? "medium"}
+                    </span>
+                  );
                 })()}
               </>
             )}

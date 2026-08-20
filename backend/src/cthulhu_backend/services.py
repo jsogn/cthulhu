@@ -561,6 +561,7 @@ def run_desensitize(
         "input": path,
         "output": output,
         "transform_strategy": strategy.name,
+        "preset": preset,
         "frames": total_in,
         "order_disruption": round(
             metrics.order_disruption(original_sampled, processed_sampled), 4,

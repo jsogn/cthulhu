@@ -260,7 +260,7 @@ STRATEGIES: dict[str, TransformStrategy] = {
     "thorough": ThoroughStrategy(),
     "fast": FastStrategy(),
 }
-DEFAULT_STRATEGY = "thorough"
+DEFAULT_STRATEGY = "fast"
 
 
 def register_strategy(strategy: TransformStrategy) -> None:

@@ -29,6 +29,8 @@ const DEFAULTS: Record<string, string> = {
   resolution: "保持原始分辨率",
   parallelism: "3",
   gpu: "自动（H.265 硬编加速）",
+  transform_strategy: "fast",
+  preset: "medium",
   temp_dir: "/tmp/watermark-cleaner",
 };
 
@@ -211,6 +213,37 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">新建任务时生效，数值越高处理越快但占用资源越多</div>
+          </div>
+          <div className="form-field">
+            <Label>处理管线</Label>
+            <Select
+              value={form.transform_strategy}
+              onValueChange={(v) => setValue("transform_strategy", v)}
+            >
+              <SelectTrigger className="form-input h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fast">快速（推荐）</SelectItem>
+                <SelectItem value="thorough">完整（原重方案，兜底）</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="form-help">
+              快速管线经检测基准验证与完整管线效果相当，实测约快 2 倍
+            </div>
+          </div>
+          <div className="form-field">
+            <Label>编码速度档</Label>
+            <Select value={form.preset} onValueChange={(v) => setValue("preset", v)}>
+              <SelectTrigger className="form-input h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="medium">标准（画质优先）</SelectItem>
+                <SelectItem value="veryfast">快速（体积更小，检测效果相当）</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="form-help">仅作用于 H.264 软件编码，H.265 硬编不受影响</div>
           </div>
           <div className="form-field">
             <Label>编码加速（H.265）</Label>

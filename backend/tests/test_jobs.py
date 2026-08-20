@@ -8,7 +8,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import db, samples, services
+from cthulhu_backend import db, jobs, samples, services
 from cthulhu_backend.jobs import JobQueue
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
@@ -66,6 +66,20 @@ def test_restore_requeues_interrupted_job(client):
     assert restored["tasks"][0]["error"] is None
     assert "续跑" in restored["name"]
     db.delete_jobs("all")
+
+
+@needs_ffmpeg
+def test_desensitize_resolves_strategy_and_preset_from_settings(tmp_path):
+    """未在任务选项中显式指定时，策略与编码档从设置项解析。"""
+    video = _video(tmp_path, seed=51)
+    output = tmp_path / "out.mp4"
+    db.save_settings({"transform_strategy": "fast", "preset": "veryfast"})
+    try:
+        result = jobs._run_desensitize(str(video), {"output": str(output)})
+    finally:
+        db.save_settings({"transform_strategy": "fast", "preset": "medium"})
+    assert result["transform_strategy"] == "fast"
+    assert result["preset"] == "veryfast"
 
 
 def test_pause_resume_lifecycle():
