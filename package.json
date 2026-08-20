@@ -1,0 +1,16 @@
+{
+  "name": "cthulhu",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "VITE_AUTH_TOKEN=dev-local CTHULHU_AUTH_TOKEN=dev-local concurrently -k -n ui,backend -c blue,green \"pnpm --dir ui dev\" \"uv run --project backend uvicorn cthulhu_backend.main:app --port 57173 --reload --reload-dir backend/src\"",
+    "dev:desktop": "VITE_AUTH_TOKEN=dev-local CTHULHU_AUTH_TOKEN=dev-local concurrently -k -n ui,electron -c blue,magenta \"pnpm --dir ui dev\" \"pnpm --dir electron dev\"",
+    "build": "pnpm --dir ui build",
+    "typecheck": "pnpm --dir ui typecheck",
+    "package:backend": "uv run --project backend pyinstaller packaging/cthulhu-backend.spec --distpath packaging/backend-dist --workpath packaging/build --noconfirm",
+    "package": "pnpm build && pnpm package:backend && pnpm --dir electron dist"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

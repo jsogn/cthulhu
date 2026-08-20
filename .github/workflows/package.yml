@@ -1,0 +1,88 @@
+name: Package
+
+# 打标签（v*）或手动触发时，在云端并行构建各平台安装包。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon mac；Intel mac 需在本地构建（GitHub 已退役 Intel runner）。
+          - os: macos-15
+            platform: darwin-arm64
+            builder: --mac
+          - os: windows-2022
+            platform: win64
+            builder: --win
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装 uv（Python 工具链）
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 安装 Python 依赖
+        working-directory: backend
+        run: uv sync
+        env:
+          # 云端走官方 PyPI；本地配置的清华镜像仅用于国内开发环境。
+          UV_DEFAULT_INDEX: https://pypi.org/simple
+
+      - name: 校验（类型 / lint / 测试）
+        run: |
+          pnpm typecheck
+          cd backend
+          uv run ruff check src tests
+          uv run pytest tests -q
+
+      - name: 下载静态 FFmpeg
+        run: bash packaging/fetch_ffmpeg.sh
+        env:
+          FETCH_PLATFORM: ${{ matrix.platform }}
+
+      - name: 构建前端
+        run: pnpm build
+
+      - name: 打包 Python sidecar
+        run: pnpm package:backend
+
+      - name: 生成安装包
+        run: pnpm --dir electron exec electron-builder ${{ matrix.builder }}
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: cthulhu-${{ matrix.platform }}
+          path: |
+            packaging/dist/*.dmg
+            packaging/dist/*.exe
+            packaging/dist/*.blockmap
+          if-no-files-found: error

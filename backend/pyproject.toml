@@ -1,0 +1,46 @@
+[project]
+name = "cthulhu-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jhon_Walker", email = "jbanxian@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "numpy>=2.5.2",
+    "pillow>=12.3.0",
+    "python-multipart>=0.0.32",
+    "scipy>=1.18.0",
+    "typer>=0.27.1",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+cthulhu-backend = "cthulhu_backend.main:main"
+cthulhu = "cthulhu_backend.cli:app"
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pyinstaller>=6.22.2",
+    "pytest>=9.1.1",
+    "ruff>=0.16.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

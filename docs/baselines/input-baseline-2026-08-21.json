@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-20T16:23:14.562420+00:00",
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "files": [
+    {
+      "name": "干净视频.mp4",
+      "path": "/Users/alone/Downloads/暗水印测试/干净视频.mp4",
+      "size": 92197102,
+      "sha256": "a89c530c42803b2c3547bef1d41f4ff4b4459ee454a2c19ce5ee04cebae3fd65",
+      "probe": {
+        "width": 720,
+        "height": 1280,
+        "fps": 30.0,
+        "pix_fmt": "yuv420p",
+        "codec": "h264",
+        "format": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": 337.5
+      },
+      "frames_sampled": 300,
+      "scores": {
+        "ss": 0.8528,
+        "qim": 0.9513,
+        "lsb": 1.0,
+        "echo": 0.5357
+      }
+    },
+    {
+      "name": "疑似暗水印.mp4",
+      "path": "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4",
+      "size": 20742698,
+      "sha256": "7e1800656b5c890e826db50f25f05e10436738a0653d2d28b37718479cea2045",
+      "probe": {
+        "width": 540,
+        "height": 960,
+        "fps": 30.0,
+        "pix_fmt": "yuv420p",
+        "codec": "h264",
+        "format": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": 264.7
+      },
+      "frames_sampled": 300,
+      "scores": {
+        "ss": 0.9781,
+        "qim": 0.9274,
+        "lsb": 1.0,
+        "echo": 0.6354
+      }
+    }
+  ]
+}

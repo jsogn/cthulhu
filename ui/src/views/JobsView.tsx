@@ -1,0 +1,274 @@
+import { useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { clearJobs, type JobInfo } from "@/lib/backend";
+import { useQueueStore } from "@/stores/queue";
+import { toast } from "@/stores/toasts";
+
+const KIND_LABEL: Record<string, string> = {
+  detect: "暗水印检测",
+  desensitize: "合规清洗",
+  repair: "可见水印修复",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  queued: "队列中",
+  running: "处理中",
+  paused: "已暂停",
+  done: "已完成",
+  failed: "失败",
+  canceled: "已取消",
+};
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+export default function JobsView() {
+  const jobs = useQueueStore((state) => state.jobs);
+  const refresh = useQueueStore((state) => state.refresh);
+  const cancel = useQueueStore((state) => state.cancel);
+  const pause = useQueueStore((state) => state.pause);
+  const resume = useQueueStore((state) => state.resume);
+  const setPriority = useQueueStore((state) => state.setPriority);
+  const retry = useQueueStore((state) => state.retry);
+  const [pendingClear, setPendingClear] = useState<"finished" | "all" | null>(null);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const tasks = jobs.flatMap((job) => job.tasks);
+  const count = (status: string) => tasks.filter((task) => task.status === status).length;
+  const finishedCount = count("done") + count("failed");
+  const doneElapsed = tasks
+    .filter((task) => task.status === "done" && task.elapsed != null)
+    .map((task) => task.elapsed as number);
+  const avgElapsed = doneElapsed.length
+    ? doneElapsed.reduce((sum, value) => sum + value, 0) / doneElapsed.length
+    : null;
+  const pendingCount = count("queued") + count("running");
+  const etaMinutes =
+    avgElapsed != null && pendingCount > 0 ? (avgElapsed * pendingCount) / 60 : null;
+
+  const confirmClear = async () => {
+    if (!pendingClear) return;
+    try {
+      const removed = await clearJobs(pendingClear);
+      await refresh();
+      toast(`已清空 ${removed} 个任务`);
+    } catch {
+      toast("清空失败，请确认引擎在线");
+    } finally {
+      setPendingClear(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="view-head">
+        <div>
+          <div className="view-title">批量任务中心</div>
+          <div className="view-desc">并行调度 · 失败隔离 · 全程可取消 / 重试</div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            disabled={!finishedCount}
+            onClick={() => setPendingClear("finished")}
+          >
+            清空已完成
+          </Button>
+          <Button variant="ghost" disabled={!jobs.length} onClick={() => setPendingClear("all")}>
+            清空全部
+          </Button>
+          <Button variant="ghost" onClick={refresh}>
+            刷新
+          </Button>
+        </div>
+      </div>
+
+      <div className="view-body">
+        {etaMinutes != null && pendingCount > 0 && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            依据历史速度估算，剩余任务约需{" "}
+            {etaMinutes < 1 ? "不到 1 分钟" : `${Math.ceil(etaMinutes)} 分钟`}
+          </p>
+        )}
+        <div className="stats">
+          <Card className="stat s-队列中 p-3.5">
+            <div className="stat-num">{count("queued")}</div>
+            <div className="stat-label">队列中</div>
+          </Card>
+          <Card className="stat s-处理中 p-3.5">
+            <div className="stat-num">{count("running")}</div>
+            <div className="stat-label">处理中</div>
+          </Card>
+          <Card className="stat s-成功 p-3.5">
+            <div className="stat-num">{count("done")}</div>
+            <div className="stat-label">已完成</div>
+          </Card>
+          <Card className="stat s-失败 p-3.5">
+            <div className="stat-num">{count("failed")}</div>
+            <div className="stat-label">失败</div>
+          </Card>
+        </div>
+
+        {jobs.length === 0 ? (
+          <Card className="p-8 text-center text-muted-foreground">
+            暂无任务，回到工作台选择素材并加入队列。
+          </Card>
+        ) : (
+          jobs.map((job) => (
+            <JobCard
+              key={job.id}
+              job={job}
+              onCancel={cancel}
+              onPause={pause}
+              onResume={resume}
+              onPriority={setPriority}
+              onRetry={retry}
+            />
+          ))
+        )}
+      </div>
+
+      <AlertDialog open={!!pendingClear} onOpenChange={(open) => !open && setPendingClear(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认清空任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingClear === "all"
+                ? "将删除全部任务记录，包括进行中的任务。此操作不可撤销。"
+                : "将删除所有已完成与失败的任务记录。此操作不可撤销。"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClear}>确认清空</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function JobCard({
+  job,
+  onCancel,
+  onPause,
+  onResume,
+  onPriority,
+  onRetry,
+}: {
+  job: JobInfo;
+  onCancel: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  onPriority: (id: string, priority: number) => void;
+  onRetry: (id: string) => void;
+}) {
+  const failedCount = job.tasks.filter((task) => task.status === "failed").length;
+  const active = job.status === "queued" || job.status === "running";
+
+  return (
+    <Card className="mb-3 flex flex-col gap-2.5 p-3.5">
+      <div className="job-top">
+        <span className="job-name min-w-0 truncate">{job.name}</span>
+        <span className="job-id shrink-0">#{job.id}</span>
+        <span className="job-meta shrink-0">并行 {job.parallelism}</span>
+        <span className={`job-status ${STATUS_LABEL[job.status]}`}>{STATUS_LABEL[job.status]}</span>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {job.tasks.map((task) => (
+          <div key={task.id} className="flex flex-col gap-1 rounded-md border border-border p-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-16 shrink-0 text-muted-foreground">{KIND_LABEL[task.kind]}</span>
+              <span className="mono min-w-0 flex-1 truncate">{basename(task.path)}</span>
+              <span className={`job-status ${STATUS_LABEL[task.status]}`}>
+                {STATUS_LABEL[task.status]}
+              </span>
+            </div>
+            {task.status === "running" && (
+              <span className="text-xs text-muted-foreground">
+                {task.progress_note ?? "处理中"}
+                {task.elapsed != null ? ` · 已运行 ${task.elapsed}s` : ""}
+              </span>
+            )}
+            {task.status === "running" && task.percent === 0 ? (
+              <div className="progress-track h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div className="progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
+              </div>
+            ) : (
+              <Progress value={task.percent} className="h-1" />
+            )}
+            {task.error && <span className="text-xs text-destructive">失败：{task.error}</span>}
+            {task.status === "done" && task.kind === "desensitize" && (
+              <>
+                <span className="mono truncate text-xs text-muted-foreground">
+                  输出：{(task.result as { output?: string } | null)?.output ?? "—"}
+                </span>
+                {(() => {
+                  const residual = (task.result as {
+                    residual?: { ss: number | null } | null;
+                  } | null)?.residual;
+                  return residual?.ss != null ? (
+                    <span className="text-xs text-muted-foreground">
+                      空间水印残留 {residual.ss.toFixed(2)}（干净基线约 0.28）
+                    </span>
+                  ) : null;
+                })()}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="job-actions">
+        <Button variant="secondary" size="sm" disabled={!active} onClick={() => onCancel(job.id)}>
+          取消
+        </Button>
+        {job.status === "paused" ? (
+          <Button variant="secondary" size="sm" onClick={() => onResume(job.id)}>
+            继续
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={job.status !== "queued" && job.status !== "running"}
+            onClick={() => onPause(job.id)}
+          >
+            暂停
+          </Button>
+        )}
+        {job.status === "queued" && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onPriority(job.id, Math.max(0, job.priority - 1))}
+          >
+            提前执行
+          </Button>
+        )}
+        {failedCount > 0 && (
+          <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
+            重试失败项（{failedCount}）
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}

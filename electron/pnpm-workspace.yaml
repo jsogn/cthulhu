@@ -1,0 +1,6 @@
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+# pnpm 11 起构建脚本白名单在此文件配置（electron 的 postinstall 需下载二进制）。
+onlyBuiltDependencies:
+  - electron

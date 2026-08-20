@@ -1,0 +1,65 @@
+{
+  "name": "cthulhu-electron",
+  "version": "0.1.0",
+  "description": "暗水印检测与合规清洗桌面工具",
+  "author": "cthulhu",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "dist": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.cthulhu.watermark",
+    "productName": "暗水印清洗台",
+    "directories": {
+      "output": "../packaging/dist"
+    },
+    "files": [
+      "main.mjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../packaging/backend-dist/cthulhu-backend",
+        "to": "backend"
+      },
+      {
+        "from": "../ui/dist",
+        "to": "backend/ui-dist"
+      }
+    ],
+    "mac": {
+      "icon": "../packaging/icons/icon.png",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.video",
+      "extraResources": [
+        {
+          "from": "../packaging/ffmpeg",
+          "to": "ffmpeg"
+        }
+      ]
+    },
+    "win": {
+      "icon": "../packaging/icons/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "../packaging/ffmpeg-win64",
+          "to": "ffmpeg"
+        }
+      ]
+    }
+  }
+}
