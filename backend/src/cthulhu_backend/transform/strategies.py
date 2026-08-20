@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
+from PIL import Image, ImageFilter
 
 from cthulhu_backend.attacks import spatial as spatial_attacks
 from cthulhu_backend.transform import video as video_transform
@@ -97,7 +98,84 @@ class ThoroughStrategy:
         return frames
 
 
-STRATEGIES: dict[str, TransformStrategy] = {"thorough": ThoroughStrategy()}
+def _fast_recrop(frames: np.ndarray, crop_frac: float) -> np.ndarray:
+    """重新构图（快速档）：PIL 原生双线性重采样替代 scipy zoom。
+
+    在 uint8 域一次性完成裁剪与缩放，省去 scipy 样条预滤波的开销。
+    """
+    h, w = frames.shape[1:]
+    cy0, cy1 = int(h * crop_frac), h - int(h * crop_frac)
+    cx0, cx1 = int(w * crop_frac), w - int(w * crop_frac)
+
+    def resize(frame: np.ndarray) -> np.ndarray:
+        image = Image.fromarray((frame * 255.0).round().astype(np.uint8), mode="L")
+        resized = image.resize((w, h), Image.BILINEAR, box=(cx0, cy0, cx1, cy1))
+        return np.asarray(resized, dtype=np.float32) / 255.0
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    return map_frames(resize, frames)
+
+
+def _fast_sharpen(frames: np.ndarray, amount: float = 0.25, radius: float = 1.2) -> np.ndarray:
+    """锐度补偿（快速档）：PIL UnsharpMask 替代 scipy gaussian_filter。
+
+    percent 为 0~255 亮度域百分比口径，threshold≈0.01×255 与原阈值对应。
+    """
+    percent = round(amount * 100)
+
+    def unsharp(frame: np.ndarray) -> np.ndarray:
+        image = Image.fromarray((frame * 255.0).round().astype(np.uint8), mode="L")
+        out = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=3))
+        return np.asarray(out, dtype=np.float32) / 255.0
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    return map_frames(unsharp, frames)
+
+
+class FastStrategy:
+    """快速档第一步：与 thorough 同语义，仅替换更快的原语。
+
+    目前只动了 recrop（PIL 重采样）与 sharpen（PIL UnsharpMask），
+    其余序列与 thorough 完全一致；是否保留由检测基准 A/B 决定。
+    """
+
+    name = "fast"
+    description = "快速档：轻量重采样与锐化，其余序列同 thorough（A/B 验证中）"
+
+    def apply(
+        self,
+        frames: np.ndarray,
+        output_ids: list[int],
+        ctx: TransformContext,
+        options: TransformOptions,
+    ) -> np.ndarray:
+        if options.recrop > 0:
+            frames = _fast_recrop(frames, options.recrop)
+        if options.regrade:
+            frames = video_transform.regrade_with_params(
+                frames, ctx.gammas[output_ids], ctx.deltas[output_ids],
+            )
+        if ctx.banner:
+            frames = video_transform.overlay_banner(frames, ctx.banner, ctx.seed)
+        if options.anti_reembed:
+            frames = video_transform.midband_perturb(frames, strength=0.4, rng=ctx.mid_rng)
+        if options.denoise:
+            frames = spatial_attacks.wiener_denoise(frames, size=5)
+        if options.color_restore:
+            frames = video_transform.color_restore(frames, ctx.ref_mean, ctx.ref_std)
+        if options.sharpness:
+            frames = _fast_sharpen(frames, amount=0.25, radius=1.2)
+        if options.spoof and ctx.spoof_bits is not None:
+            frames = np.stack([qim.embed(frame, ctx.spoof_bits, delta=6) for frame in frames])
+        return frames
+
+
+STRATEGIES: dict[str, TransformStrategy] = {
+    "thorough": ThoroughStrategy(),
+    "fast": FastStrategy(),
+}
 DEFAULT_STRATEGY = "thorough"
 
 

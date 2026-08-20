@@ -66,6 +66,37 @@ def test_get_strategy_defaults_and_falls_back():
     assert strategies.get_strategy(None).name == "thorough"
     assert strategies.get_strategy("不存在的策略").name == "thorough"
     assert "thorough" in strategies.STRATEGIES
+    assert "fast" in strategies.STRATEGIES
+
+
+def test_fast_with_all_off_is_identity():
+    frames = samples.make_video_frames(3, 32, 32, seed=4)
+    context = make_context(len(frames))
+    options = strategies.TransformOptions(
+        regrade=False,
+        color_restore=False,
+        sharpness=False,
+    )
+    actual = strategies.get_strategy("fast").apply(
+        frames.copy(), list(range(len(frames))), context, options
+    )
+    np.testing.assert_allclose(actual, frames)
+
+
+def test_fast_recrop_and_sharpen_keep_shape_and_change_pixels():
+    frames = samples.make_video_frames(4, 96, 64, seed=5)
+    context = make_context(len(frames))
+    options = strategies.TransformOptions(
+        recrop=0.06,
+        regrade=False,
+        color_restore=False,
+        sharpness=True,
+    )
+    actual = strategies.get_strategy("fast").apply(
+        frames.copy(), list(range(len(frames))), context, options
+    )
+    assert actual.shape == frames.shape
+    assert float(np.mean(np.abs(actual - frames))) > 0.001
 
 
 def test_baseline_compare_roundtrip(tmp_path):
