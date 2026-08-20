@@ -282,6 +282,7 @@ class StreamingEncoder:
         codec: str = "libx264",
         hardware: bool = False,
         crf: int = 23,
+        preset: str = "medium",
         gop: int | None = None,
         bitrate_kbps: int | None = None,
         out_size: tuple[int, int] | None = None,
@@ -309,7 +310,7 @@ class StreamingEncoder:
                 "-bufsize", f"{bitrate_kbps * 2}k",
             ]
         else:
-            cmd += ["-preset", "medium", "-crf", str(crf)]
+            cmd += ["-preset", preset, "-crf", str(crf)]
         if gop:
             cmd += ["-g", str(gop)]
         if out_size:

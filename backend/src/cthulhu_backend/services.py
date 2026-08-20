@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import queue
 import shutil
 import subprocess
 import tempfile
@@ -205,6 +206,43 @@ def _temporal_aligned_vmaf(
         return ffmpeg.vmaf_score(dist_path, ref_path)
 
 
+def _prefetch_batches(
+    decoder: ffmpeg.StreamingDecoder,
+    seg_len: int,
+    chunk: int,
+    dtype: str,
+):
+    """顺序解码预取生成器：后台线程提前读下一块，隐藏解码等待。
+
+    生产者把解码结果放入有界队列（最多 2 块在途），主线程边变换边消费，
+    使解码与变换/编码重叠；块序与逐块同步读取完全一致。
+    """
+    batch_queue: queue.Queue = queue.Queue(maxsize=2)
+
+    def producer() -> None:
+        try:
+            pos = 0
+            while pos < seg_len:
+                batch = decoder.read(min(chunk, seg_len - pos), dtype=dtype)
+                if len(batch) == 0:
+                    break
+                batch_queue.put((pos, batch))
+                pos += len(batch)
+        except BaseException as exc:  # noqa: BLE001 - 异常传给主线程统一处理
+            batch_queue.put(exc)
+        finally:
+            batch_queue.put(None)
+
+    threading.Thread(target=producer, daemon=True).start()
+    while True:
+        item = batch_queue.get()
+        if item is None:
+            break
+        if isinstance(item, BaseException):
+            raise item
+        yield item
+
+
 def run_similarity(a: str, b: str) -> dict:
     a, b = _require_file(a), _require_file(b)
     frames_a, _ = ffmpeg.decode_video(a)
@@ -263,6 +301,7 @@ def run_desensitize(
     seed: int = 0,
     codec: str = "libx264",
     lossless: bool = False,
+    preset: str = "medium",
     spoof: bool = False,
     bitrate_kbps: int | None = None,
     gop: int | None = None,
@@ -402,6 +441,7 @@ def run_desensitize(
         codec=codec,
         hardware=hardware,
         crf=crf,
+        preset=preset,
         gop=gop,
         bitrate_kbps=bitrate_kbps,
         out_size=out_size,
@@ -416,17 +456,13 @@ def run_desensitize(
                 check_cancelled()
                 decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len)
                 try:
-                    pos = 0
-                    while pos < seg_len:
-                        batch = decoder.read(min(chunk, seg_len - pos), dtype=frame_dtype)
-                        if len(batch) == 0:
-                            break
+                    for pos, batch in _prefetch_batches(decoder, seg_len, chunk, frame_dtype):
+                        check_cancelled()
                         output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
                         frames = strategy.apply(
                             batch, output_ids, transform_context, transform_options
                         )
                         encoder.write(frames)
-                        pos += len(batch)
                         out_index += len(batch)
                         if progress_cb and total_out:
                             progress_cb(
