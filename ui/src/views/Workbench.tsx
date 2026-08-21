@@ -49,8 +49,6 @@ import {
   makePreview,
   mediaUrl,
   previewImageUrl,
-  runDesensitize,
-  runDetect,
   runSimilarity,
   thumbUrl,
   type AudioAnalysis,
@@ -90,6 +88,46 @@ function pendingDetectPaths(jobs: JobInfo[]): Set<string> {
           (task.status === "queued" || task.status === "running" || task.status === "paused"),
       )
       .map((task) => task.path),
+  );
+}
+
+function pendingCleanPaths(jobs: JobInfo[]): Set<string> {
+  return new Set(
+    jobs
+      .flatMap((job) => job.tasks)
+      .filter(
+        (task) =>
+          task.kind === "desensitize" &&
+          (task.status === "queued" || task.status === "running" || task.status === "paused"),
+      )
+      .map((task) => task.path),
+  );
+}
+
+const SNAKE_OPTION_KEYS: Record<string, string> = {
+  audioRemix: "audio_remix",
+  colorRestore: "color_restore",
+  antiReembed: "anti_reembed",
+  bitrateKbps: "bitrate_kbps",
+  fpsOut: "fps_out",
+  phashAttack: "phash_attack",
+  phashEpsilon: "phash_epsilon",
+  phashIters: "phash_iters",
+  multiHashAttack: "multi_hash_attack",
+  dctStep: "dct_step",
+  dropEvery: "drop_every",
+  chromaLevels: "chroma_levels",
+  subtractBeta: "subtract_beta",
+  transcodeChain: "transcode_chain",
+  nativeFilters: "native_filters",
+  detailProtect: "detail_protect",
+};
+
+function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(options)
+      .filter(([, value]) => value !== undefined && value !== "")
+      .map(([key, value]) => [SNAKE_OPTION_KEYS[key] ?? key, value]),
   );
 }
 
@@ -988,7 +1026,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const [outputDir, setOutputDir] = useState("");
   const [naming, setNaming] = useState("原文件名 + 时间戳");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
-  const [cleaning, setCleaning] = useState(false);
+  const cleaning = !!material?.path && pendingCleanPaths(jobs).has(material.path);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
   const [audio, setAudio] = useState<AudioAnalysis | null>(null);
   const [audioMissing, setAudioMissing] = useState(false);
@@ -1008,6 +1046,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const [compareSimilarity, setCompareSimilarity] = useState<SimilarityReport | null>(null);
   const [comparing, setComparing] = useState(false);
   const [hoverPath, setHoverPath] = useState<string | null>(null);
+  const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
   const lastOptionsRef = useRef<DesensitizeOptions | null>(null);
 
@@ -1081,7 +1120,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       ? `${outputDir.trim().replace(/\/+$/, "")}/${fileName}`
       : `${srcStem}_cleaned_${ts}.mp4`;
     const anti = ANTI_PRESETS[antiLevel];
-    setCleaning(true);
     try {
       const cleanOptions: DesensitizeOptions = {
         reorder: restruct > 0,
@@ -1128,50 +1166,19 @@ function ContextPanel({ tab, setTab }: ContextProps) {
           : {}),
       };
       lastOptionsRef.current = cleanOptions;
-      const report = await runDesensitize(target.path, output, cleanOptions);
-      addHistory({
-        name: material.name,
-        time: nowStr(),
-        action: "清洗去重",
-        params: `${level}档 · 重构${restruct}% · 微扰${perturb}% · 对抗${antiLevel} · ${codec}${lossless ? "无损" : ""}`,
-        out: output,
-        result: "成功",
-      });
-      setLastClean(report);
-      setLastOutput(output);
-      void useMaterialsStore.getState().refreshOutputCounts();
+      await enqueueJob(`${material.name} · 清洗去重`, [
+        {
+          kind: "desensitize",
+          path: target.path,
+          options: { output, ...toSnakeOptions(cleanOptions) },
+        },
+      ]);
+      setLastClean(null);
+      setLastOutput(null);
       setPreviewUrl(null);
-      try {
-        const preview = await makePreview(target.path, output);
-        setPreviewUrl(previewImageUrl(preview.image_path));
-      } catch {
-        // 预览生成失败不阻断清洗主流程
-      }
-      if (report.psnr_db != null && report.psnr_db < 20) {
-        toast(
-          "画质损失偏大",
-          `PSNR ${report.psnr_db}dB 低于 20dB 阈值，建议降低清洗档位或关闭部分增强开关`,
-        );
-      }
-      let residualNote = "";
-      try {
-        const post = await runDetect(output);
-        const residual = post.blind?.ss;
-        if (residual != null) {
-          residualNote = ` · 空间水印残留 ${residual.toFixed(2)}（基线随内容而异，仅作相对比较）`;
-        }
-      } catch {
-        // 复检失败不阻断清洗主流程
-      }
-      toast(
-        `清洗完成：内容相似度 ${report.similarity_after.content_cosine.toFixed(2)} · 时序乱序 ${(report.order_disruption ?? 0).toFixed(2)} · VMAF ${report.vmaf?.toFixed(1) ?? "—"}${residualNote}`,
-        output,
-        { label: "打开文件夹", onClick: () => openInFolder(output) },
-      );
+      toast("已加入处理队列，完成后自动刷新校验与预览");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "清洗失败");
-    } finally {
-      setCleaning(false);
+      toast(error instanceof Error ? error.message : "入队失败");
     }
   };
 
@@ -1227,13 +1234,12 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     });
   };
 
-  const runCompare = async () => {
-    if (compared.length !== 2) return;
+  const runComparePair = async (a: string, b: string) => {
     setComparing(true);
     try {
       const [similarity, preview] = await Promise.all([
-        runSimilarity(compared[0], compared[1]),
-        makePreview(compared[0], compared[1]),
+        runSimilarity(a, b),
+        makePreview(a, b),
       ]);
       setCompareSimilarity(similarity);
       setCompareImage(previewImageUrl(preview.image_path));
@@ -1244,6 +1250,54 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       setComparing(false);
     }
   };
+
+  const runCompare = () => {
+    if (compared.length === 2) void runComparePair(compared[0], compared[1]);
+  };
+
+  const compareOriginal = (output: OutputInfo) => {
+    if (material?.path) void runComparePair(material.path, output.path);
+  };
+
+  // 清洗任务完成后：更新校验指标、产物列表、历史与并排预览。
+  const lastHandledTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    const task = jobs
+      .flatMap((job) => job.tasks)
+      .find(
+        (item) =>
+          item.kind === "desensitize" &&
+          item.path === material?.path &&
+          item.status === "done" &&
+          item.result != null &&
+          item.id !== lastHandledTaskRef.current,
+      );
+    if (!task) return;
+    lastHandledTaskRef.current = task.id;
+    const result = task.result as { output?: string; similarity_after?: { content_cosine: number } } | null;
+    if (!result?.output) return;
+    setLastOutput(result.output);
+    setLastClean(result as never);
+    addHistory({
+      name: material?.name ?? "",
+      time: nowStr(),
+      action: "清洗去重",
+      params: `${level}档 · 对抗${antiLevel} · ${codec}`,
+      out: result.output,
+      result: "成功",
+    });
+    void useMaterialsStore.getState().refreshOutputCounts();
+    void fetchOutputs(material?.path ?? "")
+      .then((report) => setOutputs(report.outputs))
+      .catch(() => undefined);
+    void makePreview(material?.path ?? "", result.output)
+      .then((preview) => setPreviewUrl(previewImageUrl(preview.image_path)))
+      .catch(() => undefined);
+    toast(`清洗完成：内容相似度 ${(result.similarity_after?.content_cosine ?? 0).toFixed(2)}`, result.output, {
+      label: "打开文件夹",
+      onClick: () => openInFolder(result.output as string),
+    });
+  }, [jobs, material?.path, level, antiLevel, codec, addHistory]);
 
   const runRepairJob = async () => {
     const target = material as (Material & { path?: string }) | null;
@@ -1292,9 +1346,12 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   return (
     <aside className="pane pane-right">
       <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])} className="min-h-0 flex-1">
-        <TabsList variant="line" className="w-full shrink-0 justify-between rounded-none border-b border-border p-0">
+        <TabsList
+          variant="line"
+          className="w-full shrink-0 gap-1 overflow-x-auto rounded-none border-b border-border p-0"
+        >
           {TAB_KEYS.map((key) => (
-            <TabsTrigger key={key} value={key} className="flex-1">
+            <TabsTrigger key={key} value={key} className="shrink-0 whitespace-nowrap px-3">
               {key}
             </TabsTrigger>
           ))}
@@ -1841,7 +1898,9 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                 </p>
               ) : (
                 <>
-                  <p className="note">勾选任意两个产物进行并排对比，悬停可放大预览。</p>
+                  <p className="note">
+                    点击缩略图播放，勾选任意两个并排对比，单个产物可直接「对比原片」。
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     {outputs.map((output) => (
                       <div
@@ -1850,12 +1909,20 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                           "out-card",
                           compared.includes(output.path) && "out-card-selected",
                         )}
-                        onClick={() => toggleCompare(output.path)}
                       >
+                        <input
+                          type="checkbox"
+                          className="out-card-check"
+                          checked={compared.includes(output.path)}
+                          aria-label="选择用于对比"
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={() => toggleCompare(output.path)}
+                        />
                         <img
                           src={thumbUrl(output.path, 320)}
                           loading="lazy"
                           alt=""
+                          onClick={() => setPlayerPath(output.path)}
                           onMouseEnter={() => setHoverPath(output.path)}
                           onMouseLeave={() => setHoverPath(null)}
                         />
@@ -1865,16 +1932,21 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                           </span>
                           <span className="mono text-xs">{fmtSize(output.size)}</span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openInFolder(output.path);
-                          }}
-                        >
-                          打开
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => compareOriginal(output)}>
+                            对比原片
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openInFolder(output.path);
+                            }}
+                          >
+                            打开
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2049,6 +2121,23 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                 SSIM {compareSimilarity.ssim_mean.toFixed(3)}
               </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!playerPath} onOpenChange={(open) => !open && setPlayerPath(null)}>
+        <DialogContent className="max-w-[min(90vw,720px)]">
+          <DialogHeader>
+            <DialogTitle>产物预览</DialogTitle>
+            <DialogDescription>播放产物视频，确认观感。</DialogDescription>
+          </DialogHeader>
+          {playerPath && (
+            <video
+              src={mediaUrl(playerPath)}
+              controls
+              autoPlay
+              className="max-h-[70vh] w-full rounded-md bg-black"
+            />
           )}
         </DialogContent>
       </Dialog>

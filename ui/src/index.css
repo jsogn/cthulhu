@@ -553,6 +553,7 @@ body {
   width: 100%;
   border-radius: 6px;
   object-fit: cover;
+  cursor: pointer;
 }
 
 .out-card-selected {
@@ -564,6 +565,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.out-card-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  accent-color: var(--primary);
 }
 
 .hover-preview {
