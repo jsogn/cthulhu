@@ -1044,9 +1044,6 @@ function PreviewPane({
         <span className="timecode mono">{fmtFrames(maxFrame, fps)}</span>
       </div>
 
-      <div className="shortcut-hint">
-        空格 播放 · ←/→ 逐帧 · V 对比 · 双击放大 · B 打点 · C 清除标记 · ⌘/Ctrl+Enter 入队 · ⌘/Ctrl+Z 撤销
-      </div>
     </section>
   );
 }
@@ -1552,10 +1549,41 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
 
                   <div className="section-title">清洗建议</div>
                   <ul className="suggest">
-                    <li>分镜拆解后乱序重组，打散帧时序</li>
-                    <li>施加低强度画质微扰，改变单帧频域分布</li>
-                    <li>同步处理音频频谱指纹</li>
-                    <li>内容指纹较高，建议优先复用叙事而非原画面像素</li>
+                    {(() => {
+                      const suggestions: string[] = [];
+                      if (report.bitstream.flags.length > 0) {
+                        suggestions.push(
+                          `码流层命中 ${report.bitstream.flags.length} 项疑似特征，建议开启清洗并人工复核`,
+                        );
+                      }
+                      if (report.blind) {
+                        if (report.blind.ss > 0.5 || report.blind.qim > 0.6) {
+                          suggestions.push(
+                            `空域/频域疑似度偏高（ss ${report.blind.ss.toFixed(2)}、qim ${report.blind.qim.toFixed(2)}），建议开启空间降噪与 DCT 重量化`,
+                          );
+                        }
+                        if ((report.blind.echo ?? 0) > 0.6) {
+                          suggestions.push(
+                            `音频回声置信度 ${(report.blind.echo ?? 0).toFixed(2)}，建议同步音频重混`,
+                          );
+                        }
+                      }
+                      if (score >= 60) {
+                        suggestions.push(`判重风险评分 ${score}，建议至少开启标准指纹对抗档`);
+                      }
+                      if (score >= 40 && antiLevel === "关闭") {
+                        suggestions.push("当前指纹对抗关闭，建议至少开启轻度档");
+                      }
+                      if (restruct === 0) {
+                        suggestions.push("当前未开启分镜重构，时序指纹未被扰动");
+                      }
+                      if (suggestions.length === 0) {
+                        suggestions.push(
+                          "未命中明显异常，保持基础清洗即可；对抗强度按投放需求自行选择",
+                        );
+                      }
+                      return suggestions.map((text) => <li key={text}>{text}</li>);
+                    })()}
                   </ul>
                 </>
               ) : (
