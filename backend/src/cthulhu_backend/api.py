@@ -153,7 +153,7 @@ class DesensitizeRequest(BaseModel):
     chroma_levels: int = Field(0, ge=0, le=256)
     subtract_beta: float = Field(0.0, ge=0, le=4)
     transcode_chain: bool = False
-    saliency: int = Field(0, ge=0, le=2)
+    saliency: int = Field(0, ge=0, le=4)
 
 
 class TaskSpec(BaseModel):

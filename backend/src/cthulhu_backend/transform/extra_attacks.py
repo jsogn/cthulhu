@@ -60,10 +60,17 @@ class SaliencyLayout:
     bar_side: str
     bar_text: str
     mosaic: tuple[float, float, float, float] | None
+    title_text: str = ""
+    band_blur: bool = False
+    pip: bool = False
 
 
 def saliency_layout(seed: int, level: int = 1) -> SaliencyLayout | None:
-    """生成内容显著性布局；level 0 关闭，1 边框+角标，2 再加字幕条+马赛克。"""
+    """生成内容显著性布局。
+
+    level 0 关闭；1 边框+角标；2 再加字幕条+马赛克；3 再加大标题块与
+    背景带虚化；4 再加画中画（强构图改变）。
+    """
     if level <= 0:
         return None
     rng = np.random.default_rng(seed ^ 0x51A115)
@@ -84,6 +91,9 @@ def saliency_layout(seed: int, level: int = 1) -> SaliencyLayout | None:
         )
         if level >= 2
         else None,
+        title_text=texts[int(rng.integers(len(texts)))] if level >= 3 else "",
+        band_blur=level >= 3,
+        pip=level >= 4,
     )
 
 
@@ -91,7 +101,7 @@ def salient_overlay(frames: np.ndarray, layout: SaliencyLayout | None) -> np.nda
     """叠加边框/角标/字幕条/局部马赛克，改变关键帧抽取与深度特征分布。"""
     if layout is None:
         return frames
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
     from cthulhu_backend.transform.parallel import map_frames
 
@@ -125,6 +135,37 @@ def salient_overlay(frames: np.ndarray, layout: SaliencyLayout | None) -> np.nda
         draw.rectangle(box, fill=(10, 10, 12, 210))
         font = ImageFont.load_default(size=max(14, badge_h - 8))
         draw.text((box[0] + 10, box[1] + 3), layout.badge_text, fill=(255, 255, 255, 255), font=font)
+
+        # 大标题块：全宽强语义文字，显著改变深度特征的全局分布。
+        if layout.title_text:
+            block_h = int(h * 0.14)
+            y0 = h - block_h if layout.bar_side == "top" else 0
+            draw.rectangle([0, y0, w, y0 + block_h], fill=(8, 8, 10, 235))
+            font_title = ImageFont.load_default(size=max(22, block_h - 16))
+            draw.text(
+                (w // 2, y0 + block_h // 2),
+                layout.title_text,
+                fill=(255, 255, 255, 255),
+                font=font_title,
+                anchor="mm",
+            )
+
+        # 背景带虚化：顶部/底部各 8% 高斯模糊，制造景深差异。
+        if layout.band_blur:
+            band_h = int(h * 0.08)
+            for y0 in (0, h - band_h):
+                band = image.crop((0, y0, w, y0 + band_h))
+                image.paste(band.filter(ImageFilter.GaussianBlur(radius=12)), (0, y0))
+
+        # 画中画：角落内嵌缩小版画面，直接改变全局构图。
+        if layout.pip:
+            pip_w, pip_h = int(w * 0.3), int(h * 0.3)
+            inset = image.resize((pip_w, pip_h), Image.BILINEAR)
+            inset = inset.filter(ImageFilter.GaussianBlur(radius=0.4))
+            x0 = w - pip_w - 10
+            y0 = 10 if layout.corner in ("tl", "tr") else h - pip_h - 10
+            image.paste(inset, (x0, y0))
+            draw.rectangle([x0, y0, x0 + pip_w, y0 + pip_h], outline=(255, 255, 255, 220), width=4)
 
         # 字幕条：半透明横条，模拟二次加工痕迹。
         if layout.bar_side:

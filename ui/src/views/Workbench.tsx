@@ -163,7 +163,7 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     subtractBeta: 1.2,
     transcodeChain: true,
     jointAttack: true,
-    saliency: 2,
+    saliency: 3,
   },
 };
 

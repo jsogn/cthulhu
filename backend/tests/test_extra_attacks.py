@@ -95,6 +95,17 @@ def test_saliency_overlay_deterministic_and_changes_content():
     assert extra_attacks.saliency_layout(9, 0) is None
 
 
+def test_saliency_higher_levels_add_strong_content():
+    layout3 = extra_attacks.saliency_layout(9, level=3)
+    layout4 = extra_attacks.saliency_layout(9, level=4)
+    assert layout3 is not None and layout3.title_text and layout3.band_blur
+    assert layout4 is not None and layout4.pip
+    frames = make_frames(color=True)
+    out = extra_attacks.salient_overlay(frames, layout4)
+    assert out.shape == frames.shape
+    assert float(np.mean(np.abs(out.astype(np.float32) - frames.astype(np.float32)))) > 0.05
+
+
 def test_chroma_quant_preserves_luma_reduces_chroma():
     rng = np.random.default_rng(5)
     luma = rng.random((4, 64, 48, 1), dtype=np.float32)
