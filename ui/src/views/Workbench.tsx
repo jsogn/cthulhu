@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   Code2,
-  Download,
   GitCompareArrows,
   Pause,
   Play,
@@ -59,7 +59,6 @@ import {
   frameUrl,
   generateCandidates,
   getSettings,
-  listTemplates,
   mediaUrl,
   thumbUrl,
   type AudioAnalysis,
@@ -68,7 +67,6 @@ import {
   type DesensitizeOptions,
   type JobInfo,
   type OutputInfo,
-  type TemplateInfo,
 } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
@@ -243,28 +241,6 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
   },
 };
 
-/** 单条清洗走 /api/desensitize（camelCase），批量走 /api/jobs（snake_case）。 */
-const snakeAnti = (anti: AntiPreset) => ({
-  rotate: anti.rotate,
-  phash_attack: !anti.jointAttack,
-  phash_epsilon: anti.epsilon,
-  median: anti.median ?? 0,
-  noise: anti.noise ?? 0,
-  requant: anti.requant ?? 0,
-  dct_step: anti.dctStep ?? 0,
-  drop_every: anti.dropEvery ?? 0,
-  jitter: anti.jitter ?? 0,
-  perspective: anti.perspective ?? 0,
-  warp: anti.warp ?? 0,
-  mirror: anti.mirror ?? false,
-  chroma_levels: anti.chromaLevels ?? 0,
-  subtract_beta: anti.subtractBeta ?? 0,
-  transcode_chain: anti.transcodeChain ?? false,
-  multi_hash_attack: anti.jointAttack ?? false,
-  saliency: anti.saliency ?? 0,
-  native_filters: anti.nativeFilters ?? false,
-});
-
 function riskLabel(risk: RiskLevel): string {
   return risk;
 }
@@ -276,7 +252,6 @@ function riskClass(risk: RiskLevel): string {
 export default function Workbench() {
   const materials = useMaterialsStore((state) => state.materials);
   const activeId = useMaterialsStore((state) => state.activeId);
-  const selected = useMaterialsStore((state) => state.selected);
 
   const active = materials.find((m) => m.id === activeId) ?? null;
   const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("清洗去重");
@@ -288,6 +263,7 @@ export default function Workbench() {
   const [compareRight, setCompareRight] = useState<string>("");
   const [compareLeftLabel, setCompareLeftLabel] = useState("原片");
   const [compareRightLabel, setCompareRightLabel] = useState("产物");
+  const cleanOptionsRef = useRef<DesensitizeOptions | null>(null);
   const frameRef = useRef(frame);
   frameRef.current = frame;
 
@@ -310,7 +286,7 @@ export default function Workbench() {
 
   return (
     <section className="workbench">
-      <MaterialPane />
+      <MaterialPane cleanOptionsRef={cleanOptionsRef} />
       <PreviewPane
         material={active}
         frame={frame}
@@ -325,16 +301,18 @@ export default function Workbench() {
         compareRightLabel={compareRightLabel}
         onExitCompare={exitCompare}
       />
-      <ContextPanel tab={tab} setTab={setTab} onStartCompare={startCompare} />
-      {Object.values(selected).length > 0 && (
-        <BatchBar count={Object.values(selected).length} />
-      )}
+      <ContextPanel
+        tab={tab}
+        setTab={setTab}
+        onStartCompare={startCompare}
+        cleanOptionsRef={cleanOptionsRef}
+      />
     </section>
   );
 }
 
 /* ============ 左栏：素材库 ============ */
-function MaterialPane() {
+function MaterialPane({ cleanOptionsRef }: { cleanOptionsRef: MutableRefObject<DesensitizeOptions | null> }) {
   const materials = useMaterialsStore((state) => state.materials);
   const loadFailed = useMaterialsStore((state) => state.loadFailed);
   const activeId = useMaterialsStore((state) => state.activeId);
@@ -346,11 +324,13 @@ function MaterialPane() {
   const setRiskFilter = useMaterialsStore((state) => state.setRiskFilter);
   const setSearch = useMaterialsStore((state) => state.setSearch);
   const toggleSelectAll = useMaterialsStore((state) => state.toggleSelectAll);
+  const deleteSelected = useMaterialsStore((state) => state.deleteSelected);
   const setImportOpen = useAppStore((state) => state.setImportOpen);
   const backendConnected = useAppStore((state) => state.backendConnected);
-  const addHistory = useHistoryStore((state) => state.add);
   const jobs = useQueueStore((state) => state.jobs);
   const [scanBusy, setScanBusy] = useState(false);
+  const [exportDir, setExportDir] = useState("");
+  const ids = Object.keys(selected);
 
   const visible = materials.filter((m) => {
     if (riskFilter !== "全部" && m.risk !== riskFilter) return false;
@@ -362,6 +342,104 @@ function MaterialPane() {
   });
   const allSelected = visible.length > 0 && visible.every((m) => selected[m.id]);
   const pendingPaths = pendingDetectPaths(jobs);
+
+  useEffect(() => {
+    void getSettings()
+      .then((settings) => setExportDir((settings.export_dir as string) ?? ""))
+      .catch(() => undefined);
+  }, []);
+
+  const batchClean = async () => {
+    const targets = ids
+      .map((id) => materials.find((m) => m.id === id))
+      .filter((m): m is Material & { path: string } => !!m?.path);
+    if (!targets.length) {
+      toast("所选素材缺少本地路径，无法执行");
+      return;
+    }
+    const options = cleanOptionsRef.current ?? {
+      reorder: false,
+      speed: 1.0,
+      recrop: 0,
+      perturb: 0,
+      regrade: true,
+      audioRemix: true,
+      sharpness: true,
+      colorRestore: true,
+      denoise: true,
+      antiReembed: false,
+      seed: Math.floor(Math.random() * 1_000_000),
+      codec: "libx264",
+    };
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+      now.getHours(),
+    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const tasks = targets.map((m) => {
+      const stem = m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "");
+      const output = exportDir
+        ? `${exportDir.replace(/\/+$/, "")}/${m.name.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`
+        : `${stem}_cleaned_${ts}.mp4`;
+      return { kind: "desensitize" as const, path: m.path, options: { output, ...toSnakeOptions(options) } };
+    });
+    try {
+      await enqueueJob("批量清洗", tasks);
+      toast(`已将 ${targets.length} 个素材按当前参数加入队列`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "入队失败");
+    }
+  };
+
+  const batchDetectSelected = async () => {
+    const targets = ids
+      .map((id) => materials.find((m) => m.id === id))
+      .filter((m): m is Material & { path: string } => !!m?.path && !pendingPaths.has(m.path))
+      .map((m) => ({ kind: "detect" as const, path: m.path }));
+    if (!targets.length) {
+      toast("所选素材均已在检测中或缺少本地路径");
+      return;
+    }
+    try {
+      const job = await enqueueJob("批量检测", targets);
+      useQueueStore.getState().applyEvent({ type: "job:state", job });
+      toast(`已入队 ${targets.length} 个检测任务`);
+    } catch {
+      toast("入队失败，请确认引擎在线");
+    }
+  };
+
+  const batchExportSelected = async () => {
+    const paths = ids
+      .map((id) => materials.find((m) => m.id === id))
+      .filter((m) => !!m?.path)
+      .map((m) => m!.path as string);
+    if (!paths.length) {
+      toast("所选素材缺少本地路径，无法导出");
+      return;
+    }
+    let destDir = exportDir || "~/导出/Cthulhu";
+    const picker = window.appEnv?.chooseFolder;
+    if (picker) {
+      const chosen = await picker();
+      if (!chosen) return;
+      destDir = chosen;
+    }
+    try {
+      const { exported, missing } = await exportOutputs(paths, destDir);
+      const parts: string[] = [];
+      if (exported.length) parts.push(`已导出 ${exported.length} 个产物`);
+      if (missing.length) parts.push(`${missing.length} 个素材尚无产物`);
+      toast(parts.length ? parts.join(" · ") : "所选素材均未处理，请先清洗");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "导出失败");
+    }
+  };
+
+  const batchRemoveSelected = () => {
+    deleteSelected(ids);
+    toast(`已移出素材库 ${ids.length} 个素材`);
+  };
 
   const runScan = async () => {
     if (scanBusy) return;
@@ -387,42 +465,6 @@ function MaterialPane() {
       toast("入队失败，请确认引擎在线");
     } finally {
       setScanBusy(false);
-    }
-  };
-
-  const runExport = async () => {
-    const paths = visible
-      .filter((m) => !!m.path)
-      .map((m) => m.path as string);
-    if (!paths.length) {
-      toast("没有可导出的素材，请先导入本地视频");
-      return;
-    }
-    try {
-      const { exported, missing } = await exportOutputs(paths);
-      if (exported.length) {
-        addHistory({
-          name: `${exported.length} 个素材`,
-          time: nowStr(),
-          action: "导出",
-          params: "清洗/修复产物",
-          out: `导出目录 · ${exported.length} 个`,
-          result: "成功",
-        });
-      }
-      const parts: string[] = [];
-      if (exported.length) parts.push(`已导出 ${exported.length} 个产物到导出目录`);
-      if (missing.length) parts.push(`${missing.length} 个素材尚未处理，无产物可导出`);
-      const firstDest = exported[0]?.dest;
-      toast(
-        parts.length ? parts.join(" · ") : "所选素材均未处理，请先清洗或修复",
-        undefined,
-        firstDest
-          ? { label: "打开文件夹", onClick: () => openInFolder(firstDest) }
-          : undefined,
-      );
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "导出失败");
     }
   };
 
@@ -453,15 +495,34 @@ function MaterialPane() {
         </Tooltip>
       </div>
 
+      {ids.length > 0 && (
+        <div className="selection-bar">
+          <span className="batch-count">已选 {ids.length} 个</span>
+          <Button variant="secondary" size="sm" onClick={() => void batchClean()}>
+            批量清洗
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void batchDetectSelected()}>
+            批量检测
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void batchExportSelected()}>
+            导出产物…
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive"
+            onClick={batchRemoveSelected}
+          >
+            移出素材库
+          </Button>
+        </div>
+      )}
+
       <div className="pane-body">
         <div className="toolbar-row">
           <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
             <Upload />
             导入
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => void runExport()}>
-            <Download />
-            导出
           </Button>
           <Button variant="ghost" size="sm" onClick={() => toggleSelectAll(visible.map((m) => m.id))}>
             {allSelected ? "取消全选" : "全选"}
@@ -1095,9 +1156,10 @@ interface ContextProps {
   tab: (typeof TAB_KEYS)[number];
   setTab: (tab: (typeof TAB_KEYS)[number]) => void;
   onStartCompare: (left: string, right: string, leftLabel: string, rightLabel: string) => void;
+  cleanOptionsRef: MutableRefObject<DesensitizeOptions | null>;
 }
 
-function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
+function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextProps) {
   const material = useMaterialsStore((state) =>
     state.materials.find((m) => m.id === state.activeId),
   );
@@ -1151,7 +1213,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
-  const lastOptionsRef = useRef<DesensitizeOptions | null>(null);
 
   const risk = material?.risk ?? "待检测";
   const score = material?.score ?? 0;
@@ -1273,7 +1334,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
             }
           : {}),
       };
-      lastOptionsRef.current = cleanOptions;
+      cleanOptionsRef.current = cleanOptions;
       await enqueueJob(`${material.name} · 清洗去重`, [
         {
           kind: "desensitize",
@@ -1315,14 +1376,14 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
 
   const runCandidates = async () => {
     const target = material as (Material & { path?: string }) | null;
-    if (!target?.path || !lastOptionsRef.current) {
+    if (!target?.path || !cleanOptionsRef.current) {
       toast("请先执行一次清洗，再生成候选");
       return;
     }
     setCandidatesBusy(true);
     try {
       const dir = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_候选`;
-      const report = await generateCandidates(target.path, dir, 3, lastOptionsRef.current);
+      const report = await generateCandidates(target.path, dir, 3, cleanOptionsRef.current);
       setCandidates(report.candidates);
       void useMaterialsStore.getState().refreshOutputCounts();
       toast(`已生成 ${report.candidates.length} 个候选，按低损优选排序`);
@@ -2193,264 +2254,5 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         </AlertDialogContent>
       </AlertDialog>
     </aside>
-  );
-}
-
-/* ============ 批量操作条 ============ */
-function BatchBar({ count }: { count: number }) {
-  const selected = useMaterialsStore((state) => state.selected);
-  const materials = useMaterialsStore((state) => state.materials);
-  const deleteSelected = useMaterialsStore((state) => state.deleteSelected);
-  const addHistory = useHistoryStore((state) => state.add);
-  const jobs = useQueueStore((state) => state.jobs);
-  const [batchLevel, setBatchLevel] = useState<CleanLevel>("平衡");
-  const [batchAnti, setBatchAnti] = useState("关闭");
-  const [batchTemplate, setBatchTemplate] = useState("manual");
-  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
-  const [scanBusy, setScanBusy] = useState(false);
-  const [exportDir, setExportDir] = useState("");
-
-  const ids = Object.keys(selected);
-
-  useEffect(() => {
-    void listTemplates()
-      .then(setTemplates)
-      .catch(() => undefined);
-    void getSettings()
-      .then((settings) => setExportDir((settings.export_dir as string) ?? ""))
-      .catch(() => undefined);
-  }, []);
-
-  const templateParams = (template: TemplateInfo) => {
-    const payload = (template.payload ?? {}) as Record<string, unknown>;
-    return {
-      level: (payload.level as CleanLevel) ?? "平衡",
-      restruct: (payload.restruct as number) ?? 30,
-      perturb: (payload.perturb as number) ?? 20,
-      denoise: (payload.denoise as boolean) ?? true,
-      audio: (payload.audio as boolean) ?? true,
-      codec: (payload.codec as string) ?? "H.264",
-    };
-  };
-
-  const runScan = async () => {
-    if (scanBusy) return;
-    const pendingPaths = pendingDetectPaths(jobs);
-    const targets = ids
-      .map((id) => materials.find((m) => m.id === id))
-      .filter(
-        (m): m is Material & { path: string } => !!m?.path && !pendingPaths.has(m.path),
-      )
-      .map((m) => ({ kind: "detect" as const, path: m.path }));
-    if (!targets.length) {
-      toast(
-        ids.some((id) => materials.find((m) => m.id === id)?.path)
-          ? "所选素材均已在检测中，请等待完成"
-          : "所选素材缺少本地路径，无法执行",
-      );
-      return;
-    }
-    setScanBusy(true);
-    try {
-      const job = await enqueueJob("批量检测", targets);
-      useQueueStore.getState().applyEvent({ type: "job:state", job });
-      toast(`已入队 ${targets.length} 个检测任务`);
-    } catch {
-      toast("入队失败，请确认引擎在线");
-    } finally {
-      setScanBusy(false);
-    }
-  };
-
-  const enqueueBatch = async () => {
-    const template = templates.find((item) => item.name === batchTemplate);
-    const params = template
-      ? templateParams(template)
-      : {
-          level: batchLevel,
-          restruct: LEVEL_PRESETS[batchLevel].retime,
-          perturb: LEVEL_PRESETS[batchLevel].perturb,
-          denoise: batchLevel !== "轻度",
-          audio: true,
-          codec: "H.264",
-        };
-    const preset = LEVEL_PRESETS[params.level as CleanLevel];
-    const retime = template ? (params.restruct as number) : preset.retime;
-    const perturbPct = template ? params.perturb : preset.perturb;
-    const speed = Math.max(0.85, 1 - 0.15 * (retime / 100));
-    const recrop = 0.015 + 0.075 * (perturbPct / 100);
-    const perturb = perturbPct / 100;
-    const denoise = template ? params.denoise : batchLevel !== "轻度";
-    const anti = ANTI_PRESETS[batchAnti];
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, "0");
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
-      now.getHours(),
-    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const targets = ids
-      .map((id) => materials.find((m) => m.id === id))
-      .filter((m): m is Material & { path: string } => !!m?.path)
-      .map((m) => ({
-        kind: "desensitize" as const,
-        path: m.path,
-        options: {
-          output: exportDir
-            ? `${exportDir.replace(/\/+$/, "")}/${m.name.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`
-            : `${m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`,
-          reorder: false,
-          speed,
-          recrop,
-          regrade: true,
-          perturb,
-          audio_remix: params.audio,
-          sharpness: true,
-          color_restore: true,
-          denoise,
-          codec: params.codec === "H.265" ? "libx265" : "libx264",
-          seed: Math.floor(Math.random() * 1_000_000),
-          ...(anti ? snakeAnti(anti) : {}),
-        },
-      }));
-    if (!targets.length) {
-      toast("所选素材没有本地路径，需通过本地路径导入");
-      return;
-    }
-    try {
-      await enqueueJob("批量清洗", targets);
-      targets.forEach((task) => {
-        const name = task.path.split(/[\\/]/).pop() ?? task.path;
-        addHistory({
-          name,
-          time: nowStr(),
-          action: "批量清洗",
-          params: `${params.level}档 · 对抗${batchAnti} · 批量`,
-          out: task.options.output as string,
-          result: "排队中",
-        });
-      });
-      toast(`已将 ${targets.length} 个素材加入队列`);
-    } catch {
-      toast("入队失败，请确认引擎在线");
-    }
-  };
-
-  const exportSelected = async () => {
-    const paths = ids
-      .map((id) => materials.find((m) => m.id === id))
-      .filter((m) => !!m?.path)
-      .map((m) => m!.path as string);
-    if (!paths.length) {
-      toast("所选素材缺少本地路径，无法导出");
-      return;
-    }
-    let destDir = exportDir || "~/导出/暗水印清洗";
-    const picker = window.appEnv?.chooseFolder;
-    if (picker) {
-      const chosen = await picker();
-      if (!chosen) return; // 用户取消选择
-      destDir = chosen;
-    }
-    try {
-      const { exported, missing } = await exportOutputs(paths, destDir);
-      if (exported.length) {
-        addHistory({
-          name: `${exported.length} 个素材`,
-          time: nowStr(),
-          action: "批量导出",
-          params: "清洗/修复产物",
-          out: `导出目录 · ${exported.length} 个`,
-          result: "成功",
-        });
-      }
-      const parts: string[] = [];
-      if (exported.length) parts.push(`已导出 ${exported.length} 个产物到导出目录`);
-      if (missing.length) parts.push(`${missing.length} 个素材尚未处理，无产物可导出`);
-      const firstDest = exported[0]?.dest;
-      toast(
-        parts.length ? parts.join(" · ") : "所选素材均未处理，请先清洗或修复",
-        undefined,
-        firstDest
-          ? { label: "打开文件夹", onClick: () => openInFolder(firstDest) }
-          : undefined,
-      );
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "导出失败");
-    }
-  };
-
-  return (
-    <div className="batch-bar">
-      <span className="batch-count">已选 {count} 个</span>
-      <span className="batch-field">
-        <span className="batch-label">模板</span>
-        <Select value={batchTemplate} onValueChange={setBatchTemplate}>
-          <SelectTrigger className="h-7 w-28" aria-label="批量套用模板">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="manual">不使用模板（手动）</SelectItem>
-            {templates.map((template) => (
-              <SelectItem key={template.id} value={template.name}>
-                {template.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </span>
-      <span className="batch-field">
-        <span className="batch-label">清洗档位</span>
-        <Select
-          value={batchLevel}
-          disabled={batchTemplate !== "manual"}
-          onValueChange={(value) => setBatchLevel(value as CleanLevel)}
-        >
-          <SelectTrigger className="h-7 w-20" aria-label="批量清洗档位">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CLEAN_LEVELS.map((level) => (
-              <SelectItem key={level} value={level}>
-                {level}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </span>
-      <span className="batch-field">
-        <span className="batch-label">指纹对抗</span>
-        <Select value={batchAnti} onValueChange={setBatchAnti}>
-          <SelectTrigger className="h-7 w-20" aria-label="批量指纹对抗档">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.keys(ANTI_PRESETS).map((level) => (
-              <SelectItem key={level} value={level}>
-                {level}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </span>
-      <Button variant="secondary" size="sm" onClick={enqueueBatch}>
-        批量清洗
-      </Button>
-      <Button variant="secondary" size="sm" disabled={scanBusy} onClick={runScan}>
-        {scanBusy ? "提交中…" : "批量检测"}
-      </Button>
-      <Button variant="secondary" size="sm" onClick={exportSelected}>
-        导出产物…
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="text-destructive"
-        onClick={() => {
-          deleteSelected(ids);
-          toast(`已删除 ${ids.length} 个素材`);
-        }}
-      >
-        移出素材库
-      </Button>
-    </div>
   );
 }

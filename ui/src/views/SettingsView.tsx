@@ -24,7 +24,7 @@ import { resolveTheme, useAppStore } from "@/stores/app";
 import { toast } from "@/stores/toasts";
 
 const DEFAULTS: Record<string, string> = {
-  export_dir: "~/导出/暗水印清洗",
+  export_dir: "~/导出/Cthulhu",
   parallelism: "3",
   gpu: "自动（H.265 硬编加速）",
   transform_strategy: "fast",

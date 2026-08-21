@@ -624,41 +624,24 @@ body {
   font-size: 11px;
 }
 
-/* ============ 批量操作条 ============ */
-.batch-bar {
-  position: absolute;
-  left: 360px;
-  right: 320px;
-  bottom: 16px;
-  z-index: 30;
+/* ============ 批量选择工具条 ============ */
+.selection-bar {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   row-gap: 6px;
   padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--primary) 5%, transparent);
 }
 
 .batch-count {
   margin-right: auto;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted-foreground);
-}
-
-.batch-field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.batch-label {
-  font-size: 10px;
-  line-height: 1;
-  color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
 /* ============ 预览区 ============ */
@@ -1659,19 +1642,11 @@ body {
   .workbench {
     grid-template-columns: 280px 1fr 270px;
   }
-  .batch-bar {
-    left: 280px;
-    right: 270px;
-  }
 }
 
 @media (max-width: 900px) {
   .workbench {
     grid-template-columns: 240px 1fr 240px;
-  }
-  .batch-bar {
-    left: 240px;
-    right: 240px;
   }
 }
 
@@ -1682,9 +1657,5 @@ body {
   }
   .pane-center {
     min-height: 420px;
-  }
-  .batch-bar {
-    left: 12px;
-    right: 12px;
   }
 }
