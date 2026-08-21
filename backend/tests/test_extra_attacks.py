@@ -39,6 +39,34 @@ def test_dct_requant_and_drop_duplicate():
     assert float(np.mean(np.abs(out[0] - frames[0]))) > 0
 
 
+def test_requant_plane_matches_reference():
+    from cthulhu_backend.attacks import dct as dct_attacks
+
+    rng = np.random.default_rng(30)
+    frames = rng.random((4, 96, 64), dtype=np.float32)
+    expected = np.stack([dct_attacks.requant_dct(f, 12.0) for f in frames])
+    actual = extra_attacks.dct_requant(frames, 12.0)
+    np.testing.assert_allclose(actual, expected, atol=0.01)
+
+
+def test_color_dct_requant_preserves_luma_and_touches_chroma():
+    rng = np.random.default_rng(31)
+    luma = rng.random((4, 96, 64, 1), dtype=np.float32)
+    color = np.clip(np.repeat(luma, 3, axis=-1) + rng.normal(0, 0.08, (4, 96, 64, 3)), 0, 1)
+    color = color.astype(np.float32)
+    out = extra_attacks.dct_requant(color, 12.0)
+    assert out.shape == color.shape
+
+    def luma_of(a: np.ndarray) -> np.ndarray:
+        return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
+
+    assert float(np.abs(luma_of(out).mean() - luma_of(color).mean())) < 0.03
+    # 色度确实被改动（R-G 差分布变化）
+    before = np.std(color[..., 0] - color[..., 1])
+    after = np.std(out[..., 0] - out[..., 1])
+    assert abs(after - before) > 1e-4
+
+
 def test_mirror_and_jitter_deterministic():
     frames = make_frames()
     params = extra_attacks.AssaultParams(mirror=True, jitter=0.01)

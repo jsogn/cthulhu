@@ -195,6 +195,45 @@ def matrix(files: list[str], out_file: str | None = None, cap: int = 120) -> dic
     return payload
 
 
+def gate_report(
+    ref: str,
+    old: str,
+    new: str,
+    cap: int = 40,
+    tolerance: float = 0.03,
+) -> dict:
+    """性能优化回归门：同一原片下比较新旧实现的对抗指标，不得劣化。"""
+    from cthulhu_backend.watermark import detect
+
+    ref_frames, _ = ffmpeg.decode_sampled(ref, cap=cap)
+
+    def measure(path: str) -> dict:
+        frames, _ = ffmpeg.decode_sampled(path, cap=cap)
+        video = video_compare(ref_frames, frames)
+        payload = detect.video_scores(frames)
+        return {
+            "phash_hit": video["phash"]["flag_rate_le_2"],
+            "dhash_hit": video["dhash"]["flag_rate_le_2"],
+            "ahash_hit": video["ahash"]["flag_rate_le_2"],
+            "dctsign_hit": video["dct_sign"]["flag_rate_le_2"],
+            "deep": video.get("deep_cosine") or 0.0,
+            "ss": payload["ss"],
+            "qim": payload["qim"],
+        }
+
+    old_metrics = measure(old)
+    new_metrics = measure(new)
+    delta = {key: round(new_metrics[key] - old_metrics[key], 4) for key in old_metrics}
+    passed = {key: value <= tolerance for key, value in delta.items()}
+    return {
+        "old": old_metrics,
+        "new": new_metrics,
+        "delta": delta,
+        "passed": passed,
+        "all_pass": all(passed.values()),
+    }
+
+
 def _main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="cthulhu-proxy", description="平台判重代理评估器")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -210,9 +249,18 @@ def _main(argv: list[str] | None = None) -> None:
     mat.add_argument("--cap", type=int, default=120)
     mat.add_argument("-o", "--out")
 
+    gate = sub.add_parser("gate", help="性能优化回归门：新实现不得劣于旧实现")
+    gate.add_argument("--ref", required=True)
+    gate.add_argument("--old", required=True)
+    gate.add_argument("--new", required=True)
+    gate.add_argument("--cap", type=int, default=40)
+    gate.add_argument("--tolerance", type=float, default=0.03)
+
     args = parser.parse_args(argv)
     if args.command == "compare":
         payload = compare_files(args.ref, args.cand, cap=args.cap)
+    elif args.command == "gate":
+        payload = gate_report(args.ref, args.old, args.new, cap=args.cap, tolerance=args.tolerance)
     else:
         payload = matrix(args.files, out_file=args.out, cap=args.cap)
     if getattr(args, "out", None) and args.command == "compare":

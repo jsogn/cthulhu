@@ -268,23 +268,15 @@ def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
     return requantized.astype(original_dtype)
 
 
-def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
-    if step <= 0:
-        return frames
-    # 预计算 8×8 矩阵 + 子批 matmul：整块一次处理的临时数组会撑爆内存
-    # 造成换页，子批循环把峰值内存控制在可控范围且走 BLAS 批矩阵乘。
-    work = np.asarray(frames, dtype=np.float32)
-    if work.max() <= 1.0:
-        work = work * 255.0
+def _requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.ndarray:
+    """对 (F,H,W) float32 平面做 8×8 DCT 重量化（子批 matmul，内存受控）。"""
     h, w = work.shape[1:3]
-    channels = 1 if work.ndim == 3 else 3
     pad_h, pad_w = -h % 8, -w % 8
     if pad_h or pad_w:
-        work = np.pad(work, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+        work = np.pad(work, ((0, 0), (0, pad_h), (0, pad_w)), mode="edge")
     ph, pw = work.shape[1:3]
     matrix = _dct8()
     out = np.empty_like(work)
-    sub_batch = 32
     jobs = [
         (start, min(start + sub_batch, len(work)))
         for start in range(0, len(work), sub_batch)
@@ -293,22 +285,16 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
     def run(job: tuple[int, int]) -> tuple[int, int, np.ndarray]:
         start, end = job
         sub = work[start:end]
-        blocks = sub.reshape(len(sub), ph // 8, 8, pw // 8, 8, channels)
-        # (F, BH, BW, 8, 8, C) → (M, 8, 8, C)
-        stacked = blocks.transpose(0, 1, 3, 2, 4, 5).reshape(-1, 8, 8, channels)
-        # 通道前置，使最后两维恰为 8×8 块，matmul 沿块维度收缩。
-        work_blocks = stacked.transpose(0, 3, 1, 2)
-        tmp = np.matmul(matrix, work_blocks)
+        blocks = sub.reshape(len(sub), ph // 8, 8, pw // 8, 8)
+        stacked = blocks.transpose(0, 1, 3, 2, 4).reshape(-1, 8, 8)
+        tmp = np.matmul(matrix, stacked)
         coeffs = np.matmul(tmp, matrix.T)
         coeffs = np.round(coeffs / step) * step
         np.matmul(matrix.T, coeffs, out=tmp)
         recon = np.matmul(tmp, matrix)
-        recon_blocks = recon.transpose(0, 2, 3, 1).reshape(len(sub), ph // 8, pw // 8, 8, 8, channels)
-        recon_frame = recon_blocks.transpose(0, 1, 3, 2, 4, 5).reshape(
-            len(sub), ph, pw, channels
-        )
-        if channels == 1:
-            recon_frame = recon_frame[..., 0]
+        recon_frame = recon.reshape(len(sub), ph // 8, pw // 8, 8, 8).transpose(
+            0, 1, 3, 2, 4
+        ).reshape(len(sub), ph, pw)
         return start, end, recon_frame
 
     from concurrent.futures import ThreadPoolExecutor
@@ -316,7 +302,30 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
     with ThreadPoolExecutor(max_workers=4) as pool:
         for start, end, recon_frame in pool.map(run, jobs):
             out[start:end] = recon_frame
-    result = np.clip(out[:, :h, :w] / 255.0, 0.0, 1.0)
+    return out[:, :h, :w]
+
+
+def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
+    """DCT 重量化：逐通道 RGB 直接处理（带宽受限机器上的最优实现）。
+
+    亮度+子采样色度方案实测更慢（YCbCr 转换与上采样引入更多整片拷贝），
+    已回退为逐通道口径，正确性经旧 scipy 参考与代理回归门双重验证。
+    """
+    if step <= 0:
+        return frames
+    original_dtype = frames.dtype
+    work = np.asarray(frames, dtype=np.float32)
+    domain_255 = work.max() > 1.0
+    if not domain_255:
+        work = work * 255.0
+    if work.ndim == 3:
+        result = np.clip(_requant_plane(work, step) / 255.0, 0.0, 1.0)
+        if original_dtype == np.uint8:
+            return (result * 255.0).round().astype(np.uint8)
+        return result.astype(original_dtype)
+
+    planes = [_requant_plane(work[..., c], step) for c in range(3)]
+    result = np.clip(np.stack(planes, axis=-1) / 255.0, 0.0, 1.0)
     if frames.dtype == np.uint8:
         return (result * 255.0).round().astype(np.uint8)
     return result.astype(frames.dtype)
