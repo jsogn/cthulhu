@@ -24,6 +24,7 @@ from cthulhu_backend.bitstream import analyze as bitstream_analyze
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import container, ffmpeg
+from cthulhu_backend.numeric import channel_stats
 from cthulhu_backend.similarity import embedding
 from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import shots, strategies
@@ -382,11 +383,7 @@ def run_desensitize(
 
     if color_restore:
         color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
-        # numpy 2.5.2 对超大 float32 轴的多轴归约有误（随机数组可复现），
-        # 逐帧小轴聚合后再平均，规避错误的整批归约。
-        per_frame = color_sampled.reshape(len(color_sampled), -1, 3)
-        ref_mean = per_frame.mean(axis=1).mean(axis=0).astype(np.float32)
-        ref_std = per_frame.std(axis=1).mean(axis=0).astype(np.float32)
+        ref_mean, ref_std = channel_stats(color_sampled)
         del color_sampled
     else:
         ref_mean = np.zeros(3, dtype=np.float32)
