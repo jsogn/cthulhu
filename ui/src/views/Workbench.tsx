@@ -83,7 +83,7 @@ const RISK_OPTIONS: ("全部" | RiskLevel)[] = [
   "未检出异常",
   "待检测",
 ];
-const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "处理产物", "导出设置"] as const;
+const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "处理产物"] as const;
 const FRAME_MAX = 540;
 
 /** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
@@ -1145,9 +1145,8 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   const [bitrate, setBitrate] = useState("");
   const [gop, setGop] = useState("");
   const [fpsOut, setFpsOut] = useState("");
-  const [outputDir, setOutputDir] = useState("");
-  const [naming, setNaming] = useState("原文件名 + 时间戳");
   const [settingsExportDir, setSettingsExportDir] = useState("");
+  const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cleaning = !!material?.path && pendingCleanPaths(jobs).has(material.path);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
@@ -1201,7 +1200,10 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
 
   useEffect(() => {
     void getSettings()
-      .then((settings) => setSettingsExportDir((settings.export_dir as string) ?? ""))
+      .then((settings) => {
+        setSettingsExportDir((settings.export_dir as string) ?? "");
+        setSettingsNaming((settings.naming as string) ?? "原文件名 + 时间戳");
+      })
       .catch(() => undefined);
   }, []);
 
@@ -1232,10 +1234,10 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
       now.getHours(),
     )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const fileName =
-      naming === "时间戳 + 原文件名"
+      settingsNaming === "时间戳 + 原文件名"
         ? `${ts}_${srcName}_cleaned.mp4`
         : `${srcName}_cleaned_${ts}.mp4`;
-    const baseDir = outputDir.trim() || settingsExportDir;
+    const baseDir = settingsExportDir;
     const output = baseDir
       ? `${baseDir.replace(/\/+$/, "")}/${fileName}`
       : `${srcStem}_cleaned_${ts}.mp4`;
@@ -1986,6 +1988,72 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                 </div>
                 <Switch checked={spoof} onCheckedChange={setSpoof} />
               </div>
+
+              <div className="section-title">输出编码 · MP4</div>
+              <div className="field">
+                <span className="field-label">视频编码</span>
+                <Select value={codec} onValueChange={setCodec}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="H.264">H.264</SelectItem>
+                    <SelectItem value="H.265">H.265</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="field">
+                <span className="field-label">分辨率策略</span>
+                <Select value={resolution} onValueChange={setResolution}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="保持原始分辨率">保持原始分辨率</SelectItem>
+                    <SelectItem value="1920x1080">1920×1080</SelectItem>
+                    <SelectItem value="1280x720">1280×720</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <span className="field-label">码率（kbps）</span>
+                  <Input
+                    className="h-9"
+                    type="number"
+                    min={100}
+                    value={bitrate}
+                    onChange={(e) => setBitrate(e.target.value)}
+                    placeholder="留空使用 CRF"
+                  />
+                </div>
+                <div className="field">
+                  <span className="field-label">帧率（fps）</span>
+                  <Input
+                    className="h-9"
+                    type="number"
+                    min={1}
+                    value={fpsOut}
+                    onChange={(e) => setFpsOut(e.target.value)}
+                    placeholder="留空原帧率"
+                  />
+                </div>
+                <div className="field">
+                  <span className="field-label">GOP 帧数</span>
+                  <Input
+                    className="h-9"
+                    type="number"
+                    min={1}
+                    value={gop}
+                    onChange={(e) => setGop(e.target.value)}
+                    placeholder="留空自动"
+                  />
+                </div>
+              </div>
+              <div className="switch">
+                <div>
+                  <div className="switch-label">无损输出</div>
+                  <div className="switch-desc">极致保留画质，文件体积相应增大</div>
+                </div>
+                <Switch checked={lossless} onCheckedChange={setLossless} />
+              </div>
+
               <p className="note">默认低强度优先，需在预览中确认效果。</p>
               <Button variant="secondary" className="w-full" disabled={cleaning} onClick={runClean}>
                 {cleaning ? "处理中…" : "执行清洗"}
@@ -2057,117 +2125,6 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="导出设置" className="tab-pane">
-          <ScrollArea className="h-full">
-            <div className="flex flex-col gap-2.5">
-              <div className="field">
-                <span className="field-label">输出格式</span>
-                <Select defaultValue="MP4">
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MP4">MP4</SelectItem>
-                    <SelectItem value="MOV" disabled>
-                      MOV (ProRes) · 后续版本
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field">
-                <span className="field-label">视频编码</span>
-                <Select value={codec} onValueChange={setCodec}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="H.264">H.264</SelectItem>
-                    <SelectItem value="H.265">H.265</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field">
-                <span className="field-label">分辨率策略</span>
-                <Select value={resolution} onValueChange={setResolution}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="保持原始分辨率">保持原始分辨率</SelectItem>
-                    <SelectItem value="1920x1080">1920×1080</SelectItem>
-                    <SelectItem value="1280x720">1280×720</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field">
-                <span className="field-label">命名规则</span>
-                <Select value={naming} onValueChange={setNaming}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="原文件名 + 时间戳">原文件名 + 时间戳（不覆盖）</SelectItem>
-                    <SelectItem value="时间戳 + 原文件名">时间戳 + 原文件名（不覆盖）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field">
-                <span className="field-label">输出目录</span>
-                <Input
-                  className="h-8"
-                  value={outputDir}
-                  onChange={(e) => setOutputDir(e.target.value)}
-                  placeholder="留空则使用设置里的默认导出目录"
-                />
-              </div>
-
-              <div className="section-title">编码参数</div>
-              <div className="field-row">
-                <div className="field">
-                  <span className="field-label">码率（kbps）</span>
-                  <Input
-                    className="h-8"
-                    type="number"
-                    min={100}
-                    value={bitrate}
-                    onChange={(e) => setBitrate(e.target.value)}
-                    placeholder="留空使用 CRF"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">帧率（fps）</span>
-                  <Input
-                    className="h-8"
-                    type="number"
-                    min={1}
-                    value={fpsOut}
-                    onChange={(e) => setFpsOut(e.target.value)}
-                    placeholder="留空原帧率"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">GOP 帧数</span>
-                  <Input
-                    className="h-8"
-                    type="number"
-                    min={1}
-                    value={gop}
-                    onChange={(e) => setGop(e.target.value)}
-                    placeholder="留空自动"
-                  />
-                </div>
-              </div>
-
-              <div className="switch">
-                <div>
-                  <div className="switch-label">无损输出</div>
-                  <div className="switch-desc">极致保留画质，文件体积相应增大</div>
-                </div>
-                <Switch checked={lossless} onCheckedChange={setLossless} />
-              </div>
-            </div>
-          </ScrollArea>
-        </TabsContent>
       </Tabs>
 
       <Dialog open={!!playerPath} onOpenChange={(open) => !open && setPlayerPath(null)}>

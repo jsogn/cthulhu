@@ -25,6 +25,7 @@ import { toast } from "@/stores/toasts";
 
 const DEFAULTS: Record<string, string> = {
   export_dir: "~/导出/Cthulhu",
+  naming: "原文件名 + 时间戳",
   parallelism: "3",
   gpu: "自动（H.265 硬编加速）",
   transform_strategy: "fast",
@@ -165,6 +166,19 @@ export default function SettingsView() {
               onChange={(e) => setValue("export_dir", e.target.value)}
             />
             <div className="form-help">清洗产物默认存放目录；批量导出也复制到这里</div>
+          </div>
+          <div className="form-field">
+            <Label>产物命名规则</Label>
+            <Select value={form.naming} onValueChange={(v) => setValue("naming", v)}>
+              <SelectTrigger className="form-input h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="原文件名 + 时间戳">原文件名 + 时间戳（不覆盖）</SelectItem>
+                <SelectItem value="时间戳 + 原文件名">时间戳 + 原文件名（不覆盖）</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="form-help">清洗产物文件名格式，两种规则都不会覆盖已有产物</div>
           </div>
           <div className="form-field">
             <Label>批量并行度上限</Label>
