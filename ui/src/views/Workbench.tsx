@@ -1672,7 +1672,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                 添加水印区域
               </Button>
               <Button variant="secondary" size="sm" className="w-full" onClick={runRepairJob}>
-                执行修复（本地文件）
+                执行修复
               </Button>
               <p className="note">
                 点击「添加水印区域」后，在预览中拖动选框圈住水印位置，可继续调整大小与参数；⌘/Ctrl+Z 撤销，⌘/Ctrl+Shift+Z 重做。
@@ -1757,7 +1757,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               <div className="switch">
                 <div>
                   <div className="switch-label">抗二次检测增强</div>
-                  <div className="switch-desc">亮度/像素/帧间微扰动，破坏二次嵌入条件</div>
+                  <div className="switch-desc">对 8×8 中频 DCT 系数施加扰动，破坏二次嵌入条件</div>
                 </div>
                 <Switch checked={antiReembed} onCheckedChange={setAntiReembed} />
               </div>
@@ -1809,7 +1809,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               <div className="switch">
                 <div>
                   <div className="switch-label">色彩还原</div>
-                  <div className="switch-desc">修正处理后色偏，偏差 ≤2%</div>
+                  <div className="switch-desc">把处理后的逐通道亮度均值校准回原片统计</div>
                 </div>
                 <Switch checked={colorFix} onCheckedChange={setColorFix} />
               </div>
@@ -1832,7 +1832,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               </div>
               <p className="note">默认低强度优先，需在预览中确认效果。</p>
               <Button variant="secondary" className="w-full" disabled={cleaning} onClick={runClean}>
-                {cleaning ? "处理中…" : "执行清洗（本地文件）"}
+                {cleaning ? "处理中…" : "执行清洗"}
               </Button>
             </div>
           </ScrollArea>

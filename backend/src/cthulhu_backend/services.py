@@ -500,6 +500,9 @@ def run_desensitize(
     )
 
     crf = 0 if lossless else 23
+    if lossless:
+        # 无损档以 CRF=0 为准，显式码率与无损互斥，避免被编码器忽略成非无损。
+        bitrate_kbps = None
     output_fps = fps_out or fps_in
     out_size = None
     if resolution and "x" in resolution:
