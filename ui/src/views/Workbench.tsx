@@ -126,27 +126,29 @@ type AntiPreset = {
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
   关闭: undefined,
-  轻度: { rotate: 1.2, epsilon: 0.03 },
+  轻度: { rotate: 1.0, epsilon: 0.03 },
   标准: {
-    rotate: 1.8,
-    epsilon: 0.04,
+    rotate: 1.4,
+    epsilon: 0.03,
     dctStep: 4,
     requant: 96,
     chromaLevels: 128,
-    dropEvery: 11,
+    dropEvery: 13,
+    noise: 0.006,
+    jitter: 0.006,
   },
   强力: {
-    rotate: 2.2,
-    epsilon: 0.05,
-    dctStep: 8,
+    rotate: 1.8,
+    epsilon: 0.04,
+    dctStep: 6,
     requant: 64,
     chromaLevels: 96,
-    dropEvery: 7,
-    noise: 0.008,
-    jitter: 0.008,
-    transcodeChain: true,
-    jointAttack: true,
+    dropEvery: 9,
+    noise: 0.01,
+    jitter: 0.01,
+    perspective: 0.004,
     saliency: 1,
+    jointAttack: true,
   },
   全兵器: {
     rotate: 2.2,
@@ -1708,14 +1710,14 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
-                    <SelectItem value="轻度">轻度 · 观感优先，推荐日常使用</SelectItem>
-                    <SelectItem value="标准">标准 · 轻微画质损失</SelectItem>
-                    <SelectItem value="强力">强力 · 画质损失明显，谨慎使用</SelectItem>
+                    <SelectItem value="轻度">轻度 · 几乎无损，日常推荐</SelectItem>
+                    <SelectItem value="标准">标准 · 轻微损失，正常观看</SelectItem>
+                    <SelectItem value="强力">强力 · 可见轻微加工，建议预览</SelectItem>
                     <SelectItem value="全兵器">极限 · 仅研究测试，不保证观感</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="form-help">
-                  强度越高对抗越强但观感越差；日常建议轻度或标准，极限档仅供素材研究
+                  观感优先：轻度/标准适合日常，强力有轻微可见加工，极限仅供素材研究
                 </div>
               </div>
 
