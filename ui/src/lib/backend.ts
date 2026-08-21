@@ -192,6 +192,18 @@ export interface DesensitizeOptions {
   phashAttack?: boolean;
   phashEpsilon?: number;
   phashIters?: number;
+  median?: number;
+  noise?: number;
+  requant?: number;
+  dctStep?: number;
+  dropEvery?: number;
+  jitter?: number;
+  perspective?: number;
+  warp?: number;
+  mirror?: boolean;
+  chromaLevels?: number;
+  subtractBeta?: number;
+  transcodeChain?: boolean;
 }
 
 export interface AudioAnalysis {

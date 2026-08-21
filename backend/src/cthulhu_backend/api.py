@@ -140,6 +140,18 @@ class DesensitizeRequest(BaseModel):
     phash_attack: bool = False
     phash_epsilon: float = Field(0.03, gt=0, le=1)
     phash_iters: int = Field(120, ge=1, le=1000)
+    median: int = Field(0, ge=0, le=9)
+    noise: float = Field(0.0, ge=0, le=1)
+    requant: int = Field(0, ge=0, le=256)
+    dct_step: float = Field(0.0, ge=0, le=256)
+    drop_every: int = Field(0, ge=0, le=1000)
+    jitter: float = Field(0.0, ge=0, le=1)
+    perspective: float = Field(0.0, ge=0, le=1)
+    warp: float = Field(0.0, ge=0, le=1)
+    mirror: bool = False
+    chroma_levels: int = Field(0, ge=0, le=256)
+    subtract_beta: float = Field(0.0, ge=0, le=4)
+    transcode_chain: bool = False
 
 
 class TaskSpec(BaseModel):
@@ -416,6 +428,18 @@ async def desensitize(request: DesensitizeRequest) -> dict:
             phash_attack=request.phash_attack,
             phash_epsilon=request.phash_epsilon,
             phash_iters=request.phash_iters,
+            median=request.median,
+            noise=request.noise,
+            requant=request.requant,
+            dct_step=request.dct_step,
+            drop_every=request.drop_every,
+            jitter=request.jitter,
+            perspective=request.perspective,
+            warp=request.warp,
+            mirror=request.mirror,
+            chroma_levels=request.chroma_levels,
+            subtract_beta=request.subtract_beta,
+            transcode_chain=request.transcode_chain,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc

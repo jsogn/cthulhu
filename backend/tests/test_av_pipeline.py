@@ -202,6 +202,11 @@ def test_desensitize_accepts_camel_case_anti_options(tmp_path):
             "rotate": 1.2,
             "phashAttack": True,
             "phashEpsilon": 0.03,
+            "dctStep": 12,
+            "requant": 32,
+            "chromaLevels": 32,
+            "dropEvery": 7,
+            "subtractBeta": 1.2,
         },
     )
     assert response.status_code == 200, response.text

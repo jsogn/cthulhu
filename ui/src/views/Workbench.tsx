@@ -104,13 +104,81 @@ const SCENES: Record<string, { level: CleanLevel; restruct: number; perturb: num
   跨平台通用: { level: "深度", restruct: 40, perturb: 30, audio: true, codec: "H.265" },
 };
 
-// 指纹对抗档：几何去同步（逐帧微旋转）+ pHash 签名域扰动。
-const ANTI_PRESETS: Record<string, { rotate: number; epsilon: number } | undefined> = {
+// 指纹对抗档：几何去同步 + pHash 签名扰动 + 底层载荷攻击原语组合。
+type AntiPreset = {
+  rotate: number;
+  epsilon: number;
+  median?: number;
+  noise?: number;
+  requant?: number;
+  dctStep?: number;
+  dropEvery?: number;
+  jitter?: number;
+  perspective?: number;
+  warp?: number;
+  mirror?: boolean;
+  chromaLevels?: number;
+  subtractBeta?: number;
+  transcodeChain?: boolean;
+};
+
+const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
   关闭: undefined,
   轻度: { rotate: 1.2, epsilon: 0.03 },
-  标准: { rotate: 1.8, epsilon: 0.04 },
-  强力: { rotate: 2.2, epsilon: 0.05 },
+  标准: {
+    rotate: 1.8,
+    epsilon: 0.04,
+    dctStep: 8,
+    requant: 64,
+    chromaLevels: 64,
+    dropEvery: 11,
+  },
+  强力: {
+    rotate: 2.2,
+    epsilon: 0.05,
+    dctStep: 12,
+    requant: 32,
+    chromaLevels: 32,
+    dropEvery: 7,
+    noise: 0.01,
+    jitter: 0.01,
+    transcodeChain: true,
+  },
+  全兵器: {
+    rotate: 2.2,
+    epsilon: 0.05,
+    dctStep: 12,
+    requant: 32,
+    chromaLevels: 32,
+    dropEvery: 7,
+    noise: 0.02,
+    jitter: 0.01,
+    perspective: 0.005,
+    warp: 0.003,
+    mirror: true,
+    subtractBeta: 1.2,
+    transcodeChain: true,
+  },
 };
+
+/** 单条清洗走 /api/desensitize（camelCase），批量走 /api/jobs（snake_case）。 */
+const snakeAnti = (anti: AntiPreset) => ({
+  rotate: anti.rotate,
+  phash_attack: true,
+  phash_epsilon: anti.epsilon,
+  median: anti.median ?? 0,
+  noise: anti.noise ?? 0,
+  requant: anti.requant ?? 0,
+  dct_step: anti.dctStep ?? 0,
+  drop_every: anti.dropEvery ?? 0,
+  jitter: anti.jitter ?? 0,
+  perspective: anti.perspective ?? 0,
+  warp: anti.warp ?? 0,
+  mirror: anti.mirror ?? false,
+  chroma_levels: anti.chromaLevels ?? 0,
+  subtract_beta: anti.subtractBeta ?? 0,
+  transcode_chain: anti.transcodeChain ?? false,
+});
 
 function riskLabel(risk: RiskLevel): string {
   return risk;
@@ -1103,7 +1171,25 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         ...(bitrate ? { bitrateKbps: Number(bitrate) } : {}),
         ...(gop ? { gop: Number(gop) } : {}),
         ...(fpsOut ? { fpsOut: Number(fpsOut) } : {}),
-        ...(anti ? { rotate: anti.rotate, phashAttack: true, phashEpsilon: anti.epsilon } : {}),
+        ...(anti
+          ? {
+              rotate: anti.rotate,
+              phashAttack: true,
+              phashEpsilon: anti.epsilon,
+              ...(anti.median ? { median: anti.median } : {}),
+              ...(anti.noise ? { noise: anti.noise } : {}),
+              ...(anti.requant ? { requant: anti.requant } : {}),
+              ...(anti.dctStep ? { dctStep: anti.dctStep } : {}),
+              ...(anti.dropEvery ? { dropEvery: anti.dropEvery } : {}),
+              ...(anti.jitter ? { jitter: anti.jitter } : {}),
+              ...(anti.perspective ? { perspective: anti.perspective } : {}),
+              ...(anti.warp ? { warp: anti.warp } : {}),
+              ...(anti.mirror ? { mirror: true } : {}),
+              ...(anti.chromaLevels ? { chromaLevels: anti.chromaLevels } : {}),
+              ...(anti.subtractBeta ? { subtractBeta: anti.subtractBeta } : {}),
+              ...(anti.transcodeChain ? { transcodeChain: true } : {}),
+            }
+          : {}),
       });
       addHistory({
         name: material.name,
@@ -1614,12 +1700,13 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   <SelectContent>
                     <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
                     <SelectItem value="轻度">轻度 · 旋转1.2° + 签名扰动</SelectItem>
-                    <SelectItem value="标准">标准 · 旋转1.8° + 签名扰动</SelectItem>
-                    <SelectItem value="强力">强力 · 旋转2.2° + 签名扰动</SelectItem>
+                    <SelectItem value="标准">标准 · 加频域/色度重量化</SelectItem>
+                    <SelectItem value="强力">强力 · 加噪声/抖动/转码链</SelectItem>
+                    <SelectItem value="全兵器">全兵器 · 全部原语（研究用）</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="form-help">
-                  针对感知哈希判重，实测可显著降低重复命中；会轻微改变构图与亮度
+                  针对感知哈希与载荷水印；标准档起处理时间明显增加，全兵器仅建议短素材
                 </div>
               </div>
 
@@ -1897,7 +1984,7 @@ function BatchBar({ count }: { count: number }) {
           denoise,
           codec: params.codec === "H.265" ? "libx265" : "libx264",
           seed: Math.floor(Math.random() * 1_000_000),
-          ...(anti ? { rotate: anti.rotate, phash_attack: true, phash_epsilon: anti.epsilon } : {}),
+          ...(anti ? snakeAnti(anti) : {}),
         },
       }));
     if (!targets.length) {
