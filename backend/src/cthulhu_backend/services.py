@@ -753,6 +753,55 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
     return {"exported": exported, "missing": missing}
 
 
+def make_preview_montage(source: str, processed: str, count: int = 4) -> str:
+    """把原片与产物的等间隔帧并排拼成一张 PNG，供用户导出前确认观感。"""
+    source = _require_file(source)
+    processed = _require_file(processed)
+    info = ffmpeg.video_info(source)
+    duration = max(float(info["duration"]), 0.5)
+    target = processed + ".preview.png"
+    with tempfile.TemporaryDirectory() as tmp:
+        paired: list[str] = []
+        for index in range(count):
+            moment = duration * (index + 1) / (count + 1)
+            left = os.path.join(tmp, f"{index}_a.png")
+            right = os.path.join(tmp, f"{index}_b.png")
+            pair = os.path.join(tmp, f"{index}_p.png")
+            for path, video in ((left, source), (right, processed)):
+                subprocess.run(
+                    [
+                        ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                        "-ss", str(moment), "-i", video,
+                        "-frames:v", "1", "-vf", "scale=540:-2", path,
+                    ],
+                    capture_output=True,
+                    check=True,
+                )
+            subprocess.run(
+                [
+                    ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                    "-i", left, "-i", right, "-filter_complex", "hstack", pair,
+                ],
+                capture_output=True,
+                check=True,
+            )
+            paired.append(pair)
+        stacked = paired[0]
+        for index, pair in enumerate(paired[1:], start=1):
+            next_path = os.path.join(tmp, f"stack_{index}.png")
+            subprocess.run(
+                [
+                    ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                    "-i", stacked, "-i", pair, "-filter_complex", "vstack", next_path,
+                ],
+                capture_output=True,
+                check=True,
+            )
+            stacked = next_path
+        shutil.copy2(stacked, target)
+    return target
+
+
 # ---------- 视频处理引擎（FFmpeg）自动安装 ----------
 
 FFMPEG_DOWNLOADS: dict[str, dict[str, str]] = {

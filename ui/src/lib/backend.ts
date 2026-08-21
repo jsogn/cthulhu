@@ -409,6 +409,28 @@ export async function runDesensitize(
   return res.json();
 }
 
+/** 生成原片与产物的并排预览拼图，返回图片本地路径。 */
+export async function makePreview(
+  path: string,
+  output: string,
+): Promise<{ image_path: string }> {
+  const res = await apiFetch("/api/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, output }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data as { detail?: string } | null)?.detail ?? `生成预览失败（${res.status}）`);
+  }
+  return res.json();
+}
+
+/** 预览拼图的鉴权图片地址。 */
+export function previewImageUrl(path: string): string {
+  return `${backendUrl}/api/preview-image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
+}
+
 export async function enqueueJob(
   name: string,
   tasks: JobTaskSpec[],

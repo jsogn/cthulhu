@@ -107,6 +107,11 @@ class PairRequest(BaseModel):
     b: str
 
 
+class PreviewRequest(BaseModel):
+    path: str
+    output: str
+
+
 class ScanRequest(BaseModel):
     path: str
 
@@ -475,6 +480,28 @@ def export_videos(request: ExportRequest) -> dict:
     settings = db.load_settings()
     export_dir = settings.get("export_dir") or "~/导出/暗水印清洗"
     return services.export_outputs(request.paths, str(export_dir))
+
+
+@router.post("/preview")
+async def preview(request: PreviewRequest) -> dict:
+    """生成原片与清洗产物的并排预览拼图，返回图片本地路径。"""
+    try:
+        image_path = await asyncio.to_thread(
+            services.make_preview_montage, request.path, request.output
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
+    return {"image_path": image_path}
+
+
+@router.get("/preview-image")
+async def preview_image(path: str = Query(...)) -> FileResponse:
+    """按路径返回已生成的预览拼图。"""
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="预览图不存在，请重新生成")
+    return FileResponse(path, media_type="image/png")
 
 
 @router.post("/ffmpeg/select")

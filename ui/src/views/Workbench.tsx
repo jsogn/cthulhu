@@ -18,6 +18,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -38,7 +45,9 @@ import {
   exportOutputs,
   frameUrl,
   listTemplates,
+  makePreview,
   mediaUrl,
+  previewImageUrl,
   runDesensitize,
   runDetect,
   thumbUrl,
@@ -1097,6 +1106,8 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
     vmaf?: number | null;
     vmaf_aligned?: number | null;
   } | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const risk = material?.risk ?? "待检测";
   const score = material?.score ?? 0;
@@ -1211,6 +1222,13 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         result: "成功",
       });
       setLastClean(report);
+      setPreviewUrl(null);
+      try {
+        const preview = await makePreview(target.path, output);
+        setPreviewUrl(previewImageUrl(preview.image_path));
+      } catch {
+        // 预览生成失败不阻断清洗主流程
+      }
       if (report.psnr_db != null && report.psnr_db < 20) {
         toast(
           "画质损失偏大",
@@ -1436,28 +1454,40 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
 
                   <div className="section-title">处理校验（PRD 3.1.4）</div>
                   {lastClean ? (
-                    <div className="metric-grid">
-                      <div className="metric">
-                        <div className="metric-value">
-                          {lastClean.psnr_db != null ? `${lastClean.psnr_db} dB` : "—"}
+                    <>
+                      <div className="metric-grid">
+                        <div className="metric">
+                          <div className="metric-value">
+                            {lastClean.psnr_db != null ? `${lastClean.psnr_db} dB` : "—"}
+                          </div>
+                          <div className="metric-label">PSNR</div>
                         </div>
-                        <div className="metric-label">PSNR</div>
-                      </div>
-                      <div className="metric">
-                        <div className="metric-value">{lastClean.ssim ?? "—"}</div>
-                        <div className="metric-label">SSIM</div>
-                      </div>
-                      <div className="metric">
-                        <div className="metric-value">
-                          {lastClean.vmaf_aligned != null
-                            ? lastClean.vmaf_aligned.toFixed(1)
-                            : lastClean.vmaf != null
-                              ? lastClean.vmaf.toFixed(1)
-                              : "—"}
+                        <div className="metric">
+                          <div className="metric-value">{lastClean.ssim ?? "—"}</div>
+                          <div className="metric-label">SSIM</div>
                         </div>
-                        <div className="metric-label">VMAF（对齐）</div>
+                        <div className="metric">
+                          <div className="metric-value">
+                            {lastClean.vmaf_aligned != null
+                              ? lastClean.vmaf_aligned.toFixed(1)
+                              : lastClean.vmaf != null
+                                ? lastClean.vmaf.toFixed(1)
+                                : "—"}
+                          </div>
+                          <div className="metric-label">VMAF（对齐）</div>
+                        </div>
                       </div>
-                    </div>
+                      {previewUrl && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="mt-2 w-full"
+                          onClick={() => setPreviewOpen(true)}
+                        >
+                          查看并排预览（确认观感）
+                        </Button>
+                      )}
+                    </>
                   ) : (
                     <p className="note">
                       执行清洗或修复后，此处将展示 PSNR / SSIM / VMAF 与清除复核结果。
@@ -1890,6 +1920,24 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
           {enqueued ? "已加入队列" : "加入处理队列"}
         </Button>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-[min(90vw,960px)]">
+          <DialogHeader>
+            <DialogTitle>清洗前后并排预览</DialogTitle>
+            <DialogDescription>
+              左列为原片、右列为处理产物，确认观感无异常后再使用该产物。
+            </DialogDescription>
+          </DialogHeader>
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="清洗前后对比"
+              className="max-h-[70vh] w-full rounded-md object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }

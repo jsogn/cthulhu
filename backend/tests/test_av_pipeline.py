@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -290,3 +292,26 @@ def test_desensitize_transcode_chain(tmp_path):
     decoded, info = ffmpeg.decode_video(str(output))
     assert decoded.shape == video.shape
     assert info["codec"] == "h264"
+
+
+@needs_ffmpeg
+def test_make_preview_montage(tmp_path):
+    """并排预览拼图应生成在原产物旁。"""
+    video = samples.make_cut_video(2, 8, 160, 120, seed=37)
+    source = tmp_path / "src.mp4"
+    output = tmp_path / "out.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    services.run_desensitize(
+        str(source),
+        str(output),
+        reorder=False,
+        speed=1.0,
+        regrade=False,
+        audio_remix=False,
+        sharpness=False,
+        color_restore=False,
+        denoise=False,
+    )
+    preview = services.make_preview_montage(str(source), str(output))
+    assert preview == str(output) + ".preview.png"
+    assert Path(preview).exists() and Path(preview).stat().st_size > 0
