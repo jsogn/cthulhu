@@ -1804,6 +1804,7 @@ function BatchBar({ count }: { count: number }) {
   const addHistory = useHistoryStore((state) => state.add);
   const jobs = useQueueStore((state) => state.jobs);
   const [batchLevel, setBatchLevel] = useState<CleanLevel>("平衡");
+  const [batchAnti, setBatchAnti] = useState("关闭");
   const [batchTemplate, setBatchTemplate] = useState("manual");
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
@@ -1876,6 +1877,7 @@ function BatchBar({ count }: { count: number }) {
     const recrop = 0.015 + 0.075 * (perturbPct / 100);
     const perturb = perturbPct / 100;
     const denoise = template ? params.denoise : batchLevel !== "轻度";
+    const anti = ANTI_PRESETS[batchAnti];
     const targets = ids
       .map((id) => materials.find((m) => m.id === id))
       .filter((m): m is Material & { path: string } => !!m?.path)
@@ -1895,6 +1897,7 @@ function BatchBar({ count }: { count: number }) {
           denoise,
           codec: params.codec === "H.265" ? "libx265" : "libx264",
           seed: Math.floor(Math.random() * 1_000_000),
+          ...(anti ? { rotate: anti.rotate, phash_attack: true, phash_epsilon: anti.epsilon } : {}),
         },
       }));
     if (!targets.length) {
@@ -1909,7 +1912,7 @@ function BatchBar({ count }: { count: number }) {
           name,
           time: nowStr(),
           action: "加入处理队列",
-          params: `${params.level}档 · 批量`,
+          params: `${params.level}档 · 对抗${batchAnti} · 批量`,
           out: task.options.output as string,
           result: "排队中",
         });
@@ -1983,6 +1986,18 @@ function BatchBar({ count }: { count: number }) {
         </SelectTrigger>
         <SelectContent>
           {CLEAN_LEVELS.map((level) => (
+            <SelectItem key={level} value={level}>
+              {level}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={batchAnti} onValueChange={setBatchAnti}>
+        <SelectTrigger className="h-7 w-20" aria-label="批量指纹对抗档">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.keys(ANTI_PRESETS).map((level) => (
             <SelectItem key={level} value={level}>
               {level}
             </SelectItem>

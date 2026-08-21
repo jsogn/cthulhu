@@ -574,6 +574,8 @@ def run_desensitize(
     original_sampled, _ = ffmpeg.decode_sampled(path, cap=200)
     processed_sampled, _ = ffmpeg.decode_sampled(output, cap=200)
     ref_s, mov_s, matches = metrics.temporal_match(original_sampled, processed_sampled)
+    # 几何去同步（旋转）使逐像素画质指标失去对齐口径，数值会误导用户。
+    quality_na = rotate > 0
     return {
         "input": path,
         "output": output,
@@ -592,11 +594,16 @@ def run_desensitize(
             "reduction": {"content": 0.0, "motion": 0.0, "dhash": 0.0},
         },
         "similarity_after": embedding.similarity_report(original_sampled, processed_sampled),
-        "psnr_db": round(metrics.matched_psnr(ref_s, mov_s, matches), 2),
-        "ssim": round(metrics.matched_ssim(ref_s, mov_s, matches), 4),
+        "psnr_db": None if quality_na else round(metrics.matched_psnr(ref_s, mov_s, matches), 2),
+        "ssim": None if quality_na else round(metrics.matched_ssim(ref_s, mov_s, matches), 4),
         # 重排/变速后时间轴错位，朴素 VMAF 恒近 0 无参考价值，改用对齐分。
         "vmaf": None,
-        "vmaf_aligned": _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=output_fps),
+        "vmaf_aligned": (
+            None
+            if quality_na
+            else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=output_fps)
+        ),
+        "quality_metrics_na": quality_na,
     }
 
 

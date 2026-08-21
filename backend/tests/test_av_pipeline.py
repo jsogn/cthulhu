@@ -205,5 +205,8 @@ def test_desensitize_accepts_camel_case_anti_options(tmp_path):
         },
     )
     assert response.status_code == 200, response.text
-    assert response.json()["transform_strategy"] == "fast"
+    report = response.json()
+    assert report["transform_strategy"] == "fast"
+    assert report["quality_metrics_na"] is True
+    assert report["psnr_db"] is None
     assert output.exists()
