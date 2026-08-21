@@ -312,7 +312,7 @@ def run_desensitize(
     transform_strategy: str | None = None,
     phash_attack: bool = False,
     phash_epsilon: float = 0.03,
-    phash_iters: int = 60,
+    phash_iters: int = 120,
     rotate: float = 0.0,
     progress_cb=None,
     should_stop=None,

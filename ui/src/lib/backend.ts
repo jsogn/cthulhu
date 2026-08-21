@@ -188,6 +188,10 @@ export interface DesensitizeOptions {
   gop?: number;
   resolution?: string;
   fpsOut?: number;
+  rotate?: number;
+  phashAttack?: boolean;
+  phashEpsilon?: number;
+  phashIters?: number;
 }
 
 export interface AudioAnalysis {

@@ -13,7 +13,8 @@ from typing import Annotated, Literal
 import numpy as np
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 from cthulhu_backend import db, services
 from cthulhu_backend.events import broker
@@ -111,6 +112,9 @@ class ScanRequest(BaseModel):
 
 
 class DesensitizeRequest(BaseModel):
+    # 兼容前端的 camelCase 字段名（audioRemix 等）与后端的 snake_case。
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     path: str
     output: str
     reorder: bool = True
@@ -132,6 +136,10 @@ class DesensitizeRequest(BaseModel):
     gop: int | None = Field(None, ge=1, le=600)
     resolution: str | None = None
     fps_out: float | None = Field(None, gt=0, le=240)
+    rotate: float = Field(0.0, ge=0, le=10)
+    phash_attack: bool = False
+    phash_epsilon: float = Field(0.03, gt=0, le=1)
+    phash_iters: int = Field(120, ge=1, le=1000)
 
 
 class TaskSpec(BaseModel):
@@ -404,6 +412,10 @@ async def desensitize(request: DesensitizeRequest) -> dict:
             gop=request.gop,
             resolution=request.resolution,
             fps_out=request.fps_out,
+            rotate=request.rotate,
+            phash_attack=request.phash_attack,
+            phash_epsilon=request.phash_epsilon,
+            phash_iters=request.phash_iters,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc

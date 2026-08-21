@@ -182,3 +182,28 @@ def test_desensitize_stream_with_audio_remix(tmp_path):
     assert output.exists()
     streams = ffmpeg.probe(str(output))["streams"]
     assert any(stream.get("codec_type") == "audio" for stream in streams)
+
+
+@needs_ffmpeg
+def test_desensitize_accepts_camel_case_anti_options(tmp_path):
+    """camelCase 参数应经别名映射生效，含指纹对抗与旋转。"""
+    video = samples.make_cut_video(2, 8, 160, 120, seed=35)
+    source = tmp_path / "src.mp4"
+    output = tmp_path / "out.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    response = client.post(
+        "/api/desensitize",
+        json={
+            "path": str(source),
+            "output": str(output),
+            "audioRemix": False,
+            "colorRestore": False,
+            "sharpness": False,
+            "rotate": 1.2,
+            "phashAttack": True,
+            "phashEpsilon": 0.03,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["transform_strategy"] == "fast"
+    assert output.exists()

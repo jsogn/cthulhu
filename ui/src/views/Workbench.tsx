@@ -104,6 +104,14 @@ const SCENES: Record<string, { level: CleanLevel; restruct: number; perturb: num
   跨平台通用: { level: "深度", restruct: 40, perturb: 30, audio: true, codec: "H.265" },
 };
 
+// 指纹对抗档：几何去同步（逐帧微旋转）+ pHash 签名域扰动。
+const ANTI_PRESETS: Record<string, { rotate: number; epsilon: number } | undefined> = {
+  关闭: undefined,
+  轻度: { rotate: 1.2, epsilon: 0.03 },
+  标准: { rotate: 1.8, epsilon: 0.04 },
+  强力: { rotate: 2.2, epsilon: 0.05 },
+};
+
 function riskLabel(risk: RiskLevel): string {
   return risk;
 }
@@ -987,6 +995,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
   const [perturb, setPerturb] = useState(20);
   const [audioClean, setAudioClean] = useState(true);
   const [antiReembed, setAntiReembed] = useState(false);
+  const [antiLevel, setAntiLevel] = useState("关闭");
   const [recropOn, setRecropOn] = useState(false);
   const [sharpness, setSharpness] = useState(true);
   const [colorFix, setColorFix] = useState(true);
@@ -1072,6 +1081,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
     const output = outputDir.trim()
       ? `${outputDir.trim().replace(/\/+$/, "")}/${fileName}`
       : `${srcStem}_cleaned.mp4`;
+    const anti = ANTI_PRESETS[antiLevel];
     setCleaning(true);
     try {
       const report = await runDesensitize(target.path, output, {
@@ -1093,12 +1103,13 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         ...(bitrate ? { bitrateKbps: Number(bitrate) } : {}),
         ...(gop ? { gop: Number(gop) } : {}),
         ...(fpsOut ? { fpsOut: Number(fpsOut) } : {}),
+        ...(anti ? { rotate: anti.rotate, phashAttack: true, phashEpsilon: anti.epsilon } : {}),
       });
       addHistory({
         name: material.name,
         time: nowStr(),
         action: "合规清洗",
-        params: `${level}档 · 重构${restruct}% · 微扰${perturb}% · ${codec}${lossless ? "无损" : ""}`,
+        params: `${level}档 · 重构${restruct}% · 微扰${perturb}% · 对抗${antiLevel} · ${codec}${lossless ? "无损" : ""}`,
         out: output,
         result: "成功",
       });
@@ -1593,6 +1604,23 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   </div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
+              </div>
+              <div className="field">
+                <span className="field-label">指纹对抗强度</span>
+                <Select value={antiLevel} onValueChange={setAntiLevel}>
+                  <SelectTrigger className="form-input h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
+                    <SelectItem value="轻度">轻度 · 旋转1.2° + 签名扰动</SelectItem>
+                    <SelectItem value="标准">标准 · 旋转1.8° + 签名扰动</SelectItem>
+                    <SelectItem value="强力">强力 · 旋转2.2° + 签名扰动</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="form-help">
+                  针对感知哈希判重，实测可显著降低重复命中；会轻微改变构图与亮度
+                </div>
               </div>
 
               <div className="section-title">画质优化（PRD 3.2.1）</div>

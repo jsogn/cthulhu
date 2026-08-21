@@ -11,6 +11,9 @@ import numpy as np
 
 from cthulhu_backend.fingerprint import hashes
 
+_DCT_CACHE: dict[int, np.ndarray] = {}
+_UP_CACHE: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
+
 
 def _axis_weights(n_in: int, n_out: int) -> np.ndarray:
     """一维双线性插值权重矩阵 (n_out, n_in)。"""
@@ -27,12 +30,26 @@ def _axis_weights(n_in: int, n_out: int) -> np.ndarray:
 
 def dct_matrix(n: int) -> np.ndarray:
     """正交 DCT-II 变换矩阵，等价于 scipy.fft.dctn(norm="ortho")。"""
+    cached = _DCT_CACHE.get(n)
+    if cached is not None:
+        return cached
     frequency = np.arange(n)[:, None]
     sample = np.arange(n)[None, :]
     basis = np.cos(np.pi / n * (sample + 0.5) * frequency)
     basis *= np.sqrt(2.0 / n)
     basis[0, :] /= np.sqrt(2.0)
+    _DCT_CACHE[n] = basis
     return basis
+
+
+def _upscale_matrices(size: int, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+    key = (size, h, w)
+    cached = _UP_CACHE.get(key)
+    if cached is not None:
+        return cached
+    pair = (_axis_weights(size, h), _axis_weights(size, w))
+    _UP_CACHE[key] = pair
+    return pair
 
 
 def attack_phash(
@@ -40,7 +57,7 @@ def attack_phash(
     epsilon: float | None = 0.08,
     flip_fraction: float = 1.0,
     margin: float = 0.15,
-    iterations: int = 300,
+    iterations: int = 120,
     outer: int = 4,
     size: int = 32,
     low: int = 8,
@@ -55,8 +72,7 @@ def attack_phash(
     x0 = np.clip(np.asarray(frame, dtype=np.float64), 0.0, 1.0)
     original = hashes.phash(x0)
     h, w = x0.shape
-    up_y = _axis_weights(size, h)
-    up_x = _axis_weights(size, w)
+    up_y, up_x = _upscale_matrices(size, h, w)
     x = x0.copy()
     for _ in range(outer):
         current = hashes.resize_gray(x, size)
@@ -84,32 +100,28 @@ def _flip_coeffs(
     margins = flat - flat[1:].mean()
     target_count = max(1, round(low * low * flip_fraction))
     targets = np.argsort(np.abs(margins))[:target_count]
+    target_mask = np.zeros(low * low, dtype=bool)
+    target_mask[targets] = True
     work = coeffs.copy()
-    lr = 0.06
+    lr = 0.12
     for _ in range(iterations):
-        current_flat = work[:low, :low].ravel()
-        threshold = current_flat[1:].mean()
-        current_margins = current_flat - threshold
-        update = np.zeros((low, low))
-        done = 0
-        for index in targets:
-            value = current_margins[index]
-            side = -1.0 if value > 0 else 1.0
-            if side * value <= margin:
-                row, col = divmod(int(index), low)
-                update[row, col] += side * lr
-            else:
-                done += 1
-        if done == len(targets):
+        flat = work[:low, :low].ravel()
+        threshold = flat[1:].mean()
+        margins = flat - threshold
+        side = np.where(margins > 0, -1.0, 1.0)
+        active = target_mask & (side * margins <= margin)
+        if not active.any():
             break
-        work[:low, :low] += update
+        update = np.zeros(low * low)
+        update[active] = side[active] * lr
+        work[:low, :low] += update.reshape(low, low)
     return dct.T @ work @ dct.T
 
 
 def attack_frames(
     frames: np.ndarray,
     epsilon: float = 0.08,
-    iterations: int = 300,
+    iterations: int = 120,
 ) -> np.ndarray:
     """对帧数组逐帧并行施加 pHash 对抗扰动，保持原 dtype。"""
     from cthulhu_backend.transform.parallel import map_frames

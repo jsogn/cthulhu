@@ -194,7 +194,7 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--preset", default="medium")
     parser.add_argument("--phash-attack", action="store_true")
     parser.add_argument("--phash-epsilon", type=float, default=0.03)
-    parser.add_argument("--phash-iters", type=int, default=60)
+    parser.add_argument("--phash-iters", type=int, default=120)
     parser.add_argument("--rotate", type=float, default=0.0)
     parser.add_argument("--no-regrade", action="store_true")
     parser.add_argument("--no-sharpness", action="store_true")
