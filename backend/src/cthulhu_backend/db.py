@@ -56,13 +56,6 @@ CREATE TABLE IF NOT EXISTS library (
 );
 """
 
-SEED_TEMPLATES = [
-    {"name": "抖音投流", "payload": {"level": "轻度", "restruct": 25, "perturb": 15, "denoise": False, "audio": True, "codec": "H.264"}},
-    {"name": "快手分发", "payload": {"level": "平衡", "restruct": 30, "perturb": 20, "denoise": True, "audio": True, "codec": "H.264"}},
-    {"name": "跨平台通用", "payload": {"level": "深度", "restruct": 40, "perturb": 30, "denoise": True, "audio": True, "codec": "H.265"}},
-]
-
-
 def _connect() -> sqlite3.Connection:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
@@ -78,15 +71,10 @@ def init_db() -> None:
         if os.environ.get("CTHULHU_DEMO_LIBRARY") != "1":
             _ensure_library_table(connection)
             connection.execute("DELETE FROM library WHERE path LIKE '%demo-library%'")
-        count = connection.execute("SELECT COUNT(*) FROM templates").fetchone()[0]
-        if count == 0:
-            import time
-
-            for template in SEED_TEMPLATES:
-                connection.execute(
-                    "INSERT INTO templates (id, name, payload, created_at) VALUES (?, ?, ?, ?)",
-                    (uuid.uuid4().hex[:12], template["name"], json.dumps(template["payload"], ensure_ascii=False), time.time()),
-                )
+        # 平台命名的种子模板从未实现平台专属处理，属误导性残留，统一清除；
+        # 模板改为完全由用户创建与管理。
+        for legacy_name in ("抖音投流", "快手分发", "跨平台通用"):
+            connection.execute("DELETE FROM templates WHERE name = ?", (legacy_name,))
         # 迁移旧版展示参数为真实清洗参数。
         legacy = {"轻度": (25, 15, False), "平衡": (30, 20, True), "深度": (40, 30, True)}
         for row in connection.execute("SELECT id, payload FROM templates").fetchall():

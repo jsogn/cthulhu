@@ -27,10 +27,10 @@ def test_settings_roundtrip(client):
     assert client.get("/api/settings").json()["export_dir"] == "/tmp/out"
 
 
-def test_templates_seeded_and_crud(client):
+def test_templates_empty_by_default_and_crud(client):
     templates = client.get("/api/templates").json()
     names = {item["name"] for item in templates}
-    assert {"抖音投流", "快手分发", "跨平台通用"} <= names
+    assert not names.intersection({"抖音投流", "快手分发", "跨平台通用"})
 
     created = client.post(
         "/api/templates",

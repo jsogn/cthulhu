@@ -109,13 +109,6 @@ const levelDisplay = (level: CleanLevel, recropOn: boolean) => {
   return { speed, gamma, brightness, crop, restruct };
 };
 
-// PRD 3.2.4 场景模板预设。
-const SCENES: Record<string, { level: CleanLevel; restruct: number; perturb: number; audio: boolean; codec: string }> = {
-  抖音投流: { level: "轻度", restruct: 25, perturb: 15, audio: true, codec: "H.264" },
-  快手分发: { level: "平衡", restruct: 30, perturb: 20, audio: true, codec: "H.264" },
-  跨平台通用: { level: "深度", restruct: 40, perturb: 30, audio: true, codec: "H.265" },
-};
-
 // 指纹对抗档：几何去同步 + pHash 签名扰动 + 底层载荷攻击原语组合。
 type AntiPreset = {
   rotate: number;
@@ -1083,8 +1076,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
   const addHistory = useHistoryStore((state) => state.add);
   const jobs = useQueueStore((state) => state.jobs);
 
-  // PRD 3.1.2 清除档位与 3.2.4 场景模板。
-  const [scene, setScene] = useState<string>("无");
   const [level, setLevel] = useState<CleanLevel>("平衡");
   const [restruct, setRestruct] = useState(30);
   const [perturb, setPerturb] = useState(20);
@@ -1154,18 +1145,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
       cancelled = true;
     };
   }, [material?.path, report]);
-
-  const applyScene = (name: string) => {
-    setScene(name);
-    const preset = SCENES[name];
-    if (!preset) return;
-    setLevel(preset.level);
-    setRestruct(preset.restruct);
-    setPerturb(preset.perturb);
-    setAudioClean(preset.audio);
-    setCodec(preset.codec);
-    toast(`已应用场景模板：${name}`);
-  };
 
   const runClean = async () => {
     const target = material as (Material & { path?: string }) | null;
@@ -1363,21 +1342,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
 
   return (
     <aside className="pane pane-right">
-      <div className="scene-row">
-        <span className="section-title">场景模板</span>
-        <Select value={scene} onValueChange={applyScene}>
-          <SelectTrigger className="h-7 w-44 text-xs">
-            <SelectValue placeholder="选择场景模板" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="无">无</SelectItem>
-            <SelectItem value="抖音投流">抖音投流 · 轻度</SelectItem>
-            <SelectItem value="快手分发">快手分发 · 平衡</SelectItem>
-            <SelectItem value="跨平台通用">跨平台通用 · 深度</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])} className="min-h-0 flex-1">
         <TabsList variant="line" className="w-full shrink-0 justify-between rounded-none border-b border-border p-0">
           {TAB_KEYS.map((key) => (
