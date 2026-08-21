@@ -245,6 +245,47 @@ def _prefetch_batches(
         yield item
 
 
+def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
+    """编码域组合拳：跨 codec 二次转码，破坏量化/GOP 域的脆弱相关。
+
+    第一遍换 codec（H.264→H.265，不可用则同 codec）高 CRF 粗量化，
+    第二遍转回目标 codec。音轨直接复制。产物替换回原路径。
+    """
+    mid = path + ".chain.mp4"
+    final = path + ".final.mp4"
+    mid_codec = (
+        "libx265" if final_codec != "libx265" and ffmpeg.has_encoder("libx265") else final_codec
+    )
+    try:
+        subprocess.run(
+            [
+                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                "-i", path, "-c:v", mid_codec, "-preset", "veryfast",
+                "-crf", "28", "-c:a", "copy", mid,
+            ],
+            capture_output=True,
+            check=True,
+        )
+        check_cancelled()
+        subprocess.run(
+            [
+                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                "-i", mid, "-c:v", final_codec, "-preset", "veryfast",
+                "-crf", "23", "-c:a", "copy", final,
+            ],
+            capture_output=True,
+            check=True,
+        )
+        check_cancelled()
+        os.replace(final, path)
+    finally:
+        for leftover in (mid, final):
+            try:
+                os.unlink(leftover)
+            except OSError:
+                pass
+
+
 def run_similarity(a: str, b: str) -> dict:
     a, b = _require_file(a), _require_file(b)
     frames_a, _ = ffmpeg.decode_video(a)
@@ -315,12 +356,14 @@ def run_desensitize(
     phash_epsilon: float = 0.03,
     phash_iters: int = 120,
     rotate: float = 0.0,
+    transcode_chain: bool = False,
     median: int = 0,
     noise: float = 0.0,
     requant: int = 0,
     dct_step: float = 0.0,
     drop_every: int = 0,
     jitter: float = 0.0,
+    perspective: float = 0.0,
     mirror: bool = False,
     chroma_levels: int = 0,
     progress_cb=None,
@@ -392,6 +435,7 @@ def run_desensitize(
     assault_params = extra_attacks.AssaultParams(
         mirror=mirror,
         jitter=jitter,
+        perspective=perspective,
         median=median,
         noise=noise,
         requant=requant,
@@ -591,6 +635,8 @@ def run_desensitize(
         if progress_cb:
             progress_cb(95, "编码完成")
         check_cancelled()
+        if transcode_chain:
+            _transcode_chain(output, codec, check_cancelled)
     except BaseException:
         encoder.abort()
         try:

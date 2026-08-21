@@ -49,6 +49,17 @@ def test_mirror_and_jitter_deterministic():
     assert float(np.mean(np.abs(first - frames))) > 1e-3
 
 
+def test_perspective_shear_preserves_content_and_shape():
+    frames = make_frames(color=True)
+    params = extra_attacks.AssaultParams(perspective=0.01)
+    first = extra_attacks.apply(frames, params, np.random.default_rng(7))
+    second = extra_attacks.apply(frames, params, np.random.default_rng(7))
+    assert first.shape == frames.shape
+    np.testing.assert_array_equal(first, second)
+    assert float(np.mean(np.abs(first - frames))) > 1e-4
+    assert float(np.abs(first.mean() - frames.mean())) < 0.1  # 内容身份保持
+
+
 def test_chroma_quant_preserves_luma_reduces_chroma():
     rng = np.random.default_rng(5)
     luma = rng.random((4, 64, 48, 1), dtype=np.float32)

@@ -260,3 +260,28 @@ def test_desensitize_preserves_color(tmp_path):
     assert decoded_anti.shape[-1] == 3
     anti_means = decoded_anti.reshape(len(decoded_anti), -1, 3).mean(axis=1).mean(axis=0)
     assert anti_means[0] > anti_means[1] > anti_means[2]
+
+
+@needs_ffmpeg
+def test_desensitize_transcode_chain(tmp_path):
+    """编码域组合拳：二次转码后产物仍有效且内容保持。"""
+    video = samples.make_cut_video(2, 8, 160, 120, seed=36)
+    source = tmp_path / "src.mp4"
+    output = tmp_path / "out.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    services.run_desensitize(
+        str(source),
+        str(output),
+        reorder=False,
+        speed=1.0,
+        regrade=False,
+        audio_remix=False,
+        sharpness=False,
+        color_restore=False,
+        denoise=False,
+        transcode_chain=True,
+    )
+    assert output.exists()
+    decoded, info = ffmpeg.decode_video(str(output))
+    assert decoded.shape == video.shape
+    assert info["codec"] == "h264"

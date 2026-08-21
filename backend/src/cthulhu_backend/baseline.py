@@ -196,12 +196,14 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--phash-epsilon", type=float, default=0.03)
     parser.add_argument("--phash-iters", type=int, default=120)
     parser.add_argument("--rotate", type=float, default=0.0)
+    parser.add_argument("--transcode-chain", action="store_true")
     parser.add_argument("--median", type=int, default=0)
     parser.add_argument("--noise", type=float, default=0.0)
     parser.add_argument("--requant", type=int, default=0)
     parser.add_argument("--dct-step", type=float, default=0.0)
     parser.add_argument("--drop-every", type=int, default=0)
     parser.add_argument("--jitter", type=float, default=0.0)
+    parser.add_argument("--perspective", type=float, default=0.0)
     parser.add_argument("--mirror", action="store_true")
     parser.add_argument("--chroma-levels", type=int, default=0)
     parser.add_argument("--no-regrade", action="store_true")
@@ -247,12 +249,14 @@ def _main(argv: list[str] | None = None) -> None:
             phash_epsilon=args.phash_epsilon,
             phash_iters=args.phash_iters,
             rotate=args.rotate,
+            transcode_chain=args.transcode_chain,
             median=args.median,
             noise=args.noise,
             requant=args.requant,
             dct_step=args.dct_step,
             drop_every=args.drop_every,
             jitter=args.jitter,
+            perspective=args.perspective,
             mirror=args.mirror,
             chroma_levels=args.chroma_levels,
             regrade=not args.no_regrade,

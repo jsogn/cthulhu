@@ -20,6 +20,7 @@ class AssaultParams:
 
     mirror: bool = False
     jitter: float = 0.0
+    perspective: float = 0.0
     median: int = 0
     noise: float = 0.0
     requant: int = 0
@@ -33,6 +34,7 @@ class AssaultParams:
             (
                 self.mirror,
                 self.jitter > 0,
+                self.perspective > 0,
                 self.median > 0,
                 self.noise > 0,
                 self.requant > 0,
@@ -156,6 +158,53 @@ def mirror(frames: np.ndarray) -> np.ndarray:
     return np.flip(frames, axis=frames.ndim - 2)
 
 
+def perspective_shear(
+    frames: np.ndarray,
+    strength: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """逐帧透视剪切：每行/列随位置线性平移，模拟轻微梯形畸变。
+
+    比全量单应变换便宜（两次双线性采样），足以破坏块对齐与几何同步，
+    又不会像大角度旋转那样引人注意。
+    """
+    if strength <= 0:
+        return frames
+    from cthulhu_backend.transform.parallel import map_frames
+
+    is_u8 = frames.dtype == np.uint8
+    work = frames.astype(np.float32)
+    if is_u8:
+        work /= 255.0
+    kx = rng.uniform(-strength, strength, len(work))
+    ky = rng.uniform(-strength, strength, len(work))
+
+    def shear_one(pair: tuple[np.ndarray, float, float]) -> np.ndarray:
+        frame, shear_x, shear_y = pair
+        h, w = frame.shape[:2]
+        rows = np.arange(h, dtype=np.float32) / h - 0.5
+        cols = np.arange(w, dtype=np.float32) / w - 0.5
+        x = np.arange(w, dtype=np.float32)[None, :] - (shear_x * rows * w)[:, None]
+        y = np.arange(h, dtype=np.float32)[:, None] - (shear_y * cols * h)[None, :]
+        x0 = np.clip(np.floor(x).astype(int), 0, w - 1)
+        x1 = np.clip(x0 + 1, 0, w - 1)
+        y0 = np.clip(np.floor(y).astype(int), 0, h - 1)
+        y1 = np.clip(y0 + 1, 0, h - 1)
+        fx = (x - x0).astype(np.float32)
+        fy = (y - y0).astype(np.float32)
+        if frame.ndim == 3:
+            fx = fx[..., None]
+            fy = fy[..., None]
+        top = frame[y0, x0] * (1 - fx) + frame[y0, x1] * fx
+        bottom = frame[y1, x0] * (1 - fx) + frame[y1, x1] * fx
+        return np.clip(top * (1 - fy) + bottom * fy, 0.0, 1.0)
+
+    result = map_frames(shear_one, list(zip(work, kx, ky)))
+    if is_u8:
+        return (result * 255.0).round().astype(np.uint8)
+    return result.astype(frames.dtype)
+
+
 def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator) -> np.ndarray:
     """逐帧随机平移抖动：随机裁剪偏移后缩回原尺寸，模拟机位晃动。"""
     if jitter <= 0:
@@ -210,6 +259,8 @@ def apply(
         work = mirror(work)
     if params.jitter > 0:
         work = translate_jitter(work, params.jitter, rng)
+    if params.perspective > 0:
+        work = perspective_shear(work, params.perspective, rng)
     if params.median > 0:
         work = median(work, params.median)
     if params.noise > 0:
