@@ -505,11 +505,12 @@ export async function enqueueJob(
 /** 把指定源视频已生成的清洗/修复产物导出到设置中的导出目录。 */
 export async function exportOutputs(
   paths: string[],
+  exportDir?: string,
 ): Promise<{ exported: { source: string; dest: string }[]; missing: string[] }> {
   const res = await apiFetch("/api/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paths }),
+    body: JSON.stringify({ paths, ...(exportDir ? { export_dir: exportDir } : {}) }),
   });
   if (!res.ok) throw new Error(`导出失败（${res.status}）`);
   return res.json();

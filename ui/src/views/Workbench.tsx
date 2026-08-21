@@ -58,6 +58,7 @@ import {
   fetchOutputs,
   frameUrl,
   generateCandidates,
+  getSettings,
   listTemplates,
   mediaUrl,
   thumbUrl,
@@ -1133,6 +1134,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const [fpsOut, setFpsOut] = useState("");
   const [outputDir, setOutputDir] = useState("");
   const [naming, setNaming] = useState("原文件名 + 时间戳");
+  const [settingsExportDir, setSettingsExportDir] = useState("");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cleaning = !!material?.path && pendingCleanPaths(jobs).has(material.path);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
@@ -1185,6 +1187,12 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     };
   }, [material?.path, report]);
 
+  useEffect(() => {
+    void getSettings()
+      .then((settings) => setSettingsExportDir((settings.export_dir as string) ?? ""))
+      .catch(() => undefined);
+  }, []);
+
   // 产物列表绑定当前素材上下文，切换素材即刷新。
   useEffect(() => {
     if (!material?.path) {
@@ -1215,8 +1223,9 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       naming === "时间戳 + 原文件名"
         ? `${ts}_${srcName}_cleaned.mp4`
         : `${srcName}_cleaned_${ts}.mp4`;
-    const output = outputDir.trim()
-      ? `${outputDir.trim().replace(/\/+$/, "")}/${fileName}`
+    const baseDir = outputDir.trim() || settingsExportDir;
+    const output = baseDir
+      ? `${baseDir.replace(/\/+$/, "")}/${fileName}`
       : `${srcStem}_cleaned_${ts}.mp4`;
     const anti = ANTI_PRESETS[antiLevel];
     try {
@@ -2096,7 +2105,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                   className="h-8"
                   value={outputDir}
                   onChange={(e) => setOutputDir(e.target.value)}
-                  placeholder="留空则输出到源文件同目录"
+                  placeholder="留空则使用设置里的默认导出目录"
                 />
               </div>
 
@@ -2199,12 +2208,16 @@ function BatchBar({ count }: { count: number }) {
   const [batchTemplate, setBatchTemplate] = useState("manual");
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
+  const [exportDir, setExportDir] = useState("");
 
   const ids = Object.keys(selected);
 
   useEffect(() => {
     void listTemplates()
       .then(setTemplates)
+      .catch(() => undefined);
+    void getSettings()
+      .then((settings) => setExportDir((settings.export_dir as string) ?? ""))
       .catch(() => undefined);
   }, []);
 
@@ -2269,6 +2282,11 @@ function BatchBar({ count }: { count: number }) {
     const perturb = perturbPct / 100;
     const denoise = template ? params.denoise : batchLevel !== "轻度";
     const anti = ANTI_PRESETS[batchAnti];
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+      now.getHours(),
+    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const targets = ids
       .map((id) => materials.find((m) => m.id === id))
       .filter((m): m is Material & { path: string } => !!m?.path)
@@ -2276,7 +2294,9 @@ function BatchBar({ count }: { count: number }) {
         kind: "desensitize" as const,
         path: m.path,
         options: {
-          output: `${m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned.mp4`,
+          output: exportDir
+            ? `${exportDir.replace(/\/+$/, "")}/${m.name.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`
+            : `${m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`,
           reorder: false,
           speed,
           recrop,
@@ -2323,8 +2343,15 @@ function BatchBar({ count }: { count: number }) {
       toast("所选素材缺少本地路径，无法导出");
       return;
     }
+    let destDir = exportDir || "~/导出/暗水印清洗";
+    const picker = window.appEnv?.chooseFolder;
+    if (picker) {
+      const chosen = await picker();
+      if (!chosen) return; // 用户取消选择
+      destDir = chosen;
+    }
     try {
-      const { exported, missing } = await exportOutputs(paths);
+      const { exported, missing } = await exportOutputs(paths, destDir);
       if (exported.length) {
         addHistory({
           name: `${exported.length} 个素材`,
@@ -2411,7 +2438,7 @@ function BatchBar({ count }: { count: number }) {
         {scanBusy ? "提交中…" : "批量检测"}
       </Button>
       <Button variant="secondary" size="sm" onClick={exportSelected}>
-        导出
+        导出产物…
       </Button>
       <Button
         variant="ghost"

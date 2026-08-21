@@ -164,6 +164,7 @@ export default function SettingsView() {
               value={form.export_dir}
               onChange={(e) => setValue("export_dir", e.target.value)}
             />
+            <div className="form-help">清洗产物默认存放目录；批量导出也复制到这里</div>
           </div>
           <div className="form-field">
             <Label>批量并行度上限</Label>
