@@ -185,7 +185,7 @@ export default function TemplatesView() {
                 <div className="tpl-name">{template.name}</div>
                 <div className="tpl-rows">
                   <div className="tpl-row"><span>清除档位</span><b>{payload.level}</b></div>
-                  <div className="tpl-row"><span>重构强度</span><b>{payload.restruct}%</b></div>
+                  <div className="tpl-row"><span>变速幅度</span><b>{payload.restruct}%</b></div>
                   <div className="tpl-row"><span>微扰强度</span><b>{payload.perturb}%</b></div>
                   <div className="tpl-row">
                     <span>空间降噪 / 音频重混</span>
@@ -254,7 +254,7 @@ export default function TemplatesView() {
             </div>
             <div className="field">
               <span className="field-label">
-                重构强度 <span className="field-value">{restruct}%</span>
+                变速幅度 <span className="field-value">{restruct}%</span>
               </span>
               <Slider value={[restruct]} min={10} max={70} onValueChange={([v]) => setRestruct(v)} />
             </div>

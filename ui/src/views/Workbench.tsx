@@ -134,20 +134,20 @@ function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
 const CLEAN_LEVELS = ["轻度", "平衡", "深度"] as const;
 type CleanLevel = (typeof CLEAN_LEVELS)[number];
 
-const LEVEL_PRESETS: Record<CleanLevel, { restruct: number; perturb: number }> = {
-  轻度: { restruct: 25, perturb: 15 },
-  平衡: { restruct: 30, perturb: 20 },
-  深度: { restruct: 40, perturb: 30 },
+const LEVEL_PRESETS: Record<CleanLevel, { retime: number; perturb: number }> = {
+  轻度: { retime: 25, perturb: 15 },
+  平衡: { retime: 30, perturb: 20 },
+  深度: { retime: 40, perturb: 30 },
 };
 
 /** 三档清洗的真实行为映射（与后端参数一一对应，不展示虚假指标）。 */
 const levelDisplay = (level: CleanLevel, recropOn: boolean) => {
-  const { restruct, perturb } = LEVEL_PRESETS[level];
-  const speed = Math.max(0.85, 1 - 0.15 * (restruct / 100));
+  const { retime, perturb } = LEVEL_PRESETS[level];
+  const speed = Math.max(0.85, 1 - 0.15 * (retime / 100));
   const gamma = 0.03 + 0.2 * (perturb / 100);
   const brightness = 0.02 + 0.06 * (perturb / 100);
   const crop = recropOn ? 0.015 + 0.075 * (perturb / 100) : 0;
-  return { speed, gamma, brightness, crop, restruct };
+  return { speed, gamma, brightness, crop, retime };
 };
 
 const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
@@ -1006,7 +1006,8 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const jobs = useQueueStore((state) => state.jobs);
 
   const [level, setLevel] = useState<CleanLevel>("平衡");
-  const [restruct, setRestruct] = useState(30);
+  const [retime, setRetime] = useState(30);
+  const [reorderOn, setReorderOn] = useState(false);
   const [perturb, setPerturb] = useState(20);
   const [audioClean, setAudioClean] = useState(true);
   const [antiReembed, setAntiReembed] = useState(false);
@@ -1122,8 +1123,8 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     const anti = ANTI_PRESETS[antiLevel];
     try {
       const cleanOptions: DesensitizeOptions = {
-        reorder: restruct > 0,
-        speed: Math.max(0.85, 1 - 0.15 * (restruct / 100)),
+        reorder: reorderOn,
+        speed: Math.max(0.85, 1 - 0.15 * (retime / 100)),
         recrop: recropOn ? 0.015 + 0.075 * (perturb / 100) : 0,
         perturb: perturb / 100,
         regrade: true,
@@ -1600,9 +1601,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                       if (score >= 40 && antiLevel === "关闭") {
                         suggestions.push("当前指纹对抗关闭，建议至少开启轻度档");
                       }
-                      if (restruct === 0) {
-                        suggestions.push("当前未开启分镜重构，时序指纹未被扰动");
-                      }
                       if (suggestions.length === 0) {
                         suggestions.push(
                           "未命中明显异常，保持基础清洗即可；对抗强度按投放需求自行选择",
@@ -1748,7 +1746,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                 onValueChange={(value) => {
                   const next = value as CleanLevel;
                   setLevel(next);
-                  setRestruct(LEVEL_PRESETS[next].restruct);
+                  setRetime(LEVEL_PRESETS[next].retime);
                   setPerturb(LEVEL_PRESETS[next].perturb);
                 }}
               >
@@ -1766,8 +1764,8 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                   <b>{levelDisplay(level, recropOn).speed.toFixed(3)}×</b>
                 </div>
                 <div className="param-row">
-                  <span>分镜重排</span>
-                  <b>{levelDisplay(level, recropOn).restruct > 0 ? "开启" : "关闭"}</b>
+                  <span>分镜乱序</span>
+                  <b>{reorderOn ? "开启（破坏叙事）" : "关闭（保持剧情顺序）"}</b>
                 </div>
                 <div className="param-row">
                   <span>调光微扰</span>
@@ -1786,14 +1784,14 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                 </div>
               </div>
               <p className="note">
-                三档只控制重构 / 变速 / 微扰强度；指纹对抗与编码参数在下方独立设置。
+                三档只控制变速与微扰强度；分镜乱序与指纹对抗在下方独立设置。
               </p>
 
               <div className="field">
                 <span className="field-label">
-                  分镜重构强度 <span className="field-value">{restruct}%</span>
+                  变速幅度 <span className="field-value">{retime}%</span>
                 </span>
-                <Slider value={[restruct]} min={0} max={100} onValueChange={([v]) => setRestruct(v)} />
+                <Slider value={[retime]} min={0} max={100} onValueChange={([v]) => setRetime(v)} />
               </div>
               <div className="field">
                 <span className="field-label">
@@ -1823,6 +1821,15 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                   </div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
+              </div>
+              <div className="switch">
+                <div>
+                  <div className="switch-label">分镜乱序</div>
+                  <div className="switch-desc">
+                    打乱镜头顺序破坏时序指纹，但会破坏剧情叙事；短剧素材建议关闭
+                  </div>
+                </div>
+                <Switch checked={reorderOn} onCheckedChange={setReorderOn} />
               </div>
               <div className="switch">
                 <div>
@@ -2222,16 +2229,16 @@ function BatchBar({ count }: { count: number }) {
       ? templateParams(template)
       : {
           level: batchLevel,
-          restruct: LEVEL_PRESETS[batchLevel].restruct,
+          restruct: LEVEL_PRESETS[batchLevel].retime,
           perturb: LEVEL_PRESETS[batchLevel].perturb,
           denoise: batchLevel !== "轻度",
           audio: true,
           codec: "H.264",
         };
     const preset = LEVEL_PRESETS[params.level as CleanLevel];
-    const restruct = template ? params.restruct : preset.restruct;
+    const retime = template ? (params.restruct as number) : preset.retime;
     const perturbPct = template ? params.perturb : preset.perturb;
-    const speed = Math.max(0.85, 1 - 0.15 * (restruct / 100));
+    const speed = Math.max(0.85, 1 - 0.15 * (retime / 100));
     const recrop = 0.015 + 0.075 * (perturbPct / 100);
     const perturb = perturbPct / 100;
     const denoise = template ? params.denoise : batchLevel !== "轻度";
@@ -2244,7 +2251,7 @@ function BatchBar({ count }: { count: number }) {
         path: m.path,
         options: {
           output: `${m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned.mp4`,
-          reorder: true,
+          reorder: false,
           speed,
           recrop,
           regrade: true,
