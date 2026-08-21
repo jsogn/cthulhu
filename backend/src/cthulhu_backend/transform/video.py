@@ -139,9 +139,14 @@ def color_restore(
     """
     ref_mean = np.asarray(ref_mean)
     del ref_std
-    means = frames.mean(axis=(1, 2), keepdims=True)
-    corrected = frames + (ref_mean - means)
-    return np.clip(corrected, 0.0, 1.0)
+
+    def restore(sub: np.ndarray) -> np.ndarray:
+        means = sub.mean(axis=(1, 2), keepdims=True)
+        return np.clip(sub + (ref_mean - means), 0.0, 1.0)
+
+    from cthulhu_backend.transform.parallel import map_chunks
+
+    return map_chunks(frames, restore, workers=4)
 
 
 def midband_perturb(

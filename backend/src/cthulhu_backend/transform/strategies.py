@@ -174,12 +174,17 @@ def _fast_color_restore_u8(
     ref_std: float,
 ) -> np.ndarray:
     """亮度还原（uint8 域）：逐通道均值校准，避免方差归一带来的暗部裁剪。"""
-    work = frames.astype(np.float32)
-    means = work.mean(axis=(1, 2), keepdims=True)
+    from cthulhu_backend.transform.parallel import map_chunks
+
     ref_mean8 = np.asarray(ref_mean) * 255.0
     del ref_std
-    corrected = work + (ref_mean8 - means)
-    return np.clip(corrected, 0.0, 255.0).astype(np.uint8)
+
+    def restore(sub: np.ndarray) -> np.ndarray:
+        work = sub.astype(np.float32)
+        means = work.mean(axis=(1, 2), keepdims=True)
+        return np.clip(work + (ref_mean8 - means), 0.0, 255.0).astype(np.uint8)
+
+    return map_chunks(frames, restore, workers=4)
 
 
 def _fast_sharpen_u8(frames: np.ndarray, amount: float = 0.25, radius: float = 1.2) -> np.ndarray:

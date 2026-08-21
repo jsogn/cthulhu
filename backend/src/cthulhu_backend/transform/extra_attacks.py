@@ -285,8 +285,14 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
     matrix = _dct8()
     out = np.empty_like(work)
     sub_batch = 32
-    for start in range(0, len(work), sub_batch):
-        sub = work[start : start + sub_batch]
+    jobs = [
+        (start, min(start + sub_batch, len(work)))
+        for start in range(0, len(work), sub_batch)
+    ]
+
+    def run(job: tuple[int, int]) -> tuple[int, int, np.ndarray]:
+        start, end = job
+        sub = work[start:end]
         blocks = sub.reshape(len(sub), ph // 8, 8, pw // 8, 8, channels)
         # (F, BH, BW, 8, 8, C) → (M, 8, 8, C)
         stacked = blocks.transpose(0, 1, 3, 2, 4, 5).reshape(-1, 8, 8, channels)
@@ -303,7 +309,13 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
         )
         if channels == 1:
             recon_frame = recon_frame[..., 0]
-        out[start : start + len(sub)] = recon_frame
+        return start, end, recon_frame
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for start, end, recon_frame in pool.map(run, jobs):
+            out[start:end] = recon_frame
     result = np.clip(out[:, :h, :w] / 255.0, 0.0, 1.0)
     if frames.dtype == np.uint8:
         return (result * 255.0).round().astype(np.uint8)
@@ -318,24 +330,30 @@ def chroma_quant(frames: np.ndarray, levels: int) -> np.ndarray:
     rgb = frames.astype(np.uint8) if original_dtype == np.uint8 else (
         (np.clip(frames, 0, 1) * 255).round().astype(np.uint8)
     )
-    # BT.601 定点整数正变换（Y 16bit 视需要，Cb/Cr 有符号 8bit 域）。
-    r = rgb[..., 0].astype(np.int32)
-    g = rgb[..., 1].astype(np.int32)
-    b = rgb[..., 2].astype(np.int32)
-    y = (77 * r + 150 * g + 29 * b + 128) >> 8
-    cb = ((-43 * r - 85 * g + 128 * b + 128) >> 8).astype(np.int16) - 128
-    cr = ((128 * r - 107 * g - 21 * b + 128) >> 8).astype(np.int16) - 128
-    # 量化到有限级数再还原（中心对称，级数范围 [-127,127]）。
-    scale = (levels - 1) / 255.0
-    cb = (np.round(cb * scale) / scale).astype(np.int16)
-    cr = (np.round(cr * scale) / scale).astype(np.int16)
-    cb32 = cb.astype(np.int32)
-    cr32 = cr.astype(np.int32)
-    out = np.empty_like(rgb)
-    # Cb/Cr 已在 ±128 中心化，逆变换需把 0.5 偏移折算回整数常量。
-    out[..., 0] = np.clip((y + ((359 * cr32) >> 8) + 179), 0, 255).astype(np.uint8)
-    out[..., 1] = np.clip((y - ((88 * cb32) >> 8) - ((183 * cr32) >> 8) - 135), 0, 255).astype(np.uint8)
-    out[..., 2] = np.clip((y + ((454 * cb32) >> 8) + 227), 0, 255).astype(np.uint8)
+
+    def quantize(sub: np.ndarray) -> np.ndarray:
+        # BT.601 定点整数正变换（Cb/Cr 中心化到 ±128）。
+        r = sub[..., 0].astype(np.int32)
+        g = sub[..., 1].astype(np.int32)
+        b = sub[..., 2].astype(np.int32)
+        y = (77 * r + 150 * g + 29 * b + 128) >> 8
+        cb = ((-43 * r - 85 * g + 128 * b + 128) >> 8).astype(np.int16) - 128
+        cr = ((128 * r - 107 * g - 21 * b + 128) >> 8).astype(np.int16) - 128
+        scale = (levels - 1) / 255.0
+        cb = (np.round(cb * scale) / scale).astype(np.int16)
+        cr = (np.round(cr * scale) / scale).astype(np.int16)
+        cb32 = cb.astype(np.int32)
+        cr32 = cr.astype(np.int32)
+        out = np.empty_like(sub)
+        # Cb/Cr 已在 ±128 中心化，逆变换需把 0.5 偏移折算回整数常量。
+        out[..., 0] = np.clip((y + ((359 * cr32) >> 8) + 179), 0, 255).astype(np.uint8)
+        out[..., 1] = np.clip(
+            (y - ((88 * cb32) >> 8) - ((183 * cr32) >> 8) - 135), 0, 255
+        ).astype(np.uint8)
+        out[..., 2] = np.clip((y + ((454 * cb32) >> 8) + 227), 0, 255).astype(np.uint8)
+        return out
+
+    out = quantize(rgb)
     if original_dtype == np.uint8:
         return out
     return out.astype(np.float32) / 255.0

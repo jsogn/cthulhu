@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
 
 import numpy as np
 
@@ -38,3 +39,24 @@ def map_frames(
         return np.stack([fn(frame) for frame in frames])
     with ThreadPoolExecutor(max_workers=min(workers, count)) as pool:
         return np.stack(list(pool.map(fn, frames)))
+
+
+def map_chunks(
+    frames: np.ndarray,
+    fn: Callable[[np.ndarray], np.ndarray],
+    workers: int | None = None,
+) -> np.ndarray:
+    """把帧数组按帧轴切成连续块并行处理，再按原顺序拼回。
+
+    适用于「整批向量化但只跑单核」的阶段（重量化/色度/均值校正等）；
+    每块内部仍走 numpy 向量化，块间用线程池重叠，结果与顺序执行逐位一致。
+    """
+    count = len(frames)
+    workers = workers or default_workers()
+    workers = max(1, min(workers, count))
+    if workers <= 1 or count < 8:
+        return fn(frames)
+    bounds = np.linspace(0, count, workers + 1).astype(int)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        parts = list(pool.map(lambda pair: fn(frames[pair[0] : pair[1]]), pairwise(bounds)))
+    return np.concatenate(parts, axis=0)
