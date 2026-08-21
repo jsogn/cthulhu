@@ -341,7 +341,13 @@ body {
 
 /* ============ 三栏工作台 ============ */
 .workbench {
-  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workbench-main {
   flex: 1;
   min-height: 0;
   display: grid;
@@ -624,24 +630,22 @@ body {
   font-size: 11px;
 }
 
-/* ============ 批量选择工具条 ============ */
-.selection-bar {
+/* ============ 批量操作弹窗 ============ */
+.batch-popup {
   flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  row-gap: 6px;
+  justify-content: center;
+  gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in oklch, var(--primary) 5%, transparent);
+  border-top: 1px solid var(--border);
+  background: var(--popover);
 }
 
 .batch-count {
-  margin-right: auto;
   font-size: 12px;
   color: var(--muted-foreground);
-  white-space: nowrap;
 }
 
 /* ============ 预览区 ============ */
@@ -1639,19 +1643,19 @@ body {
 
 /* ============ 响应式 ============ */
 @media (max-width: 1080px) {
-  .workbench {
+  .workbench-main {
     grid-template-columns: 280px 1fr 270px;
   }
 }
 
 @media (max-width: 900px) {
-  .workbench {
+  .workbench-main {
     grid-template-columns: 240px 1fr 240px;
   }
 }
 
 @media (max-width: 760px) {
-  .workbench {
+  .workbench-main {
     grid-template-columns: 1fr;
     overflow-y: auto;
   }
