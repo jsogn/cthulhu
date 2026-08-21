@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from cthulhu_backend import samples
-from cthulhu_backend.fingerprint import hashes, proxy
+from cthulhu_backend.fingerprint import adversarial, hashes, proxy
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import video as video_transform
@@ -26,6 +26,33 @@ def test_edge_embedding_is_normalized():
     frame = samples.make_video_frames(1, 96, 64, seed=11)[0]
     vector = hashes.edge_embedding(frame)
     assert abs(float(np.linalg.norm(vector)) - 1.0) < 1e-9
+
+
+def test_dct_matrix_matches_scipy_orthonormal():
+    from scipy.fft import dctn
+
+    rng = np.random.default_rng(3)
+    block = rng.random((32, 32))
+    expected = dctn(block, norm="ortho")
+    dct = adversarial.dct_matrix(32)
+    np.testing.assert_allclose(dct @ block @ dct.T, expected, atol=1e-10)
+
+
+def test_attack_phash_flips_bits_within_budget():
+    from scipy.ndimage import gaussian_filter
+
+    frame = gaussian_filter(np.random.default_rng(18).random((256, 128)), sigma=8)
+    attacked, _, flipped = adversarial.attack_phash(frame, epsilon=0.08)
+    assert flipped >= 1
+    assert float(np.abs(attacked - frame).max()) <= 0.08 + 1e-6
+    assert float(np.abs(attacked).max()) <= 1.0
+    assert float(np.abs(attacked).min()) >= 0.0
+
+
+def test_attack_phash_uncapped_flips_many_bits():
+    frame = samples.make_video_frames(1, 256, 128, seed=17)[0]
+    _, _, flipped = adversarial.attack_phash(frame, epsilon=None)
+    assert flipped >= 8
 
 
 def test_video_compare_identity_is_high_risk():

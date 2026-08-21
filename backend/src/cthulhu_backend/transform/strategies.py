@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -209,6 +210,39 @@ def _fast_banner_u8(frames: np.ndarray, text: str, seed: int = 0, margin_frac: f
     from cthulhu_backend.transform.parallel import map_frames
 
     return map_frames(draw_frame, frames)
+
+
+def rotate_de_sync(
+    frames: np.ndarray,
+    output_ids: list[int],
+    max_angle: float,
+) -> np.ndarray:
+    """逐帧微旋转去同步：角度按黄金角摆动，确定性且并行安全。
+
+    每帧角度 = max_angle * sin(index * 2.399963)，旋转后中心裁剪回原尺寸。
+    几何去同步对 pHash 类指纹的破坏效率远高于同预算的像素扰动。
+    """
+    from cthulhu_backend.transform.parallel import map_frames
+
+    is_u8 = frames.dtype == np.uint8
+
+    def rotate_one(pair: tuple[int, np.ndarray]) -> np.ndarray:
+        index, frame = pair
+        angle = max_angle * math.sin(index * 2.399963)
+        h, w = frame.shape
+        if is_u8:
+            image = Image.fromarray(frame, mode="L")
+        else:
+            image = Image.fromarray((np.clip(frame, 0, 1) * 255).round().astype(np.uint8), mode="L")
+        rotated = image.rotate(angle, resample=Image.BILINEAR, expand=True)
+        out_w, out_h = rotated.size
+        box = ((out_w - w) // 2, (out_h - h) // 2, (out_w - w) // 2 + w, (out_h - h) // 2 + h)
+        result = np.asarray(rotated.crop(box))
+        if is_u8:
+            return result.astype(np.uint8)
+        return result.astype(np.float32) / 255.0
+
+    return map_frames(rotate_one, list(zip(output_ids, frames)))
 
 
 class FastStrategy:

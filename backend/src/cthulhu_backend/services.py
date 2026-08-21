@@ -22,6 +22,7 @@ from scipy.signal import resample_poly
 from cthulhu_backend import db, samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
 from cthulhu_backend.evaluate import metrics
+from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.similarity import embedding
 from cthulhu_backend.transform import audio as audio_transform
@@ -309,6 +310,10 @@ def run_desensitize(
     fps_out: float | None = None,
     hardware: bool = False,
     transform_strategy: str | None = None,
+    phash_attack: bool = False,
+    phash_epsilon: float = 0.03,
+    phash_iters: int = 60,
+    rotate: float = 0.0,
     progress_cb=None,
     should_stop=None,
 ) -> dict:
@@ -462,6 +467,12 @@ def run_desensitize(
                         frames = strategy.apply(
                             batch, output_ids, transform_context, transform_options
                         )
+                        if rotate > 0:
+                            frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+                        if phash_attack:
+                            frames = adversarial.attack_frames(
+                                frames, epsilon=phash_epsilon, iterations=phash_iters
+                            )
                         encoder.write(frames)
                         out_index += len(batch)
                         if progress_cb and total_out:
@@ -515,6 +526,12 @@ def run_desensitize(
                 if frame_dtype == "uint8":
                     frames = (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
                 frames = strategy.apply(frames, output_ids, transform_context, transform_options)
+                if rotate > 0:
+                    frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+                if phash_attack:
+                    frames = adversarial.attack_frames(
+                        frames, epsilon=phash_epsilon, iterations=phash_iters
+                    )
                 encoder.write(frames)
                 if progress_cb and total_out:
                     progress_cb(

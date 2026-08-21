@@ -192,6 +192,10 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--banner", default="")
     parser.add_argument("--codec", default="libx264")
     parser.add_argument("--preset", default="medium")
+    parser.add_argument("--phash-attack", action="store_true")
+    parser.add_argument("--phash-epsilon", type=float, default=0.03)
+    parser.add_argument("--phash-iters", type=int, default=60)
+    parser.add_argument("--rotate", type=float, default=0.0)
     parser.add_argument("--no-regrade", action="store_true")
     parser.add_argument("--no-sharpness", action="store_true")
     parser.add_argument("--no-color-restore", action="store_true")
@@ -231,6 +235,10 @@ def _main(argv: list[str] | None = None) -> None:
             banner=args.banner,
             codec=args.codec,
             preset=args.preset,
+            phash_attack=args.phash_attack,
+            phash_epsilon=args.phash_epsilon,
+            phash_iters=args.phash_iters,
+            rotate=args.rotate,
             regrade=not args.no_regrade,
             sharpness=not args.no_sharpness,
             color_restore=not args.no_color_restore,

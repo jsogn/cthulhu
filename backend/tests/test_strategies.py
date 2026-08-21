@@ -113,6 +113,17 @@ def test_fast_regrade_close_to_thorough():
     assert float(diff.mean()) < 0.02
 
 
+def test_rotate_de_sync_deterministic_and_shape_preserving():
+    frames = (samples.make_video_frames(4, 96, 64, seed=7) * 255).round().astype(np.uint8)
+    ids = [0, 1, 2, 3]
+    first = strategies.rotate_de_sync(frames.copy(), ids, 1.5)
+    second = strategies.rotate_de_sync(frames.copy(), ids, 1.5)
+    assert first.shape == frames.shape
+    assert first.dtype == np.uint8
+    np.testing.assert_array_equal(first, second)
+    assert float(np.mean(np.abs(first.astype(float) - frames.astype(float)))) > 0.1
+
+
 def test_baseline_compare_roundtrip(tmp_path):
     base_path = tmp_path / "base.json"
     runs_path = tmp_path / "runs.json"

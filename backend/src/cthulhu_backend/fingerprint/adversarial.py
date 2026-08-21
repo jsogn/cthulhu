@@ -1,0 +1,127 @@
+"""签名域对抗扰动：对 pHash 低频系数做有预算的边际翻转。
+
+思路：pHash 最终坍缩为「8×8 低频 DCT 系数相对均值的正负号」。与其在像素域
+盲目加噪，不如把 resize→DCT→阈值这条链建成可微函数，直接求最小视觉扰动，
+把 64 个符号位推向反方向。扰动是低频内容，天然能扛住 32×32 下采样与重编码。
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from cthulhu_backend.fingerprint import hashes
+
+
+def _axis_weights(n_in: int, n_out: int) -> np.ndarray:
+    """一维双线性插值权重矩阵 (n_out, n_in)。"""
+    rows = np.arange(n_out)
+    coord = (rows + 0.5) * n_in / n_out - 0.5
+    lo = np.clip(np.floor(coord).astype(int), 0, n_in - 1)
+    hi = np.clip(lo + 1, 0, n_in - 1)
+    frac = coord - np.floor(coord)
+    weights = np.zeros((n_out, n_in))
+    weights[rows, lo] += 1.0 - frac
+    weights[rows, hi] += frac
+    return weights
+
+
+def dct_matrix(n: int) -> np.ndarray:
+    """正交 DCT-II 变换矩阵，等价于 scipy.fft.dctn(norm="ortho")。"""
+    frequency = np.arange(n)[:, None]
+    sample = np.arange(n)[None, :]
+    basis = np.cos(np.pi / n * (sample + 0.5) * frequency)
+    basis *= np.sqrt(2.0 / n)
+    basis[0, :] /= np.sqrt(2.0)
+    return basis
+
+
+def attack_phash(
+    frame: np.ndarray,
+    epsilon: float | None = 0.08,
+    flip_fraction: float = 1.0,
+    margin: float = 0.15,
+    iterations: int = 300,
+    outer: int = 4,
+    size: int = 32,
+    low: int = 8,
+) -> tuple[np.ndarray, int, int]:
+    """对单帧做 pHash 对抗扰动。
+
+    外层循环每轮用 PIL 精确下采样取得当前 32×32，在其系数域按「最易翻转
+    优先」求解符号翻转扰动，双线性上采样后叠加，再进入下一轮修正插值残差。
+    扰动是平滑低频内容，可扛下采样与重编码。epsilon 为总扰动幅度的上界
+    （None 表示不限制）。返回 (扰动后帧, 0, 翻转位数)。
+    """
+    x0 = np.clip(np.asarray(frame, dtype=np.float64), 0.0, 1.0)
+    original = hashes.phash(x0)
+    h, w = x0.shape
+    up_y = _axis_weights(size, h)
+    up_x = _axis_weights(size, w)
+    x = x0.copy()
+    for _ in range(outer):
+        current = hashes.resize_gray(x, size)
+        flipped_small = _flip_coeffs(current, flip_fraction, margin, iterations, low, size)
+        full = up_y @ (flipped_small - current) @ up_x.T
+        x = np.clip(x + full, 0.0, 1.0)
+        if epsilon is not None:
+            x = np.clip(x, x0 - epsilon, x0 + epsilon)
+    flipped = int(hashes.hamming_bits(original, hashes.phash(x)))
+    return x.astype(np.float32), 0, flipped
+
+
+def _flip_coeffs(
+    current: np.ndarray,
+    flip_fraction: float,
+    margin: float,
+    iterations: int,
+    low: int,
+    size: int,
+) -> np.ndarray:
+    """在 32×32 系数域求解符号翻转，返回翻转后的空域 32×32。"""
+    dct = dct_matrix(size)
+    coeffs = dct @ current @ dct.T
+    flat = coeffs[:low, :low].ravel()
+    margins = flat - flat[1:].mean()
+    target_count = max(1, round(low * low * flip_fraction))
+    targets = np.argsort(np.abs(margins))[:target_count]
+    work = coeffs.copy()
+    lr = 0.06
+    for _ in range(iterations):
+        current_flat = work[:low, :low].ravel()
+        threshold = current_flat[1:].mean()
+        current_margins = current_flat - threshold
+        update = np.zeros((low, low))
+        done = 0
+        for index in targets:
+            value = current_margins[index]
+            side = -1.0 if value > 0 else 1.0
+            if side * value <= margin:
+                row, col = divmod(int(index), low)
+                update[row, col] += side * lr
+            else:
+                done += 1
+        if done == len(targets):
+            break
+        work[:low, :low] += update
+    return dct.T @ work @ dct.T
+
+
+def attack_frames(
+    frames: np.ndarray,
+    epsilon: float = 0.08,
+    iterations: int = 300,
+) -> np.ndarray:
+    """对帧数组逐帧并行施加 pHash 对抗扰动，保持原 dtype。"""
+    from cthulhu_backend.transform.parallel import map_frames
+
+    if frames.dtype == np.uint8:
+        work = frames.astype(np.float32) / 255.0
+        attacked = map_frames(
+            lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
+            work,
+        )
+        return (np.clip(attacked, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+    return map_frames(
+        lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
+        np.asarray(frames, dtype=np.float32),
+    )
