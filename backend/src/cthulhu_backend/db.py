@@ -73,6 +73,11 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     with _connect() as connection:
         connection.executescript(SCHEMA)
+        # 演示素材默认关闭；清理旧版本写入的演示库残留，避免用户素材库里
+        # 出现无法删除的合成演示视频。
+        if os.environ.get("CTHULHU_DEMO_LIBRARY") != "1":
+            _ensure_library_table(connection)
+            connection.execute("DELETE FROM library WHERE path LIKE '%demo-library%'")
         count = connection.execute("SELECT COUNT(*) FROM templates").fetchone()[0]
         if count == 0:
             import time

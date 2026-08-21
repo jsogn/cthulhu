@@ -1099,7 +1099,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
   const [spoof, setSpoof] = useState(false);
   const [codec, setCodec] = useState("H.264");
   const [lossless, setLossless] = useState(false);
-  const [exportReport, setExportReport] = useState(true);
   const [resolution, setResolution] = useState("保持原始分辨率");
   const [bitrate, setBitrate] = useState("");
   const [gop, setGop] = useState("");
@@ -1985,13 +1984,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   <div className="switch-desc">极致保留画质，文件体积相应增大</div>
                 </div>
                 <Switch checked={lossless} onCheckedChange={setLossless} />
-              </div>
-              <div className="switch">
-                <div>
-                  <div className="switch-label">生成汇总报告与审计日志</div>
-                  <div className="switch-desc">即将支持（后续版本）</div>
-                </div>
-                <Switch checked={exportReport} onCheckedChange={setExportReport} disabled />
               </div>
             </div>
           </ScrollArea>

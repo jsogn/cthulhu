@@ -133,11 +133,11 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
   loadLibrary: (files) => {
     const materials: Material[] = files
       .filter((file) => file.video)
-      .map((file, i) => {
+      .map((file) => {
         const report = file.report ?? undefined;
         const score = report?.bitstream.score ?? 0;
         return {
-          id: `demo${i}`,
+          id: file.path,
           name: file.name,
           dur: fmtDur(file.video!.duration),
           res: `${file.video!.width}×${file.video!.height}`,

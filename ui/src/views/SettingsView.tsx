@@ -25,8 +25,6 @@ import { toast } from "@/stores/toasts";
 
 const DEFAULTS: Record<string, string> = {
   export_dir: "~/导出/暗水印清洗",
-  format: "MP4 (H.264)",
-  resolution: "保持原始分辨率",
   parallelism: "3",
   gpu: "自动（H.265 硬编加速）",
   transform_strategy: "fast",
@@ -166,37 +164,6 @@ export default function SettingsView() {
               value={form.export_dir}
               onChange={(e) => setValue("export_dir", e.target.value)}
             />
-          </div>
-          <div className="form-field">
-            <Label>默认输出格式</Label>
-            <Select value={form.format} onValueChange={(v) => setValue("format", v)}>
-              <SelectTrigger className="form-input h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="MP4 (H.264)">MP4 (H.264)</SelectItem>
-                <SelectItem value="MOV (ProRes)" disabled>
-                  MOV (ProRes) · 后续版本
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="form-field">
-            <Label>默认分辨率策略</Label>
-            <Select value={form.resolution} onValueChange={(v) => setValue("resolution", v)}>
-              <SelectTrigger className="form-input h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="保持原始分辨率">保持原始分辨率</SelectItem>
-                <SelectItem value="1920×1080" disabled>
-                  1920×1080 · 后续版本
-                </SelectItem>
-                <SelectItem value="1280×720" disabled>
-                  1280×720 · 后续版本
-                </SelectItem>
-              </SelectContent>
-            </Select>
           </div>
           <div className="form-field">
             <Label>批量并行度上限</Label>
