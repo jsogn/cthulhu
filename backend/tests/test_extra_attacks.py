@@ -134,6 +134,16 @@ def test_saliency_higher_levels_add_strong_content():
     assert float(np.mean(np.abs(out.astype(np.float32) - frames.astype(np.float32)))) > 0.05
 
 
+def test_protect_details_restores_toward_original():
+    frames = make_frames(color=True)
+    attacked = np.clip(frames + 0.06, 0.0, 1.0).astype(np.float32)
+    out = extra_attacks.protect_details(attacked, frames, strength=0.7)
+    assert out.shape == frames.shape
+    assert out.dtype == frames.dtype
+    assert float(np.mean(np.abs(out - frames))) < float(np.mean(np.abs(attacked - frames)))
+    assert float(np.mean(np.abs(out - attacked))) > 0
+
+
 def test_chroma_quant_preserves_luma_reduces_chroma():
     rng = np.random.default_rng(5)
     luma = rng.random((4, 64, 48, 1), dtype=np.float32)

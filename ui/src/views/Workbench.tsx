@@ -135,6 +135,7 @@ type AntiPreset = {
   jointAttack?: boolean;
   saliency?: number;
   nativeFilters?: boolean;
+  detailProtect?: number;
 };
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
@@ -1091,6 +1092,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
   const [antiReembed, setAntiReembed] = useState(false);
   const [antiLevel, setAntiLevel] = useState("关闭");
   const [recropOn, setRecropOn] = useState(false);
+  const [detailProtectOn, setDetailProtectOn] = useState(false);
   const [sharpness, setSharpness] = useState(true);
   const [colorFix, setColorFix] = useState(true);
   const [aiDenoise, setAiDenoise] = useState(true);
@@ -1194,6 +1196,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         colorRestore: colorFix,
         denoise: aiDenoise,
         antiReembed,
+        detailProtect: detailProtectOn ? 0.5 : 0,
         seed: Math.floor(Math.random() * 1_000_000),
         codec: codec === "H.265" ? "libx265" : "libx264",
         lossless,
@@ -1222,6 +1225,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               ...(anti.jointAttack ? { multiHashAttack: true } : {}),
               ...(anti.saliency ? { saliency: anti.saliency } : {}),
               ...(anti.nativeFilters ? { nativeFilters: true } : {}),
+              ...(anti.detailProtect ? { detailProtect: anti.detailProtect } : {}),
             }
           : {}),
       };
@@ -1783,6 +1787,15 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   </div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
+              </div>
+              <div className="switch">
+                <div>
+                  <div className="switch-label">细节保护（人脸/字幕/纹理）</div>
+                  <div className="switch-desc">
+                    观感优先：保护区域回退原帧，但会保留部分水印特征，默认关闭
+                  </div>
+                </div>
+                <Switch checked={detailProtectOn} onCheckedChange={setDetailProtectOn} />
               </div>
               <div className="field">
                 <span className="field-label">指纹对抗强度</span>

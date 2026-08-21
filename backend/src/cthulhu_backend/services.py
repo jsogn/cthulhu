@@ -371,6 +371,7 @@ def run_desensitize(
     saliency: int = 0,
     chroma_levels: int = 0,
     native_filters: bool = False,
+    detail_protect: float = 0.0,
     progress_cb=None,
     should_stop=None,
 ) -> dict:
@@ -561,6 +562,7 @@ def run_desensitize(
                         frames = strategy.apply(
                             batch, output_ids, transform_context, transform_options
                         )
+                        protected = frames.copy() if detail_protect > 0 else None
                         if rotate > 0:
                             frames = strategies.rotate_de_sync(frames, output_ids, rotate)
                         if assault_params.enabled:
@@ -572,6 +574,10 @@ def run_desensitize(
                         elif multi_hash_attack:
                             frames = adversarial.attack_frames_joint(
                                 frames, epsilon=phash_epsilon, iterations=phash_iters
+                            )
+                        if protected is not None:
+                            frames = extra_attacks.protect_details(
+                                frames, protected, detail_protect
                             )
                         if saliency_obj is not None:
                             frames = extra_attacks.salient_overlay(frames, saliency_obj)
@@ -629,6 +635,7 @@ def run_desensitize(
                 if frame_dtype == "uint8":
                     frames = (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
                 frames = strategy.apply(frames, output_ids, transform_context, transform_options)
+                protected = frames.copy() if detail_protect > 0 else None
                 if rotate > 0:
                     frames = strategies.rotate_de_sync(frames, output_ids, rotate)
                 if assault_params.enabled:
@@ -641,6 +648,8 @@ def run_desensitize(
                     frames = adversarial.attack_frames_joint(
                         frames, epsilon=phash_epsilon, iterations=phash_iters
                     )
+                if protected is not None:
+                    frames = extra_attacks.protect_details(frames, protected, detail_protect)
                 if saliency_obj is not None:
                     frames = extra_attacks.salient_overlay(frames, saliency_obj)
                 encoder.write(frames)

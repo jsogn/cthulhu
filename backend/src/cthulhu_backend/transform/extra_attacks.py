@@ -211,6 +211,53 @@ def salient_overlay(frames: np.ndarray, layout: SaliencyLayout | None) -> np.nda
     return map_frames(draw_frame, frames)
 
 
+def protect_details(
+    attacked: np.ndarray,
+    original: np.ndarray,
+    strength: float,
+) -> np.ndarray:
+    """细节保护：按原始画面的边缘/纹理显著性生成掩码，让攻击结果向原帧回退。
+
+    人脸、字幕、商品等高细节区域保持原样，平坦区域保留完整攻击效果；
+    strength 为回退力度（0 关闭，1 完全保护细节区域）。
+    """
+    if strength <= 0:
+        return attacked
+    from scipy.ndimage import gaussian_filter, sobel
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    is_u8 = attacked.dtype == np.uint8
+    attacked_f = attacked.astype(np.float32)
+    original_f = original.astype(np.float32)
+    if is_u8:
+        attacked_f /= 255.0
+        original_f /= 255.0
+
+    def blend(pair: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+        current, source = pair
+        luma = (
+            0.299 * source[..., 0] + 0.587 * source[..., 1] + 0.114 * source[..., 2]
+            if source.ndim == 3
+            else source
+        )
+        gx = sobel(luma, axis=1, mode="reflect")
+        gy = sobel(luma, axis=0, mode="reflect")
+        magnitude = np.sqrt(gx**2 + gy**2)
+        magnitude = gaussian_filter(magnitude, sigma=1.5)
+        peak = float(np.percentile(magnitude, 96))
+        mask = np.clip(magnitude / max(peak, 1e-6), 0.0, 1.0)
+        mask = gaussian_filter(mask, sigma=1.0) * strength
+        if source.ndim == 3:
+            mask = mask[..., None]
+        return current * (1.0 - mask) + source * mask
+
+    result = map_frames(blend, list(zip(attacked_f, original_f)))
+    if is_u8:
+        return (np.clip(result, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+    return result.astype(attacked.dtype)
+
+
 def _spatial_kernel(shape: tuple[int, ...], size: int) -> tuple[int, ...]:
     """把灰度 (H,W) 的滤波尺寸推广到彩色 (H,W,3)（色通道不做滤波）。"""
     if len(shape) == 2:
