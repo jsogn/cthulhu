@@ -130,20 +130,20 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
   标准: {
     rotate: 1.8,
     epsilon: 0.04,
-    dctStep: 8,
-    requant: 64,
-    chromaLevels: 64,
+    dctStep: 4,
+    requant: 96,
+    chromaLevels: 128,
     dropEvery: 11,
   },
   强力: {
     rotate: 2.2,
     epsilon: 0.05,
-    dctStep: 12,
-    requant: 32,
-    chromaLevels: 32,
+    dctStep: 8,
+    requant: 64,
+    chromaLevels: 96,
     dropEvery: 7,
-    noise: 0.01,
-    jitter: 0.01,
+    noise: 0.008,
+    jitter: 0.008,
     transcodeChain: true,
     jointAttack: true,
     saliency: 1,
@@ -159,7 +159,6 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     jitter: 0.01,
     perspective: 0.005,
     warp: 0.003,
-    mirror: true,
     subtractBeta: 1.2,
     transcodeChain: true,
     jointAttack: true,
@@ -1709,14 +1708,14 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
-                    <SelectItem value="轻度">轻度 · 旋转1.2° + 签名扰动</SelectItem>
-                    <SelectItem value="标准">标准 · 加频域/色度重量化</SelectItem>
-                    <SelectItem value="强力">强力 · 加噪声/抖动/转码链</SelectItem>
-                    <SelectItem value="全兵器">全兵器 · 全部原语（研究用）</SelectItem>
+                    <SelectItem value="轻度">轻度 · 观感优先，推荐日常使用</SelectItem>
+                    <SelectItem value="标准">标准 · 轻微画质损失</SelectItem>
+                    <SelectItem value="强力">强力 · 画质损失明显，谨慎使用</SelectItem>
+                    <SelectItem value="全兵器">极限 · 仅研究测试，不保证观感</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="form-help">
-                  针对感知哈希与载荷水印；标准档起处理时间明显增加，全兵器仅建议短素材
+                  强度越高对抗越强但观感越差；日常建议轻度或标准，极限档仅供素材研究
                 </div>
               </div>
 
