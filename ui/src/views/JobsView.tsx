@@ -18,7 +18,7 @@ import { toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<string, string> = {
   detect: "暗水印检测",
-  desensitize: "合规清洗",
+  desensitize: "清洗去重",
   repair: "可见水印修复",
 };
 
@@ -127,7 +127,7 @@ export default function JobsView() {
 
         {jobs.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            暂无任务，回到工作台选择素材并加入队列。
+            暂无任务，回到素材处理选择素材并加入队列。
           </Card>
         ) : (
           jobs.map((job) => (

@@ -171,7 +171,7 @@ export default function TemplatesView() {
       <div className="view-head">
         <div>
           <div className="view-title">模板管理</div>
-          <div className="view-desc">保存常用清洗参数（持久化保存）；套用请到工作台批量操作条</div>
+          <div className="view-desc">保存常用清洗参数（持久化保存）；套用请到素材处理的批量操作条</div>
         </div>
         <Button onClick={openCreate}>+ 新建模板</Button>
       </div>

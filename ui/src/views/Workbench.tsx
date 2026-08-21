@@ -73,7 +73,7 @@ const RISK_OPTIONS: ("全部" | RiskLevel)[] = [
   "未检出异常",
   "待检测",
 ];
-const TAB_KEYS = ["合规清洗", "水印区域", "检测参考", "导出设置"] as const;
+const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "导出设置"] as const;
 const FRAME_MAX = 540;
 
 /** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
@@ -93,20 +93,20 @@ function pendingDetectPaths(jobs: JobInfo[]): Set<string> {
 const CLEAN_LEVELS = ["轻度", "平衡", "深度"] as const;
 type CleanLevel = (typeof CLEAN_LEVELS)[number];
 
-// PRD 5.6 三档清除强度核心参数对照表。
-const LEVEL_PARAMS: Record<
-  CleanLevel,
-  { dct: string; shift: string; lsb: string; crf: number; rate: string }
-> = {
-  轻度: { dct: "5 步长", shift: "±0.1px", lsb: "30%", crf: 23, rate: "≈85%" },
-  平衡: { dct: "10 步长", shift: "±0.2px", lsb: "50%", crf: 24, rate: "≈95%" },
-  深度: { dct: "18 步长", shift: "±0.4px", lsb: "70%", crf: 25, rate: "≈99%" },
-};
-
 const LEVEL_PRESETS: Record<CleanLevel, { restruct: number; perturb: number }> = {
   轻度: { restruct: 25, perturb: 15 },
   平衡: { restruct: 30, perturb: 20 },
   深度: { restruct: 40, perturb: 30 },
+};
+
+/** 三档清洗的真实行为映射（与后端参数一一对应，不展示虚假指标）。 */
+const levelDisplay = (level: CleanLevel, recropOn: boolean) => {
+  const { restruct, perturb } = LEVEL_PRESETS[level];
+  const speed = Math.max(0.85, 1 - 0.15 * (restruct / 100));
+  const gamma = 0.03 + 0.2 * (perturb / 100);
+  const brightness = 0.02 + 0.06 * (perturb / 100);
+  const crop = recropOn ? 0.015 + 0.075 * (perturb / 100) : 0;
+  return { speed, gamma, brightness, crop, restruct };
 };
 
 // PRD 3.2.4 场景模板预设。
@@ -222,7 +222,7 @@ export default function Workbench() {
   const addHistory = useHistoryStore((state) => state.add);
 
   const active = materials.find((m) => m.id === activeId) ?? null;
-  const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("合规清洗");
+  const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("清洗去重");
   const [enqueued, setEnqueued] = useState(false);
 
   const [frame, setFrame] = useState(132);
@@ -1234,7 +1234,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
       addHistory({
         name: material.name,
         time: nowStr(),
-        action: "合规清洗",
+        action: "清洗去重",
         params: `${level}档 · 重构${restruct}% · 微扰${perturb}% · 对抗${antiLevel} · ${codec}${lossless ? "无损" : ""}`,
         out: output,
         result: "成功",
@@ -1258,7 +1258,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         const post = await runDetect(output);
         const residual = post.blind?.ss;
         if (residual != null) {
-          residualNote = ` · 空间水印残留 ${residual.toFixed(2)}（干净基线约 0.28）`;
+          residualNote = ` · 空间水印残留 ${residual.toFixed(2)}（基线随内容而异，仅作相对比较）`;
         }
       } catch {
         // 复检失败不阻断清洗主流程
@@ -1489,7 +1489,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                     </>
                   )}
 
-                  <div className="section-title">处理校验（PRD 3.1.4）</div>
+                  <div className="section-title">处理校验</div>
                   {lastClean ? (
                     <>
                       <div className="metric-grid">
@@ -1718,15 +1718,14 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="合规清洗" className="tab-pane">
+        <TabsContent value="清洗去重" className="tab-pane">
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-2.5">
               <p className="note">
-                清洗已通过验收覆盖空域扩频、DCT-QIM、小波域、LSB 位平面与音频回声
-                五个常见暗水印方案族；
-                对未知方案或带纠错冗余的水印，建议使用平衡档以上并人工复核。
+                清洗对空域扩频、DCT-QIM、小波、LSB 与音频回声五类常见水印方案
+                有针对性手段；对未知方案建议加强对抗档并人工复核。
               </p>
-              <div className="section-title">清除档位（PRD 5.6）</div>
+              <div className="section-title">清除档位</div>
               <Tabs
                 value={level}
                 onValueChange={(value) => {
@@ -1745,13 +1744,33 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                 </TabsList>
               </Tabs>
               <div className="param-table">
-                <div className="param-row"><span>DCT 收缩阈值</span><b>{LEVEL_PARAMS[level].dct}</b></div>
-                <div className="param-row"><span>帧间位移幅度</span><b>{LEVEL_PARAMS[level].shift}</b></div>
-                <div className="param-row"><span>LSB 翻转概率</span><b>{LEVEL_PARAMS[level].lsb}</b></div>
-                <div className="param-row"><span>输出 CRF</span><b>{LEVEL_PARAMS[level].crf}</b></div>
-                <div className="param-row"><span>清除率（基准库实测）</span><b>{LEVEL_PARAMS[level].rate}</b></div>
+                <div className="param-row">
+                  <span>变速倍率</span>
+                  <b>{levelDisplay(level, recropOn).speed.toFixed(3)}×</b>
+                </div>
+                <div className="param-row">
+                  <span>分镜重排</span>
+                  <b>{levelDisplay(level, recropOn).restruct > 0 ? "开启" : "关闭"}</b>
+                </div>
+                <div className="param-row">
+                  <span>调光微扰</span>
+                  <b>
+                    γ±{levelDisplay(level, recropOn).gamma.toFixed(2)} · 亮度±
+                    {levelDisplay(level, recropOn).brightness.toFixed(2)}
+                  </b>
+                </div>
+                <div className="param-row">
+                  <span>重新构图</span>
+                  <b>
+                    {recropOn
+                      ? `四周裁 ${(levelDisplay(level, recropOn).crop * 100).toFixed(1)}%`
+                      : "关闭（见下方开关）"}
+                  </b>
+                </div>
               </div>
-              <p className="note">智能匹配：频域水印 → 中频系数软阈值收缩 · {level}档；强鲁棒水印建议深度档。</p>
+              <p className="note">
+                三档只控制重构 / 变速 / 微扰强度；指纹对抗与编码参数在下方独立设置。
+              </p>
 
               <div className="field">
                 <span className="field-label">
@@ -1816,7 +1835,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                 </div>
               </div>
 
-              <div className="section-title">画质优化（PRD 3.2.1）</div>
+              <div className="section-title">画质优化</div>
               <div className="switch">
                 <div>
                   <div className="switch-label">锐度补偿</div>
@@ -1923,7 +1942,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                 />
               </div>
 
-              <div className="section-title">编码参数（PRD 3.2.2）</div>
+              <div className="section-title">编码参数</div>
               <div className="field-row">
                 <div className="field">
                   <span className="field-label">码率（kbps）</span>
