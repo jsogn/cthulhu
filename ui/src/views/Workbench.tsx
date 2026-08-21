@@ -46,7 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1163,6 +1163,9 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
+  const tabRowRef = useRef<HTMLDivElement | null>(null);
+  const tabItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [visibleTabCount, setVisibleTabCount] = useState<number>(TAB_KEYS.length);
 
   const risk = material?.risk ?? "待检测";
   const score = material?.score ?? 0;
@@ -1219,6 +1222,36 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
       })
       .catch(() => setOutputs([]));
   }, [material?.path]);
+
+  // 标签页自适应：放得下就全部展示，放不下时收起尾部标签并在右侧提供“更多”下拉。
+  useEffect(() => {
+    const compute = () => {
+      const row = tabRowRef.current;
+      if (!row) return;
+      const widths = TAB_KEYS.map((_, index) => tabItemRefs.current[index]?.offsetWidth ?? 0);
+      const total = widths.reduce((sum, width) => sum + width + 4, 0);
+      // 全部放得下时不显示“更多”按钮，也无需预留宽度。
+      if (total <= row.clientWidth) {
+        setVisibleTabCount(TAB_KEYS.length);
+        return;
+      }
+      const available = row.clientWidth - 48; // 溢出时预留“更多”按钮宽度
+      let used = 0;
+      let count = 0;
+      for (let index = 0; index < TAB_KEYS.length; index++) {
+        const item = tabItemRefs.current[index];
+        if (!item) break;
+        used += item.offsetWidth + 4; // 加上相邻标签的间距
+        if (used > available) break;
+        count = index + 1;
+      }
+      setVisibleTabCount(Math.max(1, count));
+    };
+    compute();
+    const observer = new ResizeObserver(compute);
+    if (tabRowRef.current) observer.observe(tabRowRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const runClean = async () => {
     const target = material as (Material & { path?: string }) | null;
@@ -1455,19 +1488,48 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   return (
     <aside className="pane pane-right">
       <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])} className="min-h-0 flex-1">
-        <ScrollArea className="w-full shrink-0">
+        <div ref={tabRowRef} className="flex w-full shrink-0 items-center border-b border-border">
           <TabsList
             variant="line"
-            className="flex w-max gap-1 rounded-none border-b border-border p-0"
+            className="flex min-w-0 flex-1 justify-start gap-1 overflow-hidden rounded-none border-0 p-0"
           >
-            {TAB_KEYS.map((key) => (
-              <TabsTrigger key={key} value={key} className="shrink-0 whitespace-nowrap px-3">
+            {TAB_KEYS.map((key, index) => (
+              <TabsTrigger
+                key={key}
+                ref={(el) => {
+                  tabItemRefs.current[index] = el;
+                }}
+                value={key}
+                className={cn(
+                  "shrink-0 whitespace-nowrap px-2",
+                  index >= visibleTabCount && "invisible",
+                )}
+              >
                 {key}
               </TabsTrigger>
             ))}
           </TabsList>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+          {visibleTabCount < TAB_KEYS.length && (
+            <Select
+              value=""
+              onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])}
+            >
+              <SelectTrigger
+                className="mr-1 h-8 w-auto shrink-0 gap-1 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:text-foreground"
+                aria-label="更多标签页"
+              >
+                <SelectValue placeholder="更多" />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {TAB_KEYS.slice(visibleTabCount).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {key}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
 
         <TabsContent value="检测参考" className="tab-pane">
           <ScrollArea className="h-full">
