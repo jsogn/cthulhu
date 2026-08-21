@@ -204,6 +204,8 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--drop-every", type=int, default=0)
     parser.add_argument("--jitter", type=float, default=0.0)
     parser.add_argument("--perspective", type=float, default=0.0)
+    parser.add_argument("--warp", type=float, default=0.0)
+    parser.add_argument("--subtract-beta", type=float, default=0.0)
     parser.add_argument("--mirror", action="store_true")
     parser.add_argument("--chroma-levels", type=int, default=0)
     parser.add_argument("--no-regrade", action="store_true")
@@ -257,7 +259,9 @@ def _main(argv: list[str] | None = None) -> None:
             drop_every=args.drop_every,
             jitter=args.jitter,
             perspective=args.perspective,
+            warp=args.warp,
             mirror=args.mirror,
+            subtract_beta=args.subtract_beta,
             chroma_levels=args.chroma_levels,
             regrade=not args.no_regrade,
             sharpness=not args.no_sharpness,

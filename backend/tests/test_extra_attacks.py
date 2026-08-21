@@ -60,6 +60,29 @@ def test_perspective_shear_preserves_content_and_shape():
     assert float(np.abs(first.mean() - frames.mean())) < 0.1  # 内容身份保持
 
 
+def test_local_warp_deterministic_and_content_preserving():
+    frames = make_frames()
+    params = extra_attacks.AssaultParams(warp=0.003)
+    first = extra_attacks.apply(frames, params, np.random.default_rng(8))
+    second = extra_attacks.apply(frames, params, np.random.default_rng(8))
+    assert first.shape == frames.shape
+    np.testing.assert_array_equal(first, second)
+    assert float(np.mean(np.abs(first - frames))) > 1e-4
+    assert float(np.abs(first.mean() - frames.mean())) < 0.05
+
+
+def test_estimate_subtract_reduces_spread_spectrum_score():
+    from cthulhu_backend.watermark import common, detect, ss
+
+    frames = make_frames()
+    bits = common.payload_bits(1, 64)
+    watermarked = np.stack([ss.embed(frame, bits, seed=0, alpha=0.25) for frame in frames])
+    before = detect.video_scores(watermarked)["ss"]
+    attacked = extra_attacks.estimate_subtract(watermarked, beta=1.2, size=3)
+    after = detect.video_scores(attacked)["ss"]
+    assert after < before
+
+
 def test_chroma_quant_preserves_luma_reduces_chroma():
     rng = np.random.default_rng(5)
     luma = rng.random((4, 64, 48, 1), dtype=np.float32)

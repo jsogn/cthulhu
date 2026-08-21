@@ -21,8 +21,10 @@ class AssaultParams:
     mirror: bool = False
     jitter: float = 0.0
     perspective: float = 0.0
+    warp: float = 0.0
     median: int = 0
     noise: float = 0.0
+    subtract_beta: float = 0.0
     requant: int = 0
     dct_step: float = 0.0
     chroma_levels: int = 0
@@ -35,8 +37,10 @@ class AssaultParams:
                 self.mirror,
                 self.jitter > 0,
                 self.perspective > 0,
+                self.warp > 0,
                 self.median > 0,
                 self.noise > 0,
+                self.subtract_beta > 0,
                 self.requant > 0,
                 self.dct_step > 0,
                 self.chroma_levels > 0,
@@ -205,6 +209,75 @@ def perspective_shear(
     return result.astype(frames.dtype)
 
 
+def local_warp(
+    frames: np.ndarray,
+    strength: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """局部平滑扭曲：粗网格随机位移上采样为平滑光流，逐帧重采样。
+
+    模拟镜头微畸变/水波效果，破坏任何依赖精确空间对齐的检测；
+    位移场平滑连续，视觉上接近不可见。
+    """
+    if strength <= 0:
+        return frames
+    from scipy.ndimage import map_coordinates, zoom
+
+    from cthulhu_backend.transform.parallel import map_frames
+
+    is_u8 = frames.dtype == np.uint8
+    work = frames.astype(np.float32)
+    if is_u8:
+        work /= 255.0
+    h, w = work.shape[1:3]
+    span = strength * min(h, w)
+    grid = (5, 8)
+    fields = rng.uniform(-1.0, 1.0, (len(work), 2, grid[0], grid[1])).astype(np.float32) * span
+
+    def warp_one(pair: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+        frame, field = pair
+        dy = zoom(field[0], (h / grid[0], w / grid[1]), order=1)
+        dx = zoom(field[1], (h / grid[0], w / grid[1]), order=1)
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        coords = np.stack([yy + dy, xx + dx])
+        if frame.ndim == 3:
+            return np.stack(
+                [map_coordinates(frame[..., c], coords, order=1, mode="nearest") for c in range(3)],
+                axis=-1,
+            )
+        return map_coordinates(frame, coords, order=1, mode="nearest")
+
+    result = map_frames(warp_one, list(zip(work, fields)))
+    if is_u8:
+        return (np.clip(result, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+    return np.clip(result, 0.0, 1.0).astype(frames.dtype)
+
+
+def estimate_subtract(
+    frames: np.ndarray,
+    beta: float,
+    size: int = 3,
+) -> np.ndarray:
+    """盲估计相减：把「原帧与去噪帧之差」当作水印估计，按 beta 倍过减。
+
+    beta=1 等价于去噪；beta>1 对加性扩频水印形成过减攻击（经典 Stirmark
+    类手段），在不去噪整片的前提下压低载荷相关。
+    """
+    if beta <= 0:
+        return frames
+    from cthulhu_backend.attacks.spatial import wiener_denoise
+
+    original_dtype = frames.dtype
+    work = frames.astype(np.float32)
+    if original_dtype == np.uint8:
+        work /= 255.0
+    denoised = wiener_denoise(work, size=size)
+    attacked = np.clip(work - beta * (work - denoised), 0.0, 1.0)
+    if original_dtype == np.uint8:
+        return (attacked * 255.0).round().astype(np.uint8)
+    return attacked.astype(original_dtype)
+
+
 def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator) -> np.ndarray:
     """逐帧随机平移抖动：随机裁剪偏移后缩回原尺寸，模拟机位晃动。"""
     if jitter <= 0:
@@ -261,10 +334,14 @@ def apply(
         work = translate_jitter(work, params.jitter, rng)
     if params.perspective > 0:
         work = perspective_shear(work, params.perspective, rng)
+    if params.warp > 0:
+        work = local_warp(work, params.warp, rng)
     if params.median > 0:
         work = median(work, params.median)
     if params.noise > 0:
         work = gaussian_noise(work, params.noise, rng)
+    if params.subtract_beta > 0:
+        work = estimate_subtract(work, params.subtract_beta)
     if params.requant > 0:
         work = pixel_requant(work, params.requant)
     if params.dct_step > 0:
