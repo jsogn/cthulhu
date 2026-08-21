@@ -220,7 +220,6 @@ export default function Workbench() {
 
   const [frame, setFrame] = useState(132);
   const [playing, setPlaying] = useState(false);
-  const [markers, setMarkers] = useState<number[]>([]);
   const [comparePct, setComparePct] = useState(50);
   const frameRef = useRef(frame);
   frameRef.current = frame;
@@ -277,7 +276,6 @@ export default function Workbench() {
         setFrame={setFrame}
         playing={playing}
         setPlaying={setPlaying}
-        markers={markers}
         comparePct={comparePct}
         setComparePct={setComparePct}
         onEnqueue={handleEnqueue}
@@ -543,7 +541,6 @@ interface PreviewProps {
   setFrame: (value: number) => void;
   playing: boolean;
   setPlaying: (value: boolean) => void;
-  markers: number[];
   comparePct: number;
   setComparePct: (value: number) => void;
   onEnqueue: () => void;
@@ -555,7 +552,6 @@ function PreviewPane({
   setFrame,
   playing,
   setPlaying,
-  markers,
   comparePct,
   setComparePct,
 }: PreviewProps) {
@@ -951,16 +947,6 @@ function PreviewPane({
         </Button>
         <span className="timecode mono">{fmtFrames(frame, fps)}</span>
         <div className="timeline-wrap">
-          <div className="marks">
-            {markers.map((f) => (
-              <span
-                key={f}
-                className="mark-dot"
-                style={{ left: `${(f / maxFrame) * 100}%` }}
-                title={`标记 ${fmtFrames(f, fps)}`}
-              />
-            ))}
-          </div>
           <input
             className="timeline"
             type="range"
