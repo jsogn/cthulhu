@@ -84,7 +84,7 @@ const RISK_OPTIONS: ("全部" | RiskLevel)[] = [
   "未检出异常",
   "待检测",
 ];
-const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "处理产物"] as const;
+const TAB_KEYS = ["清洗去重", "检测参考", "处理产物", "水印区域"] as const;
 const FRAME_MAX = 540;
 
 /** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
