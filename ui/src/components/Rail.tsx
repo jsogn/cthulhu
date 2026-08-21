@@ -6,7 +6,7 @@ import { useAppStore, type ViewKey } from "@/stores/app";
 const MAIN_ITEMS: { key: ViewKey; label: string; icon: LucideIcon }[] = [
   { key: "workbench", label: "素材处理", icon: LayoutDashboard },
   { key: "jobs", label: "批量任务", icon: ListTodo },
-  { key: "templates", label: "模板", icon: Layers },
+  { key: "templates", label: "去重模板", icon: Layers },
   { key: "history", label: "处理历史", icon: History },
 ];
 

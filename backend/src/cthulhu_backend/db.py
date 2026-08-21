@@ -79,7 +79,8 @@ def init_db() -> None:
         legacy = {"轻度": (25, 15, False), "平衡": (30, 20, True), "深度": (40, 30, True)}
         for row in connection.execute("SELECT id, payload FROM templates").fetchall():
             payload = json.loads(row["payload"])
-            if "restruct" in payload:
+            # 旧字段 restruct 或新字段 retime 均表示已经迁移过，直接跳过。
+            if "restruct" in payload or "retime" in payload:
                 continue
             restruct, perturb, denoise = legacy.get(payload.get("level"), (30, 20, True))
             connection.execute(
