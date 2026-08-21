@@ -107,11 +107,6 @@ class PairRequest(BaseModel):
     b: str
 
 
-class PreviewRequest(BaseModel):
-    path: str
-    output: str
-
-
 class CandidatesRequest(BaseModel):
     path: str
     output_dir: str
@@ -489,20 +484,6 @@ def export_videos(request: ExportRequest) -> dict:
     return services.export_outputs(request.paths, str(export_dir))
 
 
-@router.post("/preview")
-async def preview(request: PreviewRequest) -> dict:
-    """生成原片与清洗产物的并排预览拼图，返回图片本地路径。"""
-    try:
-        image_path = await asyncio.to_thread(
-            services.make_preview_montage, request.path, request.output
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
-    return {"image_path": image_path}
-
-
 @router.post("/candidates")
 async def candidates(request: CandidatesRequest) -> dict:
     """同一素材生成多个差异化候选并按低损优选评分排序。"""
@@ -518,14 +499,6 @@ async def candidates(request: CandidatesRequest) -> dict:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
-
-
-@router.get("/preview-image")
-async def preview_image(path: str = Query(...)) -> FileResponse:
-    """按路径返回已生成的预览拼图。"""
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="预览图不存在，请重新生成")
-    return FileResponse(path, media_type="image/png")
 
 
 @router.get("/outputs")

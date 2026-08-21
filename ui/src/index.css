@@ -594,6 +594,44 @@ body {
   display: block;
 }
 
+.compare-player {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compare-label {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.compare-video {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 10px;
+  background: #000;
+  object-fit: contain;
+}
+
+.compare-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .mat-empty {
   flex: 1;
   display: flex;

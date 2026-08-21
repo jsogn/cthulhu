@@ -411,47 +411,6 @@ export async function runDesensitize(
   return res.json();
 }
 
-/** 生成原片与产物的并排预览拼图，返回图片本地路径。 */
-export async function makePreview(
-  path: string,
-  output: string,
-): Promise<{ image_path: string }> {
-  const res = await apiFetch("/api/preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, output }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data as { detail?: string } | null)?.detail ?? `生成预览失败（${res.status}）`);
-  }
-  return res.json();
-}
-
-/** 预览拼图的鉴权图片地址。 */
-export function previewImageUrl(path: string): string {
-  return `${backendUrl}/api/preview-image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
-}
-
-export interface SimilarityReport {
-  content_cosine: number;
-  motion_cosine: number;
-  dhash_agreement: number;
-  ssim_mean: number;
-  reduction: { content: number; motion: number; dhash: number };
-}
-
-/** 两段视频的内容相似度报告。 */
-export async function runSimilarity(a: string, b: string): Promise<SimilarityReport> {
-  const res = await apiFetch("/api/similarity", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ a, b }),
-  });
-  if (!res.ok) throw new Error(`相似度计算失败（${res.status}）`);
-  return res.json();
-}
-
 export interface OutputInfo {
   kind: "cleaned" | "repaired" | "candidate";
   path: string;

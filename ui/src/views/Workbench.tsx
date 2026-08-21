@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
+import ComparePlayer from "@/components/ComparePlayer";
 import {
   analyzeAudio,
   enqueueJob,
@@ -46,10 +47,7 @@ import {
   frameUrl,
   generateCandidates,
   listTemplates,
-  makePreview,
   mediaUrl,
-  previewImageUrl,
-  runSimilarity,
   thumbUrl,
   type AudioAnalysis,
   type CandidateInfo,
@@ -57,7 +55,6 @@ import {
   type DesensitizeOptions,
   type JobInfo,
   type OutputInfo,
-  type SimilarityReport,
   type TemplateInfo,
 } from "@/lib/backend";
 import { cn } from "@/lib/utils";
@@ -1036,15 +1033,14 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     vmaf?: number | null;
     vmaf_aligned?: number | null;
   } | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
   const [compared, setCompared] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [compareImage, setCompareImage] = useState<string | null>(null);
-  const [compareSimilarity, setCompareSimilarity] = useState<SimilarityReport | null>(null);
-  const [comparing, setComparing] = useState(false);
+  const [compareLeft, setCompareLeft] = useState<string>("");
+  const [compareRight, setCompareRight] = useState<string>("");
+  const [compareLeftLabel, setCompareLeftLabel] = useState<string>("");
+  const [compareRightLabel, setCompareRightLabel] = useState<string>("");
   const [hoverPath, setHoverPath] = useState<string | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
@@ -1175,7 +1171,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       ]);
       setLastClean(null);
       setLastOutput(null);
-      setPreviewUrl(null);
       toast("已加入处理队列，完成后自动刷新校验与预览");
     } catch (error) {
       toast(error instanceof Error ? error.message : "入队失败");
@@ -1234,29 +1229,23 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     });
   };
 
-  const runComparePair = async (a: string, b: string) => {
-    setComparing(true);
-    try {
-      const [similarity, preview] = await Promise.all([
-        runSimilarity(a, b),
-        makePreview(a, b),
-      ]);
-      setCompareSimilarity(similarity);
-      setCompareImage(previewImageUrl(preview.image_path));
-      setCompareOpen(true);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "对比失败");
-    } finally {
-      setComparing(false);
-    }
+  const runComparePair = (a: string, b: string, leftLabel: string, rightLabel: string) => {
+    setCompareLeft(a);
+    setCompareRight(b);
+    setCompareLeftLabel(leftLabel);
+    setCompareRightLabel(rightLabel);
+    setCompareOpen(true);
   };
 
   const runCompare = () => {
-    if (compared.length === 2) void runComparePair(compared[0], compared[1]);
+    if (compared.length !== 2) return;
+    const first = outputs.find((item) => item.path === compared[0]);
+    const second = outputs.find((item) => item.path === compared[1]);
+    runComparePair(compared[0], compared[1], first?.name ?? "产物 A", second?.name ?? "产物 B");
   };
 
   const compareOriginal = (output: OutputInfo) => {
-    if (material?.path) void runComparePair(material.path, output.path);
+    if (material?.path) runComparePair(material.path, output.path, "原片", output.name);
   };
 
   // 清洗任务完成后：更新校验指标、产物列表、历史与并排预览。
@@ -1289,9 +1278,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     void useMaterialsStore.getState().refreshOutputCounts();
     void fetchOutputs(material?.path ?? "")
       .then((report) => setOutputs(report.outputs))
-      .catch(() => undefined);
-    void makePreview(material?.path ?? "", result.output)
-      .then((preview) => setPreviewUrl(previewImageUrl(preview.image_path)))
       .catch(() => undefined);
     toast(`清洗完成：内容相似度 ${(result.similarity_after?.content_cosine ?? 0).toFixed(2)}`, result.output, {
       label: "打开文件夹",
@@ -1500,14 +1486,16 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                           </Button>
                         </div>
                       )}
-                      {previewUrl && (
+                      {lastOutput && material?.path && (
                         <Button
                           variant="secondary"
                           size="sm"
                           className="mt-2 w-full"
-                          onClick={() => setPreviewOpen(true)}
+                          onClick={() =>
+                            runComparePair(material.path as string, lastOutput, "原片", "本次产物")
+                          }
                         >
-                          查看并排预览（确认观感）
+                          与原片同屏对比（同步播放）
                         </Button>
                       )}
                       <Button
@@ -1948,10 +1936,10 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                   </div>
                   <Button
                     variant="secondary"
-                    disabled={compared.length !== 2 || comparing}
+                    disabled={compared.length !== 2}
                     onClick={runCompare}
                   >
-                    {comparing ? "对比中…" : "并排对比所选两个"}
+                    并排对比所选两个
                   </Button>
                 </>
               )}
@@ -2072,51 +2060,21 @@ function ContextPanel({ tab, setTab }: ContextProps) {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-[min(90vw,960px)]">
-          <DialogHeader>
-            <DialogTitle>清洗前后并排预览</DialogTitle>
-            <DialogDescription>
-              左列为原片、右列为处理产物，确认观感无异常后再使用该产物。
-            </DialogDescription>
-          </DialogHeader>
-          {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="清洗前后对比"
-              className="max-h-[70vh] w-full rounded-md object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
-        <DialogContent className="max-w-[min(90vw,960px)]">
+        <DialogContent className="max-w-[min(94vw,1100px)]">
           <DialogHeader>
-            <DialogTitle>产物并排对比</DialogTitle>
+            <DialogTitle>同步对比</DialogTitle>
             <DialogDescription>
-              左列为所选第一个产物，右列为第二个；指标越低差异越大。
+              两侧画面同步播放，直观对照观感与处理差异。
             </DialogDescription>
           </DialogHeader>
-          {compareImage && (
-            <img
-              src={compareImage}
-              alt="产物对比"
-              className="max-h-[60vh] w-full rounded-md object-contain"
+          {compareLeft && compareRight && (
+            <ComparePlayer
+              left={compareLeft}
+              right={compareRight}
+              leftLabel={compareLeftLabel}
+              rightLabel={compareRightLabel}
             />
-          )}
-          {compareSimilarity && (
-            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-              <div className="rounded-md border border-border p-2">
-                内容相似度 {compareSimilarity.content_cosine.toFixed(3)}
-              </div>
-              <div className="rounded-md border border-border p-2">
-                时序相似度 {compareSimilarity.motion_cosine.toFixed(3)}
-              </div>
-              <div className="rounded-md border border-border p-2">
-                SSIM {compareSimilarity.ssim_mean.toFixed(3)}
-              </div>
-            </div>
           )}
         </DialogContent>
       </Dialog>
