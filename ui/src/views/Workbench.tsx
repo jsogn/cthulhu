@@ -268,69 +268,6 @@ export default function Workbench() {
     }
   };
 
-  // 全局快捷键（工作台内生效）。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const typing =
-        !!target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable);
-
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "enter") {
-        e.preventDefault();
-        handleEnqueue();
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-        if (typing) return;
-        e.preventDefault();
-        if (e.shiftKey) {
-          useRegionsStore.getState().redo();
-        } else {
-          useRegionsStore.getState().undo();
-        }
-        return;
-      }
-
-      if (typing || e.altKey) return;
-      const interactive =
-        !!target &&
-        (target.tagName === "BUTTON" || !!target.closest("[role='tab']") || !!target.closest(".sel-box"));
-      if (interactive) return;
-
-      if (e.key === " ") {
-        e.preventDefault();
-        setPlaying((p) => !p);
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setPlaying(false);
-        setFrame((f) => Math.max(0, f - 1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setPlaying(false);
-        setFrame((f) => Math.min(FRAME_MAX, f + 1));
-      } else if (e.key.toLowerCase() === "v") {
-        e.preventDefault();
-        setComparePct((p) => (p === 100 ? 50 : 100));
-      } else if (e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        const f = frameRef.current;
-        setMarkers((ms) => (ms.includes(f) ? ms : [...ms, f].sort((a, b) => a - b)));
-        const fps = Number.parseFloat(active?.fps ?? "30") || 30;
-        toast(`已打点 ${fmtFrames(f, fps)}`);
-      } else if (e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        setMarkers([]);
-        toast("已清除全部标记");
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
   return (
     <section className="workbench">
       <MaterialPane />
@@ -1703,7 +1640,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                 执行修复
               </Button>
               <p className="note">
-                点击「添加水印区域」后，在预览中拖动选框圈住水印位置，可继续调整大小与参数；⌘/Ctrl+Z 撤销，⌘/Ctrl+Shift+Z 重做。
+                点击「添加水印区域」后，在预览中拖动选框圈住水印位置，可继续调整大小与参数；撤销/重做请用上方按钮。
               </p>
             </div>
           </ScrollArea>
