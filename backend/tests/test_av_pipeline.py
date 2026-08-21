@@ -347,3 +347,20 @@ def test_library_output_counts(tmp_path):
     ffmpeg.encode_video(video, str(cleaned), fps=30)
     counts = services.library_output_counts()
     assert counts[str(source)] == 1
+
+
+@needs_ffmpeg
+def test_delete_output_guards_and_removes(tmp_path):
+    video = samples.make_cut_video(2, 8, 160, 120, seed=41)
+    source = tmp_path / "src.mp4"
+    cleaned = tmp_path / "src_cleaned_20260101.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    ffmpeg.encode_video(video, str(cleaned), fps=30)
+    # 源素材不属于产物，禁止删除。
+    try:
+        services.delete_output(str(source))
+        raise AssertionError("应拒绝删除非产物文件")
+    except ValueError:
+        pass
+    assert services.delete_output(str(cleaned)) is True
+    assert not cleaned.exists()

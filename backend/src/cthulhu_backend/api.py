@@ -516,6 +516,18 @@ def outputs_counts() -> dict:
     return services.library_output_counts()
 
 
+@router.delete("/outputs")
+def delete_output(path: str = Query(...)) -> dict:
+    """删除指定处理产物（仅限清洗/修复/候选命名）。"""
+    try:
+        removed = services.delete_output(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="产物不存在")
+    return {"removed": 1}
+
+
 @router.post("/ffmpeg/select")
 def select_ffmpeg(request: PathRequest) -> dict:
     """用户手动指定本机已有的 ffmpeg 可执行文件。"""

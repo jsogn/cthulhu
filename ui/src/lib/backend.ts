@@ -433,6 +433,18 @@ export async function fetchOutputCounts(): Promise<Record<string, number>> {
   return res.json();
 }
 
+/** 删除指定处理产物（仅限清洗/修复/候选产物）。 */
+export async function deleteOutput(path: string): Promise<{ removed: number }> {
+  const res = await apiFetch(`/api/outputs?path=${encodeURIComponent(path)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data as { detail?: string } | null)?.detail ?? `删除失败（${res.status}）`);
+  }
+  return res.json();
+}
+
 export interface CandidateInfo {
   index: number;
   output: string;

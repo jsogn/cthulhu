@@ -15,6 +15,16 @@ import {
   Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +51,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
 import {
   analyzeAudio,
+  deleteOutput,
   enqueueJob,
   exportOutputs,
   fetchOutputs,
@@ -1134,8 +1145,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   } | null>(null);
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
-  const [compared, setCompared] = useState<string[]>([]);
-  const [hoverPath, setHoverPath] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
   const lastOptionsRef = useRef<DesensitizeOptions | null>(null);
@@ -1178,13 +1188,11 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   useEffect(() => {
     if (!material?.path) {
       setOutputs([]);
-      setCompared([]);
       return;
     }
     void fetchOutputs(material.path)
       .then((result) => {
         setOutputs(result.outputs);
-        setCompared([]);
       })
       .catch(() => setOutputs([]));
   }, [material?.path]);
@@ -1315,27 +1323,28 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     }
   };
 
-  const toggleCompare = (path: string) => {
-    setCompared((current) => {
-      if (current.includes(path)) return current.filter((item) => item !== path);
-      if (current.length >= 2) return [current[1], path];
-      return [...current, path];
-    });
-  };
-
   const runComparePair = (a: string, b: string, leftLabel: string, rightLabel: string) => {
     onStartCompare(a, b, leftLabel, rightLabel);
   };
 
-  const runCompare = () => {
-    if (compared.length !== 2) return;
-    const first = outputs.find((item) => item.path === compared[0]);
-    const second = outputs.find((item) => item.path === compared[1]);
-    runComparePair(compared[0], compared[1], first?.name ?? "产物 A", second?.name ?? "产物 B");
-  };
-
   const compareOriginal = (output: OutputInfo) => {
     if (material?.path) runComparePair(material.path, output.path, "原片", "处理后");
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      await deleteOutput(pendingDelete.path);
+      await fetchOutputs(material?.path ?? "")
+        .then((report) => setOutputs(report.outputs))
+        .catch(() => undefined);
+      void useMaterialsStore.getState().refreshOutputCounts();
+      toast(`已删除产物：${pendingDelete.name}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "删除失败");
+    } finally {
+      setPendingDelete(null);
+    }
   };
 
   // 清洗任务完成后：更新校验指标、产物列表、历史与并排预览。
@@ -1972,65 +1981,39 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                 </p>
               ) : (
                 <>
-                  <p className="note">
-                    点击缩略图播放，勾选任意两个并排对比，单个产物可直接「对比原片」。
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {outputs.map((output) => (
-                      <div
-                        key={output.path}
-                        className={cn(
-                          "out-card",
-                          compared.includes(output.path) && "out-card-selected",
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          className="out-card-check"
-                          checked={compared.includes(output.path)}
-                          aria-label="选择用于对比"
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={() => toggleCompare(output.path)}
-                        />
-                        <img
-                          src={thumbUrl(output.path, 320)}
-                          loading="lazy"
-                          alt=""
-                          onClick={() => setPlayerPath(output.path)}
-                          onMouseEnter={() => setHoverPath(output.path)}
-                          onMouseLeave={() => setHoverPath(null)}
-                        />
-                        <div className="out-meta">
-                          <span className="mono text-xs">
-                            {OUTPUT_KIND_LABEL[output.kind]} · {outputTimeLabel(output.mtime)}
-                          </span>
-                          <span className="mono text-xs">{fmtSize(output.size)}</span>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => compareOriginal(output)}>
-                            对比原片
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openInFolder(output.path);
-                            }}
-                          >
-                            打开
-                          </Button>
-                        </div>
+                  <p className="note">播放或与原片同步对比，确认观感；删除后不可恢复。</p>
+                  {outputs.map((output) => (
+                    <div key={output.path} className="out-row">
+                      <div className="out-row-main">
+                        <span className="out-kind">{OUTPUT_KIND_LABEL[output.kind]}</span>
+                        <span className="mono truncate text-xs text-muted-foreground">
+                          {output.name}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="secondary"
-                    disabled={compared.length !== 2}
-                    onClick={runCompare}
-                  >
-                    并排对比所选两个
-                  </Button>
+                      <div className="mono text-xs text-muted-foreground">
+                        {fmtSize(output.size)} · {outputTimeLabel(output.mtime)}
+                      </div>
+                      <div className="out-row-actions">
+                        <Button variant="ghost" size="sm" onClick={() => compareOriginal(output)}>
+                          对比原片
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setPlayerPath(output.path)}>
+                          播放
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openInFolder(output.path)}>
+                          打开
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => setPendingDelete(output)}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </>
               )}
             </div>
@@ -2167,11 +2150,23 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         </DialogContent>
       </Dialog>
 
-      {hoverPath && (
-        <div className="hover-preview">
-          <img src={thumbUrl(hoverPath, 720)} alt="产物放大预览" />
-        </div>
-      )}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除产物</AlertDialogTitle>
+            <AlertDialogDescription>
+              将删除「{pendingDelete?.name}」，文件会从磁盘移除，此操作不可恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmDelete()}>确认删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

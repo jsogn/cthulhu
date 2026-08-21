@@ -850,6 +850,18 @@ def library_output_counts() -> dict[str, int]:
     return counts
 
 
+def delete_output(path: str) -> bool:
+    """删除一个处理产物文件；只允许产物命名（清洗/修复/候选），防止误删源素材。"""
+    target = Path(path)
+    if not target.is_file():
+        return False
+    name = target.name
+    if not any(part in name for part in ("_cleaned", "_repaired", "_候选")):
+        raise ValueError("仅允许删除清洗/修复/候选产物")
+    target.unlink()
+    return True
+
+
 def _candidate_score(result: dict) -> float:
     """低损优选评分：内容保持与画面稳定性为主，去重破坏为辅。"""
     similarity = result.get("similarity_after", {})
