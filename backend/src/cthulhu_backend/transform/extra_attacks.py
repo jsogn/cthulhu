@@ -10,8 +10,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.fftpack import dctn, idctn
 from scipy.ndimage import median_filter
+
+_DCT8_CACHE: np.ndarray | None = None
+
+
+def _dct8() -> np.ndarray:
+    """8×8 正交 DCT-II 矩阵（与 scipy norm="ortho" 一致），模块级缓存。"""
+    global _DCT8_CACHE
+    if _DCT8_CACHE is None:
+        frequency = np.arange(8)[:, None]
+        sample = np.arange(8)[None, :]
+        basis = np.cos(np.pi / 8 * (sample + 0.5) * frequency)
+        basis *= np.sqrt(2.0 / 8)
+        basis[0, :] /= np.sqrt(2.0)
+        _DCT8_CACHE = basis.astype(np.float32)
+    return _DCT8_CACHE
 
 
 @dataclass
@@ -231,17 +245,14 @@ def gaussian_noise(frames: np.ndarray, sigma: float, rng: np.random.Generator) -
     if sigma <= 0:
         return frames
     original_dtype = frames.dtype
+    # uint8 域直接加减少量整数扰动，内存带宽降到 float32 的四分之一。
+    if original_dtype == np.uint8:
+        delta = rng.integers(-1, 2, frames.shape, dtype=np.int8).astype(np.int16)
+        work = frames.astype(np.int16) + delta * max(1, round(sigma * 255))
+        return np.clip(work, 0, 255).astype(np.uint8)
     work = frames.astype(np.float32)
-    if original_dtype == np.uint8:
-        work /= 255.0
-    noisy = np.clip(
-        work + rng.standard_normal(frames.shape, dtype=np.float32) * sigma,
-        0.0,
-        1.0,
-    )
-    if original_dtype == np.uint8:
-        return (noisy * 255.0).round().astype(np.uint8)
-    return noisy.astype(original_dtype)
+    delta = rng.integers(-1, 2, frames.shape, dtype=np.int8).astype(np.float32) * sigma
+    return np.clip(work + delta, 0.0, 1.0).astype(original_dtype)
 
 
 def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
@@ -260,7 +271,8 @@ def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
 def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
     if step <= 0:
         return frames
-    # 批量向量化：一次 dctn/idctn 处理所有帧（及所有通道），避免逐帧 Python 循环。
+    # 预计算 8×8 矩阵 + 子批 matmul：整块一次处理的临时数组会撑爆内存
+    # 造成换页，子批循环把峰值内存控制在可控范围且走 BLAS 批矩阵乘。
     work = np.asarray(frames, dtype=np.float32)
     if work.max() <= 1.0:
         work = work * 255.0
@@ -270,13 +282,29 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
     if pad_h or pad_w:
         work = np.pad(work, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="edge")
     ph, pw = work.shape[1:3]
-    blocks = work.reshape(len(work), ph // 8, 8, pw // 8, 8, channels)
-    coeffs = dctn(blocks, axes=(2, 4), norm="ortho")
-    coeffs = np.round(coeffs / step) * step
-    recon = idctn(coeffs, axes=(2, 4), norm="ortho").reshape(len(work), ph, pw, channels)
-    result = np.clip(recon[:, :h, :w] / 255.0, 0.0, 1.0)
-    if channels == 1:
-        result = result[..., 0]
+    matrix = _dct8()
+    out = np.empty_like(work)
+    sub_batch = 32
+    for start in range(0, len(work), sub_batch):
+        sub = work[start : start + sub_batch]
+        blocks = sub.reshape(len(sub), ph // 8, 8, pw // 8, 8, channels)
+        # (F, BH, BW, 8, 8, C) → (M, 8, 8, C)
+        stacked = blocks.transpose(0, 1, 3, 2, 4, 5).reshape(-1, 8, 8, channels)
+        # 通道前置，使最后两维恰为 8×8 块，matmul 沿块维度收缩。
+        work_blocks = stacked.transpose(0, 3, 1, 2)
+        tmp = np.matmul(matrix, work_blocks)
+        coeffs = np.matmul(tmp, matrix.T)
+        coeffs = np.round(coeffs / step) * step
+        np.matmul(matrix.T, coeffs, out=tmp)
+        recon = np.matmul(tmp, matrix)
+        recon_blocks = recon.transpose(0, 2, 3, 1).reshape(len(sub), ph // 8, pw // 8, 8, 8, channels)
+        recon_frame = recon_blocks.transpose(0, 1, 3, 2, 4, 5).reshape(
+            len(sub), ph, pw, channels
+        )
+        if channels == 1:
+            recon_frame = recon_frame[..., 0]
+        out[start : start + len(sub)] = recon_frame
+    result = np.clip(out[:, :h, :w] / 255.0, 0.0, 1.0)
     if frames.dtype == np.uint8:
         return (result * 255.0).round().astype(np.uint8)
     return result.astype(frames.dtype)
@@ -287,22 +315,30 @@ def chroma_quant(frames: np.ndarray, levels: int) -> np.ndarray:
     if levels <= 0 or frames.ndim != 4:
         return frames
     original_dtype = frames.dtype
-    rgb = np.asarray(frames, dtype=np.float32)
-    if original_dtype == np.uint8:
-        rgb /= 255.0
-    # BT.601 全范围 YCbCr 正变换与逆变换。
-    y = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
-    cb = -0.168736 * rgb[..., 0] - 0.331264 * rgb[..., 1] + 0.5 * rgb[..., 2]
-    cr = 0.5 * rgb[..., 0] - 0.418688 * rgb[..., 1] - 0.081312 * rgb[..., 2]
-    cb = np.round(cb * (levels - 1)) / (levels - 1)
-    cr = np.round(cr * (levels - 1)) / (levels - 1)
+    rgb = frames.astype(np.uint8) if original_dtype == np.uint8 else (
+        (np.clip(frames, 0, 1) * 255).round().astype(np.uint8)
+    )
+    # BT.601 定点整数正变换（Y 16bit 视需要，Cb/Cr 有符号 8bit 域）。
+    r = rgb[..., 0].astype(np.int32)
+    g = rgb[..., 1].astype(np.int32)
+    b = rgb[..., 2].astype(np.int32)
+    y = (77 * r + 150 * g + 29 * b + 128) >> 8
+    cb = ((-43 * r - 85 * g + 128 * b + 128) >> 8).astype(np.int16) - 128
+    cr = ((128 * r - 107 * g - 21 * b + 128) >> 8).astype(np.int16) - 128
+    # 量化到有限级数再还原（中心对称，级数范围 [-127,127]）。
+    scale = (levels - 1) / 255.0
+    cb = (np.round(cb * scale) / scale).astype(np.int16)
+    cr = (np.round(cr * scale) / scale).astype(np.int16)
+    cb32 = cb.astype(np.int32)
+    cr32 = cr.astype(np.int32)
     out = np.empty_like(rgb)
-    out[..., 0] = np.clip(y + 1.402 * cr, 0.0, 1.0)
-    out[..., 1] = np.clip(y - 0.344136 * cb - 0.714136 * cr, 0.0, 1.0)
-    out[..., 2] = np.clip(y + 1.772 * cb, 0.0, 1.0)
+    # Cb/Cr 已在 ±128 中心化，逆变换需把 0.5 偏移折算回整数常量。
+    out[..., 0] = np.clip((y + ((359 * cr32) >> 8) + 179), 0, 255).astype(np.uint8)
+    out[..., 1] = np.clip((y - ((88 * cb32) >> 8) - ((183 * cr32) >> 8) - 135), 0, 255).astype(np.uint8)
+    out[..., 2] = np.clip((y + ((454 * cb32) >> 8) + 227), 0, 255).astype(np.uint8)
     if original_dtype == np.uint8:
-        return (np.clip(out, 0.0, 1.0) * 255.0).round().astype(np.uint8)
-    return out.astype(original_dtype)
+        return out
+    return out.astype(np.float32) / 255.0
 
 
 def mirror(frames: np.ndarray) -> np.ndarray:
