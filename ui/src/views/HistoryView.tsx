@@ -18,11 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { nowStr } from "@/lib/format";
 import { clearAudit, listAudit } from "@/lib/backend";
-import { useAppStore } from "@/stores/app";
 import { useHistoryStore } from "@/stores/history";
-import { useMaterialsStore } from "@/stores/materials";
 import { openInFolder, toast } from "@/stores/toasts";
 
 function resultClass(result: string): string {
@@ -33,10 +30,6 @@ function resultClass(result: string): string {
 
 export default function HistoryView() {
   const entries = useHistoryStore((state) => state.entries);
-  const add = useHistoryStore((state) => state.add);
-  const materials = useMaterialsStore((state) => state.materials);
-  const select = useMaterialsStore((state) => state.select);
-  const setView = useAppStore((state) => state.setView);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
@@ -57,31 +50,12 @@ export default function HistoryView() {
     }
   };
 
-  const redo = (name: string) => {
-    const material = materials.find((m) => m.name === name);
-    if (!material) {
-      toast("素材已不在素材库中，需重新导入");
-      return;
-    }
-    setView("workbench");
-    select(material.id);
-    add({
-      name: material.name,
-      time: nowStr(),
-      action: "加入处理队列",
-      params: "修复70%",
-      out: "—",
-      result: "排队中",
-    });
-    toast(`已按上次参数重新入队：${material.name}`);
-  };
-
   return (
     <>
       <div className="view-head">
         <div>
           <div className="view-title">处理历史</div>
-          <div className="view-desc">每次处理的参数与输出都留在这里，可一键再次处理</div>
+          <div className="view-desc">每次处理的参数与输出都留在这里</div>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" disabled={!entries.length} onClick={() => setConfirmClear(true)}>
@@ -115,20 +89,15 @@ export default function HistoryView() {
                   <span className={`dim-level ${resultClass(entry.result)}`}>{entry.result}</span>
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
-                    {entry.out && entry.out !== "—" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openInFolder(entry.out)}
-                      >
-                        打开文件夹
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={() => redo(entry.name)}>
-                      再次处理
+                  {entry.out && entry.out !== "—" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openInFolder(entry.out)}
+                    >
+                      打开文件夹
                     </Button>
-                  </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
