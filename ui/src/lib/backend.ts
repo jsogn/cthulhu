@@ -206,6 +206,7 @@ export interface DesensitizeOptions {
   subtractBeta?: number;
   transcodeChain?: boolean;
   saliency?: number;
+  nativeFilters?: boolean;
 }
 
 export interface AudioAnalysis {

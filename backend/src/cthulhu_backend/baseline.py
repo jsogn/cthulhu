@@ -210,6 +210,7 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--saliency", type=int, default=0)
     parser.add_argument("--mirror", action="store_true")
     parser.add_argument("--chroma-levels", type=int, default=0)
+    parser.add_argument("--native-filters", action="store_true")
     parser.add_argument("--no-regrade", action="store_true")
     parser.add_argument("--no-sharpness", action="store_true")
     parser.add_argument("--no-color-restore", action="store_true")
@@ -267,6 +268,7 @@ def _main(argv: list[str] | None = None) -> None:
             subtract_beta=args.subtract_beta,
             saliency=args.saliency,
             chroma_levels=args.chroma_levels,
+            native_filters=args.native_filters,
             regrade=not args.no_regrade,
             sharpness=not args.no_sharpness,
             color_restore=not args.no_color_restore,

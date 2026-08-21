@@ -131,6 +131,7 @@ type AntiPreset = {
   transcodeChain?: boolean;
   jointAttack?: boolean;
   saliency?: number;
+  nativeFilters?: boolean;
 };
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
@@ -145,6 +146,7 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     dropEvery: 13,
     noise: 0.006,
     jitter: 0.006,
+    nativeFilters: true,
   },
   强力: {
     rotate: 1.8,
@@ -158,6 +160,7 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     perspective: 0.004,
     saliency: 1,
     jointAttack: true,
+    nativeFilters: true,
   },
   全兵器: {
     rotate: 2.2,
@@ -174,6 +177,7 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     transcodeChain: true,
     jointAttack: true,
     saliency: 3,
+    nativeFilters: true,
   },
 };
 
@@ -196,6 +200,7 @@ const snakeAnti = (anti: AntiPreset) => ({
   transcode_chain: anti.transcodeChain ?? false,
   multi_hash_attack: anti.jointAttack ?? false,
   saliency: anti.saliency ?? 0,
+  native_filters: anti.nativeFilters ?? false,
 });
 
 function riskLabel(risk: RiskLevel): string {
@@ -1210,6 +1215,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               ...(anti.transcodeChain ? { transcodeChain: true } : {}),
               ...(anti.jointAttack ? { multiHashAttack: true } : {}),
               ...(anti.saliency ? { saliency: anti.saliency } : {}),
+              ...(anti.nativeFilters ? { nativeFilters: true } : {}),
             }
           : {}),
       });

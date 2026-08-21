@@ -78,6 +78,25 @@ def has_encoder(codec: str) -> bool:
     return codec in result.stdout
 
 
+_FILTER_CACHE: set[str] | None = None
+
+
+def has_filter(name: str) -> bool:
+    """检查当前 FFmpeg 是否包含指定视频滤镜（结果缓存）。"""
+    global _FILTER_CACHE
+    if _FILTER_CACHE is None:
+        result = subprocess.run(
+            [FFMPEG_BIN, "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        _FILTER_CACHE = {
+            parts[1] for line in result.stdout.splitlines() if len(parts := line.split()) >= 2
+        }
+    return name in _FILTER_CACHE
+
+
 def probe(path: str) -> dict:
     """ffprobe JSON：流信息、容器格式与时长。"""
     out = subprocess.run(
@@ -303,6 +322,7 @@ class StreamingEncoder:
         bitrate_kbps: int | None = None,
         out_size: tuple[int, int] | None = None,
         hw_quality: int = 70,
+        filters: list[str] | None = None,
         stop=None,
     ) -> None:
         if hardware and sys.platform == "darwin":
@@ -329,8 +349,11 @@ class StreamingEncoder:
             cmd += ["-preset", preset, "-crf", str(crf)]
         if gop:
             cmd += ["-g", str(gop)]
+        chain = list(filters or [])
         if out_size:
-            cmd += ["-vf", f"scale={out_size[0]}:{out_size[1]}"]
+            chain.append(f"scale={out_size[0]}:{out_size[1]}")
+        if chain:
+            cmd += ["-vf", ",".join(chain)]
         cmd += ["-pix_fmt", "yuv420p", path]
         self._stop = stop
         self._finished = False

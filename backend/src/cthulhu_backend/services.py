@@ -370,6 +370,7 @@ def run_desensitize(
     subtract_beta: float = 0.0,
     saliency: int = 0,
     chroma_levels: int = 0,
+    native_filters: bool = False,
     progress_cb=None,
     should_stop=None,
 ) -> dict:
@@ -436,15 +437,30 @@ def run_desensitize(
         spoof_rng = np.random.default_rng(seed ^ 0x5F3759DF)
         spoof_bits = watermark_common.payload_bits(int(spoof_rng.integers(0, 2**31)), 64)
     assault_rng = np.random.default_rng(seed ^ 0xA55A55A5)
+    # FFmpeg 原生滤镜迁移：把可平移的原语交给编码器滤镜链，numpy 侧跳过。
+    native_chain: list[str] = []
+    sharpness_eff = sharpness
+    noise_eff = noise
+    requant_eff = requant
+    if native_filters:
+        if sharpness and ffmpeg.has_filter("unsharp"):
+            native_chain.append("unsharp=5:5:0.25:3:3:0.0")
+            sharpness_eff = False
+        if noise > 0 and ffmpeg.has_filter("noise"):
+            native_chain.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
+            noise_eff = 0.0
+        if requant > 0 and ffmpeg.has_filter("posterize"):
+            native_chain.append(f"posterize={requant}")
+            requant_eff = 0
     assault_params = extra_attacks.AssaultParams(
         mirror=mirror,
         jitter=jitter,
         perspective=perspective,
         warp=warp,
         median=median,
-        noise=noise,
+        noise=noise_eff,
         subtract_beta=subtract_beta,
-        requant=requant,
+        requant=requant_eff,
         dct_step=dct_step,
         chroma_levels=chroma_levels,
         drop_every=drop_every,
@@ -468,7 +484,7 @@ def run_desensitize(
         anti_reembed=anti_reembed,
         denoise=denoise,
         color_restore=color_restore,
-        sharpness=sharpness,
+        sharpness=sharpness_eff,
         spoof=spoof,
     )
     transform_context = strategies.TransformContext(
@@ -527,6 +543,7 @@ def run_desensitize(
         bitrate_kbps=bitrate_kbps,
         out_size=out_size,
         color=True,
+        filters=native_chain or None,
         stop=should_stop,
     )
     out_index = 0
