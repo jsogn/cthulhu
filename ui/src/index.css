@@ -649,6 +649,18 @@ body {
   color: var(--muted-foreground);
 }
 
+.batch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.batch-label {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+
 /* ============ 预览区 ============ */
 .preview-head {
   flex: none;

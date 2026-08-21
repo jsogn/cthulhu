@@ -2302,7 +2302,7 @@ function BatchBar({ count }: { count: number }) {
         addHistory({
           name,
           time: nowStr(),
-          action: "加入处理队列",
+          action: "批量清洗",
           params: `${params.level}档 · 对抗${batchAnti} · 批量`,
           out: task.options.output as string,
           result: "排队中",
@@ -2354,49 +2354,58 @@ function BatchBar({ count }: { count: number }) {
   return (
     <div className="batch-bar">
       <span className="batch-count">已选 {count} 个</span>
-      <Select value={batchTemplate} onValueChange={setBatchTemplate}>
-        <SelectTrigger className="h-7 w-28" aria-label="批量套用模板">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="manual">手动档位</SelectItem>
-          {templates.map((template) => (
-            <SelectItem key={template.id} value={template.name}>
-              {template.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        value={batchLevel}
-        disabled={batchTemplate !== "manual"}
-        onValueChange={(value) => setBatchLevel(value as CleanLevel)}
-      >
-        <SelectTrigger className="h-7 w-20" aria-label="批量清洗档位">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {CLEAN_LEVELS.map((level) => (
-            <SelectItem key={level} value={level}>
-              {level}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={batchAnti} onValueChange={setBatchAnti}>
-        <SelectTrigger className="h-7 w-20" aria-label="批量指纹对抗档">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.keys(ANTI_PRESETS).map((level) => (
-            <SelectItem key={level} value={level}>
-              {level}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <span className="batch-field">
+        <span className="batch-label">模板</span>
+        <Select value={batchTemplate} onValueChange={setBatchTemplate}>
+          <SelectTrigger className="h-7 w-28" aria-label="批量套用模板">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="manual">不使用模板（手动）</SelectItem>
+            {templates.map((template) => (
+              <SelectItem key={template.id} value={template.name}>
+                {template.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </span>
+      <span className="batch-field">
+        <span className="batch-label">清洗档位</span>
+        <Select
+          value={batchLevel}
+          disabled={batchTemplate !== "manual"}
+          onValueChange={(value) => setBatchLevel(value as CleanLevel)}
+        >
+          <SelectTrigger className="h-7 w-20" aria-label="批量清洗档位">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CLEAN_LEVELS.map((level) => (
+              <SelectItem key={level} value={level}>
+                {level}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </span>
+      <span className="batch-field">
+        <span className="batch-label">指纹对抗</span>
+        <Select value={batchAnti} onValueChange={setBatchAnti}>
+          <SelectTrigger className="h-7 w-20" aria-label="批量指纹对抗档">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.keys(ANTI_PRESETS).map((level) => (
+              <SelectItem key={level} value={level}>
+                {level}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </span>
       <Button variant="secondary" size="sm" onClick={enqueueBatch}>
-        加入队列
+        批量清洗
       </Button>
       <Button variant="secondary" size="sm" disabled={scanBusy} onClick={runScan}>
         {scanBusy ? "提交中…" : "批量检测"}
@@ -2413,7 +2422,7 @@ function BatchBar({ count }: { count: number }) {
           toast(`已删除 ${ids.length} 个素材`);
         }}
       >
-        删除
+        移出素材库
       </Button>
     </div>
   );
