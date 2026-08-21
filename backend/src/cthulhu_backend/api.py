@@ -537,6 +537,12 @@ async def outputs(path: str = Query(...)) -> dict:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
 
 
+@router.get("/outputs/counts")
+def outputs_counts() -> dict:
+    """素材库各源素材的产物数量汇总。"""
+    return services.library_output_counts()
+
+
 @router.post("/ffmpeg/select")
 def select_ffmpeg(request: PathRequest) -> dict:
     """用户手动指定本机已有的 ffmpeg 可执行文件。"""

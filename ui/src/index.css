@@ -532,6 +532,59 @@ body {
   background: var(--muted);
 }
 
+.tag-out {
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+}
+
+.out-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.out-card img {
+  aspect-ratio: 9 / 16;
+  width: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.out-card-selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.out-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hover-preview {
+  position: fixed;
+  right: 16px;
+  bottom: 48px;
+  z-index: 60;
+  width: 240px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+  background: var(--popover);
+  pointer-events: none;
+}
+
+.hover-preview img {
+  width: 100%;
+  display: block;
+}
+
 .mat-empty {
   flex: 1;
   display: flex;

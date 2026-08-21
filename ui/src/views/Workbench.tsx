@@ -37,11 +37,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { fmtFrames, nowStr } from "@/lib/format";
+import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
 import {
   analyzeAudio,
   enqueueJob,
   exportOutputs,
+  fetchOutputs,
   frameUrl,
   generateCandidates,
   listTemplates,
@@ -50,12 +51,15 @@ import {
   previewImageUrl,
   runDesensitize,
   runDetect,
+  runSimilarity,
   thumbUrl,
   type AudioAnalysis,
   type CandidateInfo,
   type DetectReport,
   type DesensitizeOptions,
   type JobInfo,
+  type OutputInfo,
+  type SimilarityReport,
   type TemplateInfo,
 } from "@/lib/backend";
 import { cn } from "@/lib/utils";
@@ -72,7 +76,7 @@ const RISK_OPTIONS: ("全部" | RiskLevel)[] = [
   "未检出异常",
   "待检测",
 ];
-const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "导出设置"] as const;
+const TAB_KEYS = ["清洗去重", "水印区域", "检测参考", "处理产物", "导出设置"] as const;
 const FRAME_MAX = 540;
 
 /** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
@@ -107,6 +111,20 @@ const levelDisplay = (level: CleanLevel, recropOn: boolean) => {
   const crop = recropOn ? 0.015 + 0.075 * (perturb / 100) : 0;
   return { speed, gamma, brightness, crop, restruct };
 };
+
+const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
+  cleaned: "清洗",
+  repaired: "修复",
+  candidate: "候选",
+};
+
+function outputTimeLabel(mtime: number): string {
+  const date = new Date(mtime * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
 
 // 指纹对抗档：几何去同步 + pHash 签名扰动 + 底层载荷攻击原语组合。
 type AntiPreset = {
@@ -475,6 +493,9 @@ function MaterialPane() {
                     </span>
                     <span className="mat-tags">
                       <span className={`tag ${riskClass(m.risk)}`}>{riskLabel(m.risk)}</span>
+                      {(m.outputCount ?? 0) > 0 && (
+                        <span className="tag tag-out">产物 {m.outputCount}</span>
+                      )}
                     </span>
                   </span>
                 </div>
@@ -980,6 +1001,13 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
+  const [outputs, setOutputs] = useState<OutputInfo[]>([]);
+  const [compared, setCompared] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareImage, setCompareImage] = useState<string | null>(null);
+  const [compareSimilarity, setCompareSimilarity] = useState<SimilarityReport | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [hoverPath, setHoverPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
   const lastOptionsRef = useRef<DesensitizeOptions | null>(null);
 
@@ -1016,6 +1044,21 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       cancelled = true;
     };
   }, [material?.path, report]);
+
+  // 产物列表绑定当前素材上下文，切换素材即刷新。
+  useEffect(() => {
+    if (!material?.path) {
+      setOutputs([]);
+      setCompared([]);
+      return;
+    }
+    void fetchOutputs(material.path)
+      .then((result) => {
+        setOutputs(result.outputs);
+        setCompared([]);
+      })
+      .catch(() => setOutputs([]));
+  }, [material?.path]);
 
   const runClean = async () => {
     const target = material as (Material & { path?: string }) | null;
@@ -1096,6 +1139,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       });
       setLastClean(report);
       setLastOutput(output);
+      void useMaterialsStore.getState().refreshOutputCounts();
       setPreviewUrl(null);
       try {
         const preview = await makePreview(target.path, output);
@@ -1166,11 +1210,38 @@ function ContextPanel({ tab, setTab }: ContextProps) {
       const dir = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_候选`;
       const report = await generateCandidates(target.path, dir, 3, lastOptionsRef.current);
       setCandidates(report.candidates);
+      void useMaterialsStore.getState().refreshOutputCounts();
       toast(`已生成 ${report.candidates.length} 个候选，按低损优选排序`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "生成候选失败");
     } finally {
       setCandidatesBusy(false);
+    }
+  };
+
+  const toggleCompare = (path: string) => {
+    setCompared((current) => {
+      if (current.includes(path)) return current.filter((item) => item !== path);
+      if (current.length >= 2) return [current[1], path];
+      return [...current, path];
+    });
+  };
+
+  const runCompare = async () => {
+    if (compared.length !== 2) return;
+    setComparing(true);
+    try {
+      const [similarity, preview] = await Promise.all([
+        runSimilarity(compared[0], compared[1]),
+        makePreview(compared[0], compared[1]),
+      ]);
+      setCompareSimilarity(similarity);
+      setCompareImage(previewImageUrl(preview.image_path));
+      setCompareOpen(true);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "对比失败");
+    } finally {
+      setComparing(false);
     }
   };
 
@@ -1761,6 +1832,65 @@ function ContextPanel({ tab, setTab }: ContextProps) {
           </ScrollArea>
         </TabsContent>
 
+        <TabsContent value="处理产物" className="tab-pane">
+          <ScrollArea className="h-full">
+            <div className="flex flex-col gap-2.5">
+              {outputs.length === 0 ? (
+                <p className="note">
+                  该素材还没有处理产物；执行清洗、修复或生成候选后会自动出现在这里。
+                </p>
+              ) : (
+                <>
+                  <p className="note">勾选任意两个产物进行并排对比，悬停可放大预览。</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {outputs.map((output) => (
+                      <div
+                        key={output.path}
+                        className={cn(
+                          "out-card",
+                          compared.includes(output.path) && "out-card-selected",
+                        )}
+                        onClick={() => toggleCompare(output.path)}
+                      >
+                        <img
+                          src={thumbUrl(output.path, 320)}
+                          loading="lazy"
+                          alt=""
+                          onMouseEnter={() => setHoverPath(output.path)}
+                          onMouseLeave={() => setHoverPath(null)}
+                        />
+                        <div className="out-meta">
+                          <span className="mono text-xs">
+                            {OUTPUT_KIND_LABEL[output.kind]} · {outputTimeLabel(output.mtime)}
+                          </span>
+                          <span className="mono text-xs">{fmtSize(output.size)}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openInFolder(output.path);
+                          }}
+                        >
+                          打开
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    disabled={compared.length !== 2 || comparing}
+                    onClick={runCompare}
+                  >
+                    {comparing ? "对比中…" : "并排对比所选两个"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         <TabsContent value="导出设置" className="tab-pane">
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-2.5">
@@ -1891,6 +2021,43 @@ function ContextPanel({ tab, setTab }: ContextProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
+        <DialogContent className="max-w-[min(90vw,960px)]">
+          <DialogHeader>
+            <DialogTitle>产物并排对比</DialogTitle>
+            <DialogDescription>
+              左列为所选第一个产物，右列为第二个；指标越低差异越大。
+            </DialogDescription>
+          </DialogHeader>
+          {compareImage && (
+            <img
+              src={compareImage}
+              alt="产物对比"
+              className="max-h-[60vh] w-full rounded-md object-contain"
+            />
+          )}
+          {compareSimilarity && (
+            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              <div className="rounded-md border border-border p-2">
+                内容相似度 {compareSimilarity.content_cosine.toFixed(3)}
+              </div>
+              <div className="rounded-md border border-border p-2">
+                时序相似度 {compareSimilarity.motion_cosine.toFixed(3)}
+              </div>
+              <div className="rounded-md border border-border p-2">
+                SSIM {compareSimilarity.ssim_mean.toFixed(3)}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {hoverPath && (
+        <div className="hover-preview">
+          <img src={thumbUrl(hoverPath, 720)} alt="产物放大预览" />
+        </div>
+      )}
     </aside>
   );
 }

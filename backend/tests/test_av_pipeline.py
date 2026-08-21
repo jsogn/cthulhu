@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import samples, services
+from cthulhu_backend import db, samples, services
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
@@ -358,3 +358,15 @@ def test_list_outputs_matches_variants(tmp_path):
     report = services.list_outputs(str(source))
     kinds = {item["kind"] for item in report["outputs"]}
     assert {"cleaned", "repaired"} <= kinds
+
+
+@needs_ffmpeg
+def test_library_output_counts(tmp_path):
+    video = samples.make_cut_video(2, 8, 160, 120, seed=40)
+    source = tmp_path / "src.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    db.add_library(str(source), "src.mp4", source.stat().st_size)
+    cleaned = tmp_path / "src_cleaned_20260101.mp4"
+    ffmpeg.encode_video(video, str(cleaned), fps=30)
+    counts = services.library_output_counts()
+    assert counts[str(source)] == 1

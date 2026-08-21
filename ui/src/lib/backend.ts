@@ -467,6 +467,13 @@ export async function fetchOutputs(path: string): Promise<{ source: string; outp
   return res.json();
 }
 
+/** 素材库各源素材的产物数量汇总。 */
+export async function fetchOutputCounts(): Promise<Record<string, number>> {
+  const res = await apiFetch("/api/outputs/counts");
+  if (!res.ok) throw new Error(`读取产物数量失败（${res.status}）`);
+  return res.json();
+}
+
 export interface CandidateInfo {
   index: number;
   output: string;

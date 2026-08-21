@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { fetchLibrary, thumbUrl, unregisterLibrary, type LibraryFile } from "@/lib/backend";
+import {
+  fetchLibrary,
+  fetchOutputCounts,
+  thumbUrl,
+  unregisterLibrary,
+  type LibraryFile,
+} from "@/lib/backend";
 import { fmtSize } from "@/lib/format";
 
 export type RiskLevel = "有疑似特征" | "未检出异常" | "待检测";
@@ -18,6 +24,7 @@ export interface Material {
   path?: string;
   duration?: number;
   report?: unknown;
+  outputCount?: number;
 }
 
 interface MaterialsState {
@@ -38,8 +45,9 @@ interface MaterialsState {
     path: string,
     report: { bitstream: { score: number; flags: string[] } },
   ) => void;
-  loadLibrary: (files: LibraryFile[]) => void;
+  loadLibrary: (files: LibraryFile[], outputCounts?: Record<string, number>) => void;
   refreshLibrary: () => Promise<void>;
+  refreshOutputCounts: () => Promise<void>;
   markLoadFailed: () => void;
 }
 
@@ -130,7 +138,7 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
       ),
     })),
 
-  loadLibrary: (files) => {
+  loadLibrary: (files, outputCounts?) => {
     const materials: Material[] = files
       .filter((file) => file.video)
       .map((file) => {
@@ -150,6 +158,7 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
           path: file.path,
           duration: file.video!.duration,
           report,
+          outputCount: outputCounts?.[file.path] ?? 0,
         };
       });
     set({ materials, activeId: materials[0]?.id ?? null });
@@ -158,10 +167,25 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
   refreshLibrary: async () => {
     try {
       const files = await fetchLibrary();
-      get().loadLibrary(files);
+      const counts = await fetchOutputCounts().catch(() => ({} as Record<string, number>));
+      get().loadLibrary(files, counts);
       set({ loadFailed: false });
     } catch {
       set({ loadFailed: true });
+    }
+  },
+
+  refreshOutputCounts: async () => {
+    try {
+      const counts = await fetchOutputCounts();
+      set((state) => ({
+        materials: state.materials.map((material) => ({
+          ...material,
+          outputCount: counts[material.path ?? ""] ?? 0,
+        })),
+      }));
+    } catch {
+      // 数量刷新失败保持现状
     }
   },
 

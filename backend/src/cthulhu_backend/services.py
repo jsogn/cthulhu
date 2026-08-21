@@ -885,6 +885,20 @@ def list_outputs(source: str) -> dict:
     return {"source": source, "outputs": outputs}
 
 
+def library_output_counts() -> dict[str, int]:
+    """素材库每个源素材的产物数量（清洗/修复/候选三类合计）。"""
+    counts: dict[str, int] = {}
+    for item in db.list_library():
+        path = Path(item["path"])
+        patterns = (
+            f"{path.stem}_cleaned*.mp4",
+            f"{path.stem}_repaired*.mp4",
+            f"{path.stem}_候选*.mp4",
+        )
+        counts[item["path"]] = sum(len(list(path.parent.glob(pattern))) for pattern in patterns)
+    return counts
+
+
 def _candidate_score(result: dict) -> float:
     """低损优选评分：内容保持与画面稳定性为主，去重破坏为辅。"""
     similarity = result.get("similarity_after", {})
