@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from cthulhu_backend.fingerprint import hashes
+from cthulhu_backend.similarity import embedding
 
 _DCT_CACHE: dict[int, np.ndarray] = {}
 _UP_CACHE: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
@@ -158,5 +159,132 @@ def attack_frames(
         return (np.clip(attacked, 0.0, 1.0) * 255.0).round().astype(np.uint8)
     return map_frames(
         lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
+        np.asarray(frames, dtype=np.float32),
+    )
+
+
+def _hash_dict(frame: np.ndarray) -> dict[str, np.ndarray]:
+    """帧的多哈希签名（与代理评估器同一口径）。"""
+    return {
+        "phash": hashes.phash(frame),
+        "ahash": hashes.ahash(frame),
+        "dhash": embedding.dhash(frame).ravel(),
+        "dct_sign": hashes.dct_sign(frame),
+    }
+
+
+def _joint_gradient(small: np.ndarray, k: int = 10) -> np.ndarray:
+    """多哈希联合梯度：把 pHash/aHash/dHash/DCT 符号的边际损失合到同一目标。"""
+    n = small.shape[0]
+    dct = dct_matrix(n)
+    coeffs = dct @ small @ dct.T
+    flat = small.ravel()
+    grad = np.zeros_like(small)
+
+    # pHash：低频系数越过「其余系数均值」阈值。
+    low = coeffs[:8, :8].ravel()
+    phash_margins = low - low[1:].mean()
+    for index in np.argsort(np.abs(phash_margins))[:k]:
+        row, col = divmod(int(index), 8)
+        grad -= np.sign(phash_margins[index]) * np.outer(dct[:, row], dct[:, col])
+
+    # aHash：像素越过全局均值。
+    ahash_margins = flat - flat.mean()
+    selected = np.argsort(np.abs(ahash_margins))[:k]
+    update = np.zeros(flat.size)
+    update[selected] = -np.sign(ahash_margins[selected])
+    update += update.sum() / flat.size
+    grad += update.reshape(small.shape)
+
+    # dHash：水平相邻像素差分越过 0。
+    dhash_margins = small[:, 1:] - small[:, :-1]
+    for position in np.argsort(np.abs(dhash_margins), axis=None)[:k]:
+        row, col = np.unravel_index(int(position), dhash_margins.shape)
+        sign = np.sign(dhash_margins[row, col])
+        grad[row, col + 1] -= sign
+        grad[row, col] += sign
+
+    # DCT 符号：低频系数符号越过 0。
+    sign_margins = coeffs[:24, :24].ravel()
+    for index in np.argsort(np.abs(sign_margins))[:k]:
+        row, col = divmod(int(index), 24)
+        grad -= np.sign(sign_margins[index]) * np.outer(dct[:, row], dct[:, col])
+
+    peak = float(np.abs(grad).max()) or 1.0
+    return grad / peak
+
+
+def multi_hash_attack(
+    frame: np.ndarray,
+    epsilon: float = 0.05,
+    inner: int = 100,
+    outer: int = 3,
+    k: int = 10,
+    lr: float = 0.4,
+    size: int = 32,
+) -> tuple[np.ndarray, int, dict[str, int]]:
+    """对单帧做多哈希联合对抗扰动，返回 (帧, 0, 各哈希翻转位数)。"""
+    x0 = np.clip(np.asarray(frame, dtype=np.float64), 0.0, 1.0)
+    original = _hash_dict(x0)
+    h, w = x0.shape
+    up_y, up_x = _upscale_matrices(size, h, w)
+    x = x0.copy()
+    for _ in range(outer):
+        base = hashes.resize_gray(x, size)
+        small = base.copy()
+        for _ in range(inner):
+            small = small - lr * _joint_gradient(small, k=k)
+            small = np.clip(small, base - epsilon, base + epsilon)
+            small = np.clip(small, 0.0, 1.0)
+        full = up_y @ (small - base) @ up_x.T
+        x = np.clip(x + full, x0 - epsilon, x0 + epsilon)
+        x = np.clip(x, 0.0, 1.0)
+    flips = {
+        key: int(hashes.hamming_bits(original[key], value))
+        for key, value in _hash_dict(x).items()
+    }
+    return x.astype(np.float32), 0, flips
+
+
+def attack_frames_joint(
+    frames: np.ndarray,
+    epsilon: float = 0.05,
+    iterations: int = 100,
+) -> np.ndarray:
+    """对帧数组并行施加多哈希联合扰动，保持原 dtype；彩色帧只攻击亮度。"""
+    from cthulhu_backend.transform.parallel import map_frames
+
+    if frames.ndim == 4:
+        original_dtype = frames.dtype
+        work = frames.astype(np.float32) / 255.0 if original_dtype == np.uint8 else frames
+        luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
+        attacked = map_frames(
+            lambda frame: multi_hash_attack(
+                frame, epsilon=epsilon, inner=iterations
+            )[0],
+            luma.astype(np.float32),
+        )
+        attacked = attacked - (
+            attacked.mean(axis=(1, 2), keepdims=True) - luma.mean(axis=(1, 2), keepdims=True)
+        )
+        ratio = np.divide(
+            attacked, luma, out=np.ones_like(luma, dtype=np.float32), where=luma > 1e-6
+        )
+        result = np.clip(work * ratio[..., None], 0.0, 1.0)
+        if original_dtype == np.uint8:
+            return (result * 255.0).round().astype(np.uint8)
+        return result.astype(np.float32)
+
+    if frames.dtype == np.uint8:
+        work = frames.astype(np.float32) / 255.0
+        attacked = map_frames(
+            lambda frame: multi_hash_attack(
+                frame, epsilon=epsilon, inner=iterations
+            )[0],
+            work,
+        )
+        return (np.clip(attacked, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+    return map_frames(
+        lambda frame: multi_hash_attack(frame, epsilon=epsilon, inner=iterations)[0],
         np.asarray(frames, dtype=np.float32),
     )

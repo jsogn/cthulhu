@@ -355,6 +355,7 @@ def run_desensitize(
     phash_attack: bool = False,
     phash_epsilon: float = 0.03,
     phash_iters: int = 120,
+    multi_hash_attack: bool = False,
     rotate: float = 0.0,
     transcode_chain: bool = False,
     median: int = 0,
@@ -367,6 +368,7 @@ def run_desensitize(
     warp: float = 0.0,
     mirror: bool = False,
     subtract_beta: float = 0.0,
+    saliency: int = 0,
     chroma_levels: int = 0,
     progress_cb=None,
     should_stop=None,
@@ -447,6 +449,7 @@ def run_desensitize(
         chroma_levels=chroma_levels,
         drop_every=drop_every,
     )
+    saliency_obj = extra_attacks.saliency_layout(seed, saliency)
 
     if color_restore:
         color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
@@ -549,6 +552,12 @@ def run_desensitize(
                             frames = adversarial.attack_frames(
                                 frames, epsilon=phash_epsilon, iterations=phash_iters
                             )
+                        elif multi_hash_attack:
+                            frames = adversarial.attack_frames_joint(
+                                frames, epsilon=phash_epsilon, iterations=phash_iters
+                            )
+                        if saliency_obj is not None:
+                            frames = extra_attacks.salient_overlay(frames, saliency_obj)
                         encoder.write(frames)
                         out_index += len(batch)
                         if progress_cb and total_out:
@@ -611,6 +620,12 @@ def run_desensitize(
                     frames = adversarial.attack_frames(
                         frames, epsilon=phash_epsilon, iterations=phash_iters
                     )
+                elif multi_hash_attack:
+                    frames = adversarial.attack_frames_joint(
+                        frames, epsilon=phash_epsilon, iterations=phash_iters
+                    )
+                if saliency_obj is not None:
+                    frames = extra_attacks.salient_overlay(frames, saliency_obj)
                 encoder.write(frames)
                 if progress_cb and total_out:
                     progress_cb(

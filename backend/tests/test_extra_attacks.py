@@ -83,6 +83,18 @@ def test_estimate_subtract_reduces_spread_spectrum_score():
     assert after < before
 
 
+def test_saliency_overlay_deterministic_and_changes_content():
+    frames = make_frames(color=True)
+    layout = extra_attacks.saliency_layout(9, level=2)
+    assert layout is not None and layout.mosaic is not None
+    first = extra_attacks.salient_overlay(frames, layout)
+    second = extra_attacks.salient_overlay(frames, layout)
+    assert first.shape == frames.shape
+    np.testing.assert_array_equal(first, second)
+    assert float(np.mean(np.abs(first.astype(np.float32) - frames.astype(np.float32)))) > 0.02
+    assert extra_attacks.saliency_layout(9, 0) is None
+
+
 def test_chroma_quant_preserves_luma_reduces_chroma():
     rng = np.random.default_rng(5)
     luma = rng.random((4, 64, 48, 1), dtype=np.float32)

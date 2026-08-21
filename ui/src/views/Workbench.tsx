@@ -120,6 +120,8 @@ type AntiPreset = {
   chromaLevels?: number;
   subtractBeta?: number;
   transcodeChain?: boolean;
+  jointAttack?: boolean;
+  saliency?: number;
 };
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
@@ -143,6 +145,8 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     noise: 0.01,
     jitter: 0.01,
     transcodeChain: true,
+    jointAttack: true,
+    saliency: 1,
   },
   全兵器: {
     rotate: 2.2,
@@ -158,13 +162,15 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     mirror: true,
     subtractBeta: 1.2,
     transcodeChain: true,
+    jointAttack: true,
+    saliency: 2,
   },
 };
 
 /** 单条清洗走 /api/desensitize（camelCase），批量走 /api/jobs（snake_case）。 */
 const snakeAnti = (anti: AntiPreset) => ({
   rotate: anti.rotate,
-  phash_attack: true,
+  phash_attack: !anti.jointAttack,
   phash_epsilon: anti.epsilon,
   median: anti.median ?? 0,
   noise: anti.noise ?? 0,
@@ -178,6 +184,8 @@ const snakeAnti = (anti: AntiPreset) => ({
   chroma_levels: anti.chromaLevels ?? 0,
   subtract_beta: anti.subtractBeta ?? 0,
   transcode_chain: anti.transcodeChain ?? false,
+  multi_hash_attack: anti.jointAttack ?? false,
+  saliency: anti.saliency ?? 0,
 });
 
 function riskLabel(risk: RiskLevel): string {
@@ -1174,7 +1182,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
         ...(anti
           ? {
               rotate: anti.rotate,
-              phashAttack: true,
+              phashAttack: !anti.jointAttack,
               phashEpsilon: anti.epsilon,
               ...(anti.median ? { median: anti.median } : {}),
               ...(anti.noise ? { noise: anti.noise } : {}),
@@ -1188,6 +1196,8 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               ...(anti.chromaLevels ? { chromaLevels: anti.chromaLevels } : {}),
               ...(anti.subtractBeta ? { subtractBeta: anti.subtractBeta } : {}),
               ...(anti.transcodeChain ? { transcodeChain: true } : {}),
+              ...(anti.jointAttack ? { multiHashAttack: true } : {}),
+              ...(anti.saliency ? { saliency: anti.saliency } : {}),
             }
           : {}),
       });

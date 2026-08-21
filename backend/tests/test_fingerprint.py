@@ -55,6 +55,17 @@ def test_attack_phash_uncapped_flips_many_bits():
     assert flipped >= 8
 
 
+def test_multi_hash_attack_flips_bits_within_budget():
+    from scipy.ndimage import gaussian_filter
+
+    frame = gaussian_filter(np.random.default_rng(19).random((256, 128)), sigma=8)
+    out, _, flips = adversarial.multi_hash_attack(frame, epsilon=0.05)
+    assert set(flips) == {"phash", "ahash", "dhash", "dct_sign"}
+    assert sum(flips.values()) >= 8
+    assert float(np.abs(out - frame).max()) <= 0.05 + 1e-6
+    assert float(np.abs(out).max()) <= 1.0 and float(np.abs(out).min()) >= 0.0
+
+
 def test_video_compare_identity_is_high_risk():
     frames = samples.make_cut_video(3, 8, 160, 120, seed=12)
     report = proxy.video_compare(frames, frames)
