@@ -43,8 +43,8 @@ class TransformContext:
     deltas: np.ndarray
     banner: str
     seed: int
-    ref_mean: float
-    ref_std: float
+    ref_mean: float | np.ndarray
+    ref_std: float | np.ndarray
     mid_rng: np.random.Generator
     spoof_bits: list[int] | None = None
 
@@ -96,7 +96,7 @@ class ThoroughStrategy:
         if options.sharpness:
             frames = video_transform.sharpen(frames, amount=0.25, radius=1.2, threshold=0.01)
         if options.spoof and ctx.spoof_bits is not None:
-            frames = np.stack([qim.embed(frame, ctx.spoof_bits, delta=6) for frame in frames])
+            frames = _embed_qim_frames(frames, ctx.spoof_bits, delta=6)
         return frames
 
 
@@ -113,14 +113,27 @@ def _u8_roundtrip(frames: np.ndarray, fn) -> np.ndarray:
     return _f32_to_u8(fn(_u8_to_f32(frames)))
 
 
+def _embed_qim_frames(frames: np.ndarray, bits: list[int], delta: int = 6) -> np.ndarray:
+    """QIM 嵌入：灰度逐帧；彩色逐通道重复同一 payload。"""
+    if frames.ndim == 4:
+        return np.stack(
+            [
+                np.stack([qim.embed(frame[..., c], bits, delta=delta) for c in range(3)], axis=-1)
+                for frame in frames
+            ]
+        )
+    return np.stack([qim.embed(frame, bits, delta=delta) for frame in frames])
+
+
 def _fast_recrop_u8(frames: np.ndarray, crop_frac: float) -> np.ndarray:
     """重新构图（uint8 直通）：PIL 原生双线性重采样，免精度转换。"""
-    h, w = frames.shape[1:]
+    h, w = frames.shape[1:3]
     cy0, cy1 = int(h * crop_frac), h - int(h * crop_frac)
     cx0, cx1 = int(w * crop_frac), w - int(w * crop_frac)
 
     def resize(frame: np.ndarray) -> np.ndarray:
-        image = Image.fromarray(frame, mode="L")
+        mode = "RGB" if frame.ndim == 3 else "L"
+        image = Image.fromarray(frame, mode=mode)
         resized = image.resize((w, h), Image.BILINEAR, box=(cx0, cy0, cx1, cy1))
         return np.asarray(resized, dtype=np.uint8)
 
@@ -160,15 +173,12 @@ def _fast_color_restore_u8(
     ref_mean: float,
     ref_std: float,
 ) -> np.ndarray:
-    """色彩还原（uint8 域）：统计与校正全程 float32，结果截断回 uint8。"""
+    """亮度还原（uint8 域）：逐通道均值校准，避免方差归一带来的暗部裁剪。"""
     work = frames.astype(np.float32)
     means = work.mean(axis=(1, 2), keepdims=True)
-    stds = work.std(axis=(1, 2), keepdims=True)
-    ref_mean8 = ref_mean * 255.0
-    ref_std8 = ref_std * 255.0
-    valid = (stds > 1e-6) & (ref_std8 > 1e-6)
-    scale = np.where(valid, ref_std8 / np.where(valid, stds, 1.0), 1.0).astype(np.float32)
-    corrected = work * scale + (ref_mean8 - means * scale)
+    ref_mean8 = np.asarray(ref_mean) * 255.0
+    del ref_std
+    corrected = work + (ref_mean8 - means)
     return np.clip(corrected, 0.0, 255.0).astype(np.uint8)
 
 
@@ -180,7 +190,8 @@ def _fast_sharpen_u8(frames: np.ndarray, amount: float = 0.25, radius: float = 1
     percent = round(amount * 100)
 
     def unsharp(frame: np.ndarray) -> np.ndarray:
-        image = Image.fromarray(frame, mode="L")
+        mode = "RGB" if frame.ndim == 3 else "L"
+        image = Image.fromarray(frame, mode=mode)
         out = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=3))
         return np.asarray(out, dtype=np.uint8)
 
@@ -194,18 +205,19 @@ def _fast_banner_u8(frames: np.ndarray, text: str, seed: int = 0, margin_frac: f
     from PIL import ImageDraw, ImageFont
 
     rng = np.random.default_rng(seed)
-    h, w = frames.shape[1:]
+    h, w = frames.shape[1:3]
     margin = int(w * margin_frac)
     box_h = int(h * 0.12)
     y0 = int(rng.uniform(margin, max(margin + 1, h - box_h - margin)))
     font = ImageFont.load_default(size=max(12, box_h - 10))
 
     def draw_frame(frame: np.ndarray) -> np.ndarray:
-        image = Image.fromarray(frame, mode="L").convert("RGB")
+        mode = "RGB" if frame.ndim == 3 else "L"
+        image = Image.fromarray(frame, mode=mode).convert("RGB")
         draw = ImageDraw.Draw(image, "RGBA")
         draw.rectangle([margin, y0, w - margin, y0 + box_h], fill=(0, 0, 0, 120))
         draw.text((margin + 12, y0 + (box_h - 16) // 2), text, fill=(255, 255, 255, 220), font=font)
-        return np.asarray(image.convert("L"), dtype=np.uint8)
+        return np.asarray(image.convert("RGB" if frame.ndim == 3 else "L"), dtype=np.uint8)
 
     from cthulhu_backend.transform.parallel import map_frames
 
@@ -229,11 +241,12 @@ def rotate_de_sync(
     def rotate_one(pair: tuple[int, np.ndarray]) -> np.ndarray:
         index, frame = pair
         angle = max_angle * math.sin(index * 2.399963)
-        h, w = frame.shape
+        h, w = frame.shape[:2]
+        mode = "RGB" if frame.ndim == 3 else "L"
         if is_u8:
-            image = Image.fromarray(frame, mode="L")
+            image = Image.fromarray(frame, mode=mode)
         else:
-            image = Image.fromarray((np.clip(frame, 0, 1) * 255).round().astype(np.uint8), mode="L")
+            image = Image.fromarray((np.clip(frame, 0, 1) * 255).round().astype(np.uint8), mode=mode)
         rotated = image.rotate(angle, resample=Image.BILINEAR, expand=True)
         out_w, out_h = rotated.size
         box = ((out_w - w) // 2, (out_h - h) // 2, (out_w - w) // 2 + w, (out_h - h) // 2 + h)
@@ -285,7 +298,7 @@ class FastStrategy:
         if options.spoof and ctx.spoof_bits is not None:
             frames = _u8_roundtrip(
                 frames,
-                lambda f: np.stack([qim.embed(frame, ctx.spoof_bits, delta=6) for frame in f]),
+                lambda f: _embed_qim_frames(f, ctx.spoof_bits, delta=6),
             )
         return frames
 

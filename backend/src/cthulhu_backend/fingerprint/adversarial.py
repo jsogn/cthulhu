@@ -99,7 +99,9 @@ def _flip_coeffs(
     flat = coeffs[:low, :low].ravel()
     margins = flat - flat[1:].mean()
     target_count = max(1, round(low * low * flip_fraction))
-    targets = np.argsort(np.abs(margins))[:target_count]
+    # 跳过 DC（索引 0）：翻转 DC 需要大幅整体调亮/调暗，视觉代价最高且
+    # 平台哈希对亮度平移同样不敏感，属于无效开销。
+    targets = np.argsort(np.abs(margins[1:]))[: max(target_count - 1, 1)] + 1
     target_mask = np.zeros(low * low, dtype=bool)
     target_mask[targets] = True
     work = coeffs.copy()
@@ -125,6 +127,27 @@ def attack_frames(
 ) -> np.ndarray:
     """对帧数组逐帧并行施加 pHash 对抗扰动，保持原 dtype。"""
     from cthulhu_backend.transform.parallel import map_frames
+
+    # 彩色帧：只攻击亮度分量，再按比例回写 RGB，保持色相不被破坏。
+    if frames.ndim == 4:
+        original_dtype = frames.dtype
+        work = frames.astype(np.float32) / 255.0 if original_dtype == np.uint8 else frames
+        luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
+        attacked = map_frames(
+            lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
+            luma.astype(np.float32),
+        )
+        # 亮度均值回填：扰动整体亮度，只保留结构扰动，避免画面变暗。
+        attacked = attacked - (
+            attacked.mean(axis=(1, 2), keepdims=True) - luma.mean(axis=(1, 2), keepdims=True)
+        )
+        ratio = np.divide(
+            attacked, luma, out=np.ones_like(luma, dtype=np.float32), where=luma > 1e-6
+        )
+        result = np.clip(work * ratio[..., None], 0.0, 1.0)
+        if original_dtype == np.uint8:
+            return (result * 255.0).round().astype(np.uint8)
+        return result.astype(np.float32)
 
     if frames.dtype == np.uint8:
         work = frames.astype(np.float32) / 255.0

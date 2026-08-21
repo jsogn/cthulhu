@@ -380,8 +380,17 @@ def run_desensitize(
         spoof_rng = np.random.default_rng(seed ^ 0x5F3759DF)
         spoof_bits = watermark_common.payload_bits(int(spoof_rng.integers(0, 2**31)), 64)
 
-    ref_mean = float(sampled.mean()) if len(sampled) else 0.5
-    ref_std = float(sampled.std()) if len(sampled) else 0.1
+    if color_restore:
+        color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
+        # numpy 2.5.2 对超大 float32 轴的多轴归约有误（随机数组可复现），
+        # 逐帧小轴聚合后再平均，规避错误的整批归约。
+        per_frame = color_sampled.reshape(len(color_sampled), -1, 3)
+        ref_mean = per_frame.mean(axis=1).mean(axis=0).astype(np.float32)
+        ref_std = per_frame.std(axis=1).mean(axis=0).astype(np.float32)
+        del color_sampled
+    else:
+        ref_mean = np.zeros(3, dtype=np.float32)
+        ref_std = np.zeros(3, dtype=np.float32)
     del sampled
 
     # 变换策略：与分块无关的选项与上下文一次性组装，分块内只调用 apply。
@@ -419,7 +428,7 @@ def run_desensitize(
     # 分块大小：按内存预算自适应（float32 每帧 4 字节，预留 8 倍中间量余量）。
     budget = _memory_budget_bytes()
     frame_dtype = getattr(strategy, "frame_dtype", "float32")
-    frame_bytes = info["width"] * info["height"] * (1 if frame_dtype == "uint8" else 4)
+    frame_bytes = info["width"] * info["height"] * 3 * (1 if frame_dtype == "uint8" else 4)
     chunk = max(8, min(480, int(budget // 8 // max(frame_bytes, 1))))
 
     # 音轨独立准备（整段重混后统一 mux）。
@@ -450,6 +459,7 @@ def run_desensitize(
         gop=gop,
         bitrate_kbps=bitrate_kbps,
         out_size=out_size,
+        color=True,
         stop=should_stop,
     )
     out_index = 0
@@ -459,7 +469,7 @@ def run_desensitize(
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
             for seg_start, orig_start, seg_len in segments:
                 check_cancelled()
-                decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len)
+                decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
                 try:
                     for pos, batch in _prefetch_batches(decoder, seg_len, chunk, frame_dtype):
                         check_cancelled()
@@ -497,6 +507,7 @@ def run_desensitize(
                         path,
                         orig_start + (overlap_start - seg_start),
                         overlap_end - overlap_start,
+                        grayscale=False,
                     )
                     if len(part):
                         block_parts.append(part)

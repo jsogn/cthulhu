@@ -19,11 +19,16 @@ def wiener_denoise(frames: np.ndarray, size: int = 5) -> np.ndarray:
     """逐帧 Wiener 去噪（线程并行，详见 transform/parallel）。"""
     from cthulhu_backend.transform.parallel import map_frames
 
+    def filt(frame: np.ndarray) -> np.ndarray:
+        if frame.ndim == 3:
+            return np.stack(
+                [wiener(frame[..., c], (size, size)).astype(frame.dtype) for c in range(3)],
+                axis=-1,
+            )
+        return wiener(frame, (size, size)).astype(frame.dtype)
+
     # scipy 的 wiener 内部升为 float64，结果转回原精度以控制分块内存。
-    return map_frames(
-        lambda frame: wiener(frame, (size, size)).astype(frame.dtype),
-        frames,
-    )
+    return map_frames(filt, frames)
 
 
 def requant_pixels(frames: np.ndarray, levels: int = 32) -> np.ndarray:

@@ -210,3 +210,53 @@ def test_desensitize_accepts_camel_case_anti_options(tmp_path):
     assert report["quality_metrics_na"] is True
     assert report["psnr_db"] is None
     assert output.exists()
+
+
+@needs_ffmpeg
+def test_desensitize_preserves_color(tmp_path):
+    """彩色链路应保留三通道与色彩主序，且抗档 3 通道路径可跑通。"""
+    rng = np.random.default_rng(6)
+    frames = rng.random((8, 64, 48, 3), dtype=np.float32)
+    frames[..., 0] = 0.9
+    frames[..., 1] = 0.25
+    frames[..., 2] = 0.1
+    source = tmp_path / "color.mp4"
+    ffmpeg.encode_video(frames, str(source), fps=30)
+
+    plain = tmp_path / "plain.mp4"
+    services.run_desensitize(
+        str(source),
+        str(plain),
+        reorder=False,
+        speed=1.0,
+        regrade=False,
+        audio_remix=False,
+        sharpness=False,
+        color_restore=False,
+        denoise=False,
+    )
+    decoded, _ = ffmpeg.decode_video(str(plain), grayscale=False)
+    assert decoded.shape[-1] == 3
+    means = decoded.reshape(len(decoded), -1, 3).mean(axis=1).mean(axis=0)
+    assert means[0] > means[1] > means[2]
+
+    anti = tmp_path / "anti.mp4"
+    services.run_desensitize(
+        str(source),
+        str(anti),
+        reorder=False,
+        speed=1.0,
+        regrade=False,
+        audio_remix=False,
+        sharpness=False,
+        color_restore=False,
+        denoise=False,
+        transform_strategy="fast",
+        rotate=1.2,
+        phash_attack=True,
+        phash_epsilon=0.03,
+    )
+    decoded_anti, _ = ffmpeg.decode_video(str(anti), grayscale=False)
+    assert decoded_anti.shape[-1] == 3
+    anti_means = decoded_anti.reshape(len(decoded_anti), -1, 3).mean(axis=1).mean(axis=0)
+    assert anti_means[0] > anti_means[1] > anti_means[2]

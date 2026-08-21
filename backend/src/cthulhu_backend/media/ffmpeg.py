@@ -189,6 +189,7 @@ class StreamingDecoder:
         pix_fmt = "gray" if grayscale else "rgb24"
         channels = 1 if grayscale else 3
         self.frame_bytes = self.info["height"] * self.info["width"] * channels
+        self.grayscale = grayscale
         self._remaining = max(0, count)
         cmd = [
             FFMPEG_BIN, "-v", "error",
@@ -210,7 +211,12 @@ class StreamingDecoder:
         """
         if self._closed or self._remaining <= 0 or count <= 0:
             empty_dtype = np.uint8 if dtype == "uint8" else np.float32
-            return np.empty((0, self.info["height"], self.info["width"]), dtype=empty_dtype)
+            shape = (
+                (0, self.info["height"], self.info["width"])
+                if self.grayscale
+                else (0, self.info["height"], self.info["width"], 3)
+            )
+            return np.empty(shape, dtype=empty_dtype)
         want = min(count, self._remaining)
         raw = bytearray()
         needed = want * self.frame_bytes
@@ -223,10 +229,19 @@ class StreamingDecoder:
         self._remaining -= total
         if total == 0:
             empty_dtype = np.uint8 if dtype == "uint8" else np.float32
-            return np.empty((0, self.info["height"], self.info["width"]), dtype=empty_dtype)
-        frames = np.frombuffer(bytes(raw[: total * self.frame_bytes]), dtype=np.uint8).reshape(
-            total, self.info["height"], self.info["width"]
+            shape = (
+                (0, self.info["height"], self.info["width"])
+                if self.grayscale
+                else (0, self.info["height"], self.info["width"], 3)
+            )
+            return np.empty(shape, dtype=empty_dtype)
+        buffer = np.frombuffer(bytes(raw[: total * self.frame_bytes]), dtype=np.uint8)
+        shape = (
+            (total, self.info["height"], self.info["width"])
+            if self.grayscale
+            else (total, self.info["height"], self.info["width"], 3)
         )
+        frames = buffer.reshape(shape)
         if dtype == "uint8":
             return frames
         return frames.astype(np.float32) / 255.0
@@ -283,6 +298,7 @@ class StreamingEncoder:
         hardware: bool = False,
         crf: int = 23,
         preset: str = "medium",
+        color: bool = False,
         gop: int | None = None,
         bitrate_kbps: int | None = None,
         out_size: tuple[int, int] | None = None,
@@ -293,7 +309,7 @@ class StreamingEncoder:
             codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
         cmd = [
             FFMPEG_BIN, "-y", "-v", "error",
-            "-f", "rawvideo", "-pix_fmt", "gray",
+            "-f", "rawvideo", "-pix_fmt", "rgb24" if color else "gray",
             "-s", f"{width}x{height}", "-r", str(fps),
             "-i", "-",
             "-c:v", codec,
@@ -368,15 +384,17 @@ def encode_video(
     out_size: tuple[int, int] | None = None,
     hw_quality: int = 70,
 ) -> None:
-    """把灰度帧数组编码为 MP4（yuv420p）。"""
-    _, height, width = frames.shape
+    """把帧数组编码为 MP4（yuv420p）；灰度 (F,H,W) 或彩色 (F,H,W,3) 均可。"""
+    color = frames.ndim == 4
+    _, height, width = frames.shape[:3]
     raw = np.clip(frames, 0, 1)
     payload = (raw * 255).round().astype(np.uint8).tobytes()
     if hardware and sys.platform == "darwin":
         codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
     cmd = [
         FFMPEG_BIN, "-y", "-v", "error",
-        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{width}x{height}", "-r", str(fps),
+        "-f", "rawvideo", "-pix_fmt", "rgb24" if color else "gray",
+        "-s", f"{width}x{height}", "-r", str(fps),
         "-i", "-",
         "-c:v", codec,
     ]
