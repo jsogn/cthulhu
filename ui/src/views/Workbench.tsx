@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1346,16 +1346,19 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   return (
     <aside className="pane pane-right">
       <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])} className="min-h-0 flex-1">
-        <TabsList
-          variant="line"
-          className="w-full shrink-0 gap-1 overflow-x-auto rounded-none border-b border-border p-0"
-        >
-          {TAB_KEYS.map((key) => (
-            <TabsTrigger key={key} value={key} className="shrink-0 whitespace-nowrap px-3">
-              {key}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <ScrollArea className="w-full shrink-0">
+          <TabsList
+            variant="line"
+            className="flex w-max gap-1 rounded-none border-b border-border p-0"
+          >
+            {TAB_KEYS.map((key) => (
+              <TabsTrigger key={key} value={key} className="shrink-0 whitespace-nowrap px-3">
+                {key}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
         <TabsContent value="检测参考" className="tab-pane">
           <ScrollArea className="h-full">
