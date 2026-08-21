@@ -1975,7 +1975,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
 
         <TabsContent value="处理产物" className="tab-pane">
           <ScrollArea className="h-full">
-            <div className="flex flex-col gap-2.5">
+            <div className="flex min-w-0 flex-col gap-2.5">
               {outputs.length === 0 ? (
                 <p className="note">
                   该素材还没有处理产物；执行清洗、修复或生成候选后会自动出现在这里。

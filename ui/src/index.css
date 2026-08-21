@@ -542,6 +542,9 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card);
@@ -592,6 +595,15 @@ body {
   display: flex;
   gap: 6px;
   width: 100%;
+}
+
+/* 滚动组件视口自动注入的 table 测量容器会把内容最小宽度放大，
+   改为块级并解除最小宽度，防止长文件名把面板撑出右侧。 */
+[data-slot="scroll-area-viewport"] > div[style*="display: table"] {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 
