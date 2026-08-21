@@ -1,0 +1,46 @@
+{
+  "files": [
+    "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4",
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4",
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4",
+    "/Users/alone/Downloads/暗水印测试/干净视频.mp4",
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4"
+  ],
+  "risk_matrix": {
+    "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": {
+      "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": 1.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": 0.2943,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": 0.3233,
+      "/Users/alone/Downloads/暗水印测试/干净视频.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": 0.0
+    },
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": {
+      "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": 0.311,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": 1.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": 0.9041,
+      "/Users/alone/Downloads/暗水印测试/干净视频.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": 0.0
+    },
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": {
+      "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": 0.3316,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": 0.9041,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": 1.0,
+      "/Users/alone/Downloads/暗水印测试/干净视频.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": 0.0
+    },
+    "/Users/alone/Downloads/暗水印测试/干净视频.mp4": {
+      "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": 0.0,
+      "/Users/alone/Downloads/暗水印测试/干净视频.mp4": 1.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": 0.6163
+    },
+    "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": {
+      "/Users/alone/Downloads/暗水印测试/疑似暗水印.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_thorough2.mp4": 0.0,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/疑似暗水印_fast5.mp4": 0.0,
+      "/Users/alone/Downloads/暗水印测试/干净视频.mp4": 0.6163,
+      "/Users/alone/JSProjects/cthulhu/backend/data/outputs/干净视频_fast5.mp4": 1.0
+    }
+  }
+}
