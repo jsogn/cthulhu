@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   Download,
-  ListPlus,
   Pause,
   Play,
   Plus,
@@ -212,60 +211,15 @@ export default function Workbench() {
   const materials = useMaterialsStore((state) => state.materials);
   const activeId = useMaterialsStore((state) => state.activeId);
   const selected = useMaterialsStore((state) => state.selected);
-  const addHistory = useHistoryStore((state) => state.add);
 
   const active = materials.find((m) => m.id === activeId) ?? null;
   const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("清洗去重");
-  const [enqueued, setEnqueued] = useState(false);
 
   const [frame, setFrame] = useState(132);
   const [playing, setPlaying] = useState(false);
   const [comparePct, setComparePct] = useState(50);
   const frameRef = useRef(frame);
   frameRef.current = frame;
-
-  const handleEnqueue = async () => {
-    if (enqueued) return;
-    const target = active as (Material & { path?: string }) | null;
-    if (!target?.path) {
-      toast("该素材缺少本地路径，无法执行");
-      return;
-    }
-    setEnqueued(true);
-    try {
-      const output = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned.mp4`;
-      await enqueueJob(`${target.name} · 清洗`, [
-        {
-          kind: "desensitize",
-          path: target.path,
-          options: {
-            output,
-            reorder: true,
-            speed: 0.95,
-            regrade: true,
-            perturb: 0.2,
-            audio_remix: true,
-            sharpness: true,
-            color_restore: true,
-            seed: Math.floor(Math.random() * 1_000_000),
-          },
-        },
-      ]);
-      addHistory({
-        name: target.name,
-        time: nowStr(),
-        action: "加入处理队列",
-        params: "平衡档 · 默认参数",
-        out: output,
-        result: "排队中",
-      });
-      toast("已加入任务队列");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "入队失败");
-    } finally {
-      window.setTimeout(() => setEnqueued(false), 1600);
-    }
-  };
 
   return (
     <section className="workbench">
@@ -278,9 +232,8 @@ export default function Workbench() {
         setPlaying={setPlaying}
         comparePct={comparePct}
         setComparePct={setComparePct}
-        onEnqueue={handleEnqueue}
       />
-      <ContextPanel tab={tab} setTab={setTab} onEnqueue={handleEnqueue} enqueued={enqueued} />
+      <ContextPanel tab={tab} setTab={setTab} />
       {Object.values(selected).length > 0 && (
         <BatchBar count={Object.values(selected).length} />
       )}
@@ -543,7 +496,6 @@ interface PreviewProps {
   setPlaying: (value: boolean) => void;
   comparePct: number;
   setComparePct: (value: number) => void;
-  onEnqueue: () => void;
 }
 
 function PreviewPane({
@@ -975,11 +927,9 @@ function PreviewPane({
 interface ContextProps {
   tab: (typeof TAB_KEYS)[number];
   setTab: (tab: (typeof TAB_KEYS)[number]) => void;
-  onEnqueue: () => void;
-  enqueued: boolean;
 }
 
-function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
+function ContextPanel({ tab, setTab }: ContextProps) {
   const material = useMaterialsStore((state) =>
     state.materials.find((m) => m.id === state.activeId),
   );
@@ -1904,13 +1854,6 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
           </ScrollArea>
         </TabsContent>
       </Tabs>
-
-      <div className="pane-cta">
-        <Button onClick={onEnqueue} disabled={enqueued}>
-          <ListPlus />
-          {enqueued ? "已加入队列" : "加入处理队列"}
-        </Button>
-      </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-[min(90vw,960px)]">
