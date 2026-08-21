@@ -3,7 +3,6 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import {
   Code2,
   Download,
-  FolderOpen,
   GitCompareArrows,
   Pause,
   Play,
@@ -1983,50 +1982,51 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                 </p>
               ) : (
                 <>
-                  <p className="note">播放或与原片同步对比，确认观感；删除后不可恢复。</p>
+                  <p className="note">选择产物与原片同步对比，或播放查看效果。</p>
                   {outputs.map((output) => (
                     <div key={output.path} className="out-item">
                       <div className="out-item-head">
                         <span className="out-kind">{OUTPUT_KIND_LABEL[output.kind]}</span>
                         <span className="out-name" title={output.name}>{output.name}</span>
-                        <span className="out-meta">
-                          {fmtSize(output.size)} · {outputTimeLabel(output.mtime)}
-                        </span>
+                      </div>
+                      <div className="out-meta">
+                        {fmtSize(output.size)} · {outputTimeLabel(output.mtime)}
                       </div>
                       <div className="out-item-actions">
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          title="与原片对比"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full"
                           onClick={() => compareOriginal(output)}
                         >
-                          <GitCompareArrows />
+                          <GitCompareArrows /> 对比原片
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="播放"
-                          onClick={() => setPlayerPath(output.path)}
-                        >
-                          <Play />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="打开文件夹"
-                          onClick={() => openInFolder(output.path)}
-                        >
-                          <FolderOpen />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          title="删除"
-                          onClick={() => setPendingDelete(output)}
-                        >
-                          <Trash2 />
-                        </Button>
+                        <div className="out-item-secondary">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => setPlayerPath(output.path)}
+                          >
+                            播放
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => openInFolder(output.path)}
+                          >
+                            打开
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 text-destructive"
+                            onClick={() => setPendingDelete(output)}
+                          >
+                            删除
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}

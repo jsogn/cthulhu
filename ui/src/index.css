@@ -579,12 +579,19 @@ body {
   font-size: 11px;
   color: var(--muted-foreground);
   white-space: nowrap;
+  padding-left: 2px;
 }
 
 .out-item-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 2px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.out-item-secondary {
+  display: flex;
+  gap: 6px;
+  width: 100%;
 }
 
 
