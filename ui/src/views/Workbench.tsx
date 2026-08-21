@@ -14,6 +14,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -309,7 +310,7 @@ export default function Workbench() {
           cleanOptionsRef={cleanOptionsRef}
         />
       </div>
-      <BatchPopup cleanOptionsRef={cleanOptionsRef} />
+      <BatchPopup />
     </section>
   );
 }
@@ -523,10 +524,11 @@ function MaterialPane() {
 }
 
 /* ============ 批量操作弹窗 ============ */
-function BatchPopup({ cleanOptionsRef }: { cleanOptionsRef: MutableRefObject<DesensitizeOptions | null> }) {
+function BatchPopup() {
   const selected = useMaterialsStore((state) => state.selected);
   const materials = useMaterialsStore((state) => state.materials);
   const deleteSelected = useMaterialsStore((state) => state.deleteSelected);
+  const toggleSelectAll = useMaterialsStore((state) => state.toggleSelectAll);
   const [exportDir, setExportDir] = useState("");
   const ids = Object.keys(selected);
 
@@ -537,48 +539,6 @@ function BatchPopup({ cleanOptionsRef }: { cleanOptionsRef: MutableRefObject<Des
   }, []);
 
   if (!ids.length) return null;
-
-  const batchClean = async () => {
-    const targets = ids
-      .map((id) => materials.find((m) => m.id === id))
-      .filter((m): m is Material & { path: string } => !!m?.path);
-    if (!targets.length) {
-      toast("所选素材缺少本地路径，无法执行");
-      return;
-    }
-    const options = cleanOptionsRef.current ?? {
-      reorder: false,
-      speed: 1.0,
-      recrop: 0,
-      perturb: 0,
-      regrade: true,
-      audioRemix: true,
-      sharpness: true,
-      colorRestore: true,
-      denoise: true,
-      antiReembed: false,
-      seed: Math.floor(Math.random() * 1_000_000),
-      codec: "libx264",
-    };
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, "0");
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
-      now.getHours(),
-    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const tasks = targets.map((m) => {
-      const stem = m.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "");
-      const output = exportDir
-        ? `${exportDir.replace(/\/+$/, "")}/${m.name.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_cleaned_${ts}.mp4`
-        : `${stem}_cleaned_${ts}.mp4`;
-      return { kind: "desensitize" as const, path: m.path, options: { output, ...toSnakeOptions(options) } };
-    });
-    try {
-      await enqueueJob("批量清洗", tasks);
-      toast(`已将 ${targets.length} 个素材按当前参数加入队列`);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "入队失败");
-    }
-  };
 
   const batchExport = async () => {
     const paths = ids
@@ -613,16 +573,22 @@ function BatchPopup({ cleanOptionsRef }: { cleanOptionsRef: MutableRefObject<Des
   };
 
   return (
-    <div className="batch-popup" role="group" aria-label="批量操作">
+    <div className="batch-popup" role="dialog" aria-label="批量操作">
       <span className="batch-count">已选 {ids.length} 个</span>
-      <Button variant="secondary" size="sm" onClick={() => void batchClean()}>
-        批量清洗
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => void batchExport()}>
+      <Button variant="secondary" size="sm" onClick={() => void batchExport()}>
         导出产物
       </Button>
       <Button variant="ghost" size="sm" className="text-destructive" onClick={remove}>
         移除
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        aria-label="关闭"
+        onClick={() => toggleSelectAll(ids)}
+      >
+        <X />
       </Button>
     </div>
   );

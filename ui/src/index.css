@@ -632,20 +632,26 @@ body {
 
 /* ============ 批量操作弹窗 ============ */
 .batch-popup {
-  flex: none;
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  z-index: 80;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   background: var(--popover);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
 }
 
 .batch-count {
   font-size: 12px;
   color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
 /* ============ 预览区 ============ */
