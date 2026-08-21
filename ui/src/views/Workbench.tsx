@@ -1007,7 +1007,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
 
   const [level, setLevel] = useState<CleanLevel>("平衡");
   const [retime, setRetime] = useState(30);
-  const [reorderOn, setReorderOn] = useState(false);
   const [perturb, setPerturb] = useState(20);
   const [audioClean, setAudioClean] = useState(true);
   const [antiReembed, setAntiReembed] = useState(false);
@@ -1123,7 +1122,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     const anti = ANTI_PRESETS[antiLevel];
     try {
       const cleanOptions: DesensitizeOptions = {
-        reorder: reorderOn,
+        reorder: false,
         speed: Math.max(0.85, 1 - 0.15 * (retime / 100)),
         recrop: recropOn ? 0.015 + 0.075 * (perturb / 100) : 0,
         perturb: perturb / 100,
@@ -1764,10 +1763,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                   <b>{levelDisplay(level, recropOn).speed.toFixed(3)}×</b>
                 </div>
                 <div className="param-row">
-                  <span>分镜乱序</span>
-                  <b>{reorderOn ? "开启（破坏叙事）" : "关闭（保持剧情顺序）"}</b>
-                </div>
-                <div className="param-row">
                   <span>调光微扰</span>
                   <b>
                     γ±{levelDisplay(level, recropOn).gamma.toFixed(2)} · 亮度±
@@ -1784,7 +1779,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                 </div>
               </div>
               <p className="note">
-                三档只控制变速与微扰强度；分镜乱序与指纹对抗在下方独立设置。
+                三档只控制变速与微扰强度；指纹对抗与编码参数在下方独立设置。
               </p>
 
               <div className="field">
@@ -1821,15 +1816,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                   </div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
-              </div>
-              <div className="switch">
-                <div>
-                  <div className="switch-label">分镜乱序</div>
-                  <div className="switch-desc">
-                    打乱镜头顺序破坏时序指纹，但会破坏剧情叙事；短剧素材建议关闭
-                  </div>
-                </div>
-                <Switch checked={reorderOn} onCheckedChange={setReorderOn} />
               </div>
               <div className="switch">
                 <div>

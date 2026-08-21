@@ -330,7 +330,7 @@ def run_desensitize(
     path: str,
     output: str,
     *,
-    reorder: bool = True,
+    reorder: bool = False,
     speed: float = 1.0,
     recrop: float = 0.0,
     regrade: bool = True,
