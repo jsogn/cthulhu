@@ -857,7 +857,6 @@ function PreviewPane({
     <section className="pane pane-center">
       <div className="preview-head">
         <span className="preview-name">{material?.name ?? "未选择素材"}</span>
-        <span className="demo-badge">{hasRealFrame ? "实时预览" : "预览不可用"}</span>
         {material && <span className="preview-meta mono">{material.res} · {material.fps}</span>}
         {compareMode && (
           <Button variant="ghost" size="sm" onClick={onExitCompare}>
@@ -1336,7 +1335,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   };
 
   const compareOriginal = (output: OutputInfo) => {
-    if (material?.path) runComparePair(material.path, output.path, "原片", output.name);
+    if (material?.path) runComparePair(material.path, output.path, "原片", "处理后");
   };
 
   // 清洗任务完成后：更新校验指标、产物列表、历史与并排预览。
@@ -1583,7 +1582,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                           size="sm"
                           className="mt-2 w-full"
                           onClick={() =>
-                            runComparePair(material.path as string, lastOutput, "原片", "本次产物")
+                            runComparePair(material.path as string, lastOutput, "原片", "处理后")
                           }
                         >
                           与原片同屏对比（同步播放）

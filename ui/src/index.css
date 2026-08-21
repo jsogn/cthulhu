@@ -656,14 +656,6 @@ body {
   color: var(--muted-foreground);
 }
 
-.demo-badge {
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
-  color: var(--primary);
-  font-size: 12px;
-}
-
 .preview-stage {
   position: relative;
   flex: 1;
