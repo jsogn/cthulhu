@@ -771,11 +771,14 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
     missing: list[str] = []
     for source in paths:
         source_path = Path(source)
-        candidates = [
-            source_path.with_name(f"{source_path.stem}_cleaned.mp4"),
-            source_path.with_name(f"{source_path.stem}_repaired.mp4"),
+        # 命名规则带时间戳后不再覆盖，按通配符匹配全部清洗/修复产物，
+        # 取最新修改的一份导出。
+        existing = [
+            candidate
+            for pattern in (f"{source_path.stem}_cleaned*.mp4", f"{source_path.stem}_repaired*.mp4")
+            for candidate in source_path.parent.glob(pattern)
+            if candidate.is_file()
         ]
-        existing = [candidate for candidate in candidates if candidate.exists()]
         if not existing:
             missing.append(source_path.name)
             continue

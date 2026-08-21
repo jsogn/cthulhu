@@ -965,7 +965,8 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const [gop, setGop] = useState("");
   const [fpsOut, setFpsOut] = useState("");
   const [outputDir, setOutputDir] = useState("");
-  const [naming, setNaming] = useState("原文件名_cleaned");
+  const [naming, setNaming] = useState("原文件名 + 时间戳");
+  const [lastOutput, setLastOutput] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
   const [audio, setAudio] = useState<AudioAnalysis | null>(null);
@@ -1024,12 +1025,18 @@ function ContextPanel({ tab, setTab }: ContextProps) {
     }
     const srcStem = target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "");
     const srcName = srcStem.split(/[\\/]/).pop() ?? srcStem;
-    const ts = new Date().toISOString().replace(/[-:TZ]/g, "").slice(0, 14);
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+      now.getHours(),
+    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const fileName =
-      naming === "前缀 + 时间戳" ? `${ts}_${srcName}_cleaned.mp4` : `${srcName}_cleaned.mp4`;
+      naming === "时间戳 + 原文件名"
+        ? `${ts}_${srcName}_cleaned.mp4`
+        : `${srcName}_cleaned_${ts}.mp4`;
     const output = outputDir.trim()
       ? `${outputDir.trim().replace(/\/+$/, "")}/${fileName}`
-      : `${srcStem}_cleaned.mp4`;
+      : `${srcStem}_cleaned_${ts}.mp4`;
     const anti = ANTI_PRESETS[antiLevel];
     setCleaning(true);
     try {
@@ -1088,6 +1095,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
         result: "成功",
       });
       setLastClean(report);
+      setLastOutput(output);
       setPreviewUrl(null);
       try {
         const preview = await makePreview(target.path, output);
@@ -1347,6 +1355,20 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                           <div className="metric-label">VMAF（对齐）</div>
                         </div>
                       </div>
+                      {lastOutput && (
+                        <div className="kv-row mt-2">
+                          <span className="mono truncate text-xs text-muted-foreground">
+                            {lastOutput}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openInFolder(lastOutput)}
+                          >
+                            打开文件夹
+                          </Button>
+                        </div>
+                      )}
                       {previewUrl && (
                         <Button
                           variant="secondary"
@@ -1788,11 +1810,8 @@ function ContextPanel({ tab, setTab }: ContextProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="原文件名_cleaned">原文件名_cleaned</SelectItem>
-                    <SelectItem value="前缀 + 时间戳">前缀 + 时间戳</SelectItem>
-                    <SelectItem value="自定义序列" disabled>
-                      自定义序列 · 后续版本
-                    </SelectItem>
+                    <SelectItem value="原文件名 + 时间戳">原文件名 + 时间戳（不覆盖）</SelectItem>
+                    <SelectItem value="时间戳 + 原文件名">时间戳 + 原文件名（不覆盖）</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
