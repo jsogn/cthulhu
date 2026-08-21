@@ -1,6 +1,9 @@
-# 暗水印清洗台（cthulhu）
+# Cthulhu · 推广素材处理台
 
-本地端视频暗水印检测与清理桌面软件。私有分发、不对外公开；macOS 优先，Windows 次之。
+本地端推广素材处理平台，当前核心能力为素材去重与暗水印清洗，并预留
+多版本候选、裂变、分组等扩展空间。私有分发、不对外公开；macOS 优先，
+Windows 次之。产品定位与扩展设计见
+[docs/产品定位与架构.md](docs/产品定位与架构.md)。
 
 ## 技术栈
 
@@ -78,7 +81,7 @@ POST /api/desensitize   {"path": "...", "output": "...", ...} → 脱敏 + 前�
 pnpm package                 # 前端构建 → PyInstaller 后端 → electron-builder dmg
 ```
 
-产物：`packaging/dist/暗水印清洗台-0.1.0-arm64.dmg`。当前为未签名私有构建；发布级签名/公证与 Windows 打包留待功能收尾后执行。打包版依赖系统安装的 ffmpeg/ffprobe（检测/清洗/修复/VMAF 均需要）。
+产物：`packaging/dist/Cthulhu-0.1.0-arm64.dmg`。当前为未签名私有构建；发布级签名/公证与 Windows 打包留待功能收尾后执行。打包版依赖系统安装的 ffmpeg/ffprobe（检测/清洗/修复/VMAF 均需要）。
 
 发布级清单见 [docs/发布打包.md](docs/发布打包.md)：图标已就绪，ffmpeg 内置机制已就绪（`packaging/fetch_ffmpeg.sh` 获取静态构建），macOS 签名/公证与 Windows 构建为待办。
 

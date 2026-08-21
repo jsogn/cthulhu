@@ -75,7 +75,7 @@ export default function App() {
                 );
               } else {
                 toast(
-                  "欢迎使用暗水印清洗台",
+                  "欢迎使用 Cthulhu",
                   "拖入或导入你自己的视频，即可开始检测与清洗",
                 );
               }

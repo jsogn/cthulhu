@@ -112,7 +112,7 @@ async function createWindow() {
     height: 900,
     minWidth: 1280,
     minHeight: 720,
-    title: "暗水印清洗台",
+    title: "Cthulhu · 推广素材处理台",
     backgroundColor: "#0b0d12",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

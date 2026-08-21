@@ -70,7 +70,7 @@ export const useQueueStore = create<QueueState>((set) => ({
           toast(`任务完成：${job.name}`);
         }
         try {
-          new Notification(`暗水印清洗台 · 任务完成`, { body: job.name });
+          new Notification(`Cthulhu · 任务完成`, { body: job.name });
         } catch {
           // 环境不支持系统通知时静默降级
         }

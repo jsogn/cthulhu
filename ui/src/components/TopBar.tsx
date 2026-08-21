@@ -22,8 +22,8 @@ export default function TopBar() {
           </svg>
         </span>
         <div>
-          <div className="brand-name">暗水印清洗台</div>
-          <div className="brand-sub">暗水印对抗 · 素材去重风险清洗 · 可见水印修复</div>
+          <div className="brand-name">Cthulhu</div>
+          <div className="brand-sub">推广素材处理 · 去重 · 暗水印 · 多版本</div>
         </div>
       </div>
 
