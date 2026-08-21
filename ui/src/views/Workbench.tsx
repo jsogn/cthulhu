@@ -4,6 +4,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import {
   Code2,
   GitCompareArrows,
+  MoreVertical,
   Pause,
   Play,
   Plus,
@@ -1515,10 +1516,10 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               onValueChange={(value) => setTab(value as (typeof TAB_KEYS)[number])}
             >
               <SelectTrigger
-                className="mr-1 h-8 w-auto shrink-0 gap-1 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:text-foreground"
+                className="mr-1 h-8 w-8 shrink-0 justify-center gap-0 border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:text-foreground [&>svg:last-child]:hidden"
                 aria-label="更多标签页"
               >
-                <SelectValue placeholder="更多" />
+                <MoreVertical className="size-4" />
               </SelectTrigger>
               <SelectContent align="end">
                 {TAB_KEYS.slice(visibleTabCount).map((key) => (
