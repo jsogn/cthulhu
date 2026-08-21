@@ -163,3 +163,11 @@ def matched_ssim(ref: np.ndarray, mov: np.ndarray, matches: np.ndarray) -> float
             candidate = zoom(candidate, factors, order=1)
         total += ssim(reference, candidate)
     return total / max(len(mov), 1)
+
+
+def temporal_stability(frames: np.ndarray) -> float:
+    """画面稳定性：相邻抽样帧的平均绝对差（越小越稳，可检测闪烁/抖动）。"""
+    array = np.asarray(frames, dtype=np.float32)
+    if len(array) < 2:
+        return 0.0
+    return float(np.abs(np.diff(array, axis=0)).mean())

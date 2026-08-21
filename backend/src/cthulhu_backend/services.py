@@ -687,6 +687,8 @@ def run_desensitize(
     original_sampled, _ = ffmpeg.decode_sampled(path, cap=200)
     processed_sampled, _ = ffmpeg.decode_sampled(output, cap=200)
     ref_s, mov_s, matches = metrics.temporal_match(original_sampled, processed_sampled)
+    stability_in = metrics.temporal_stability(original_sampled)
+    stability_out = metrics.temporal_stability(processed_sampled)
     # 几何去同步（旋转）使逐像素画质指标失去对齐口径，数值会误导用户。
     quality_na = rotate > 0
     return {
@@ -717,6 +719,8 @@ def run_desensitize(
             else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=output_fps)
         ),
         "quality_metrics_na": quality_na,
+        "stability_ratio": round(stability_out / max(stability_in, 1e-9), 3),
+        "export_health": _export_health(output),
     }
 
 
@@ -817,6 +821,74 @@ def make_preview_montage(source: str, processed: str, count: int = 4) -> str:
             stacked = next_path
         shutil.copy2(stacked, target)
     return target
+
+
+def _export_health(path: str) -> dict:
+    """导出转码健康检查：编码/分辨率/时长/体积等是否适合二次剪辑。"""
+    try:
+        probe = ffmpeg.probe(path)
+        video = next((s for s in probe["streams"] if s.get("codec_type") == "video"), None)
+        audio = next((s for s in probe["streams"] if s.get("codec_type") == "audio"), None)
+        fmt = probe.get("format", {})
+        return {
+            "video_codec": video.get("codec_name") if video else None,
+            "audio_codec": audio.get("codec_name") if audio else None,
+            "pix_fmt": video.get("pix_fmt") if video else None,
+            "width": video.get("width") if video else None,
+            "height": video.get("height") if video else None,
+            "duration": fmt.get("duration"),
+            "size_bytes": os.path.getsize(path),
+        }
+    except Exception:  # noqa: BLE001 - 健康检查失败不阻断主流程
+        return {}
+
+
+def _candidate_score(result: dict) -> float:
+    """低损优选评分：内容保持与画面稳定性为主，去重破坏为辅。"""
+    similarity = result.get("similarity_after", {})
+    content = float(similarity.get("content_cosine", 0.0))
+    dhash = float(similarity.get("reduction", {}).get("dhash", 0.0))
+    stability = float(result.get("stability_ratio", 1.0))
+    stability_term = max(0.0, 1.0 - abs(stability - 1.0) * 2.0)
+    return round(0.55 * content + 0.25 * stability_term + 0.2 * min(dhash, 1.0), 4)
+
+
+def generate_candidates(
+    path: str,
+    output_dir: str,
+    count: int = 3,
+    options: dict | None = None,
+    progress_cb=None,
+) -> dict:
+    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。"""
+    path = _require_file(path)
+    target = Path(os.path.expanduser(output_dir))
+    target.mkdir(parents=True, exist_ok=True)
+    stem = Path(path).stem
+    candidates: list[dict] = []
+    for index in range(max(1, count)):
+        seed = int.from_bytes(os.urandom(4), "big")
+        output = str(target / f"{stem}_候选{index + 1}.mp4")
+        if progress_cb:
+            progress_cb(index, count, "生成候选")
+        result = run_desensitize(path, output, seed=seed, **(options or {}))
+        candidates.append(
+            {
+                "index": index + 1,
+                "output": output,
+                "seed": seed,
+                "content_cosine": result.get("similarity_after", {}).get("content_cosine"),
+                "stability_ratio": result.get("stability_ratio"),
+                "dhash_reduction": result.get("similarity_after", {})
+                .get("reduction", {})
+                .get("dhash"),
+                "order_disruption": result.get("order_disruption"),
+                "export_health": result.get("export_health"),
+                "score": _candidate_score(result),
+            }
+        )
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    return {"source": path, "output_dir": str(target), "candidates": candidates}
 
 
 # ---------- 视频处理引擎（FFmpeg）自动安装 ----------

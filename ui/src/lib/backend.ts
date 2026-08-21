@@ -432,6 +432,49 @@ export function previewImageUrl(path: string): string {
   return `${backendUrl}/api/preview-image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
 }
 
+export interface CandidateInfo {
+  index: number;
+  output: string;
+  seed: number;
+  content_cosine: number;
+  stability_ratio: number;
+  dhash_reduction: number;
+  order_disruption: number;
+  export_health: {
+    video_codec?: string;
+    audio_codec?: string;
+    width?: number;
+    height?: number;
+    size_bytes?: number;
+  };
+  score: number;
+}
+
+export interface CandidatesReport {
+  source: string;
+  output_dir: string;
+  candidates: CandidateInfo[];
+}
+
+/** 同一素材生成多个差异化候选并按低损优选评分排序。 */
+export async function generateCandidates(
+  path: string,
+  outputDir: string,
+  count: number,
+  options: DesensitizeOptions,
+): Promise<CandidatesReport> {
+  const res = await apiFetch("/api/candidates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, output_dir: outputDir, count, options }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data as { detail?: string } | null)?.detail ?? `生成候选失败（${res.status}）`);
+  }
+  return res.json();
+}
+
 export async function enqueueJob(
   name: string,
   tasks: JobTaskSpec[],

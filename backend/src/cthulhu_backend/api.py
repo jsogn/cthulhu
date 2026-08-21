@@ -112,6 +112,13 @@ class PreviewRequest(BaseModel):
     output: str
 
 
+class CandidatesRequest(BaseModel):
+    path: str
+    output_dir: str
+    count: int = Field(3, ge=1, le=10)
+    options: dict = {}
+
+
 class ScanRequest(BaseModel):
     path: str
 
@@ -494,6 +501,23 @@ async def preview(request: PreviewRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
     return {"image_path": image_path}
+
+
+@router.post("/candidates")
+async def candidates(request: CandidatesRequest) -> dict:
+    """同一素材生成多个差异化候选并按低损优选评分排序。"""
+    try:
+        return await asyncio.to_thread(
+            services.generate_candidates,
+            request.path,
+            request.output_dir,
+            request.count,
+            request.options,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
 
 
 @router.get("/preview-image")

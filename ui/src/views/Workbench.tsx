@@ -44,6 +44,7 @@ import {
   enqueueJob,
   exportOutputs,
   frameUrl,
+  generateCandidates,
   listTemplates,
   makePreview,
   mediaUrl,
@@ -52,7 +53,9 @@ import {
   runDetect,
   thumbUrl,
   type AudioAnalysis,
+  type CandidateInfo,
   type DetectReport,
+  type DesensitizeOptions,
   type JobInfo,
   type TemplateInfo,
 } from "@/lib/backend";
@@ -1113,6 +1116,9 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
   } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
+  const [candidatesBusy, setCandidatesBusy] = useState(false);
+  const lastOptionsRef = useRef<DesensitizeOptions | null>(null);
 
   const risk = material?.risk ?? "待检测";
   const score = material?.score ?? 0;
@@ -1177,7 +1183,7 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
     const anti = ANTI_PRESETS[antiLevel];
     setCleaning(true);
     try {
-      const report = await runDesensitize(target.path, output, {
+      const cleanOptions: DesensitizeOptions = {
         reorder: restruct > 0,
         speed: Math.max(0.85, 1 - 0.15 * (restruct / 100)),
         recrop: recropOn ? 0.015 + 0.075 * (perturb / 100) : 0,
@@ -1218,7 +1224,9 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
               ...(anti.nativeFilters ? { nativeFilters: true } : {}),
             }
           : {}),
-      });
+      };
+      lastOptionsRef.current = cleanOptions;
+      const report = await runDesensitize(target.path, output, cleanOptions);
       addHistory({
         name: material.name,
         time: nowStr(),
@@ -1284,6 +1292,25 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
       toast("入队失败，请确认引擎在线");
     } finally {
       setDetectSubmitting(false);
+    }
+  };
+
+  const runCandidates = async () => {
+    const target = material as (Material & { path?: string }) | null;
+    if (!target?.path || !lastOptionsRef.current) {
+      toast("请先执行一次清洗，再生成候选");
+      return;
+    }
+    setCandidatesBusy(true);
+    try {
+      const dir = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_候选`;
+      const report = await generateCandidates(target.path, dir, 3, lastOptionsRef.current);
+      setCandidates(report.candidates);
+      toast(`已生成 ${report.candidates.length} 个候选，按低损优选排序`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "生成候选失败");
+    } finally {
+      setCandidatesBusy(false);
     }
   };
 
@@ -1492,6 +1519,25 @@ function ContextPanel({ tab, setTab, onEnqueue, enqueued }: ContextProps) {
                         >
                           查看并排预览（确认观感）
                         </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="mt-2 w-full"
+                        disabled={candidatesBusy}
+                        onClick={runCandidates}
+                      >
+                        {candidatesBusy ? "生成中…" : "生成候选（多版本优选）"}
+                      </Button>
+                      {candidates && (
+                        <div className="mt-2 flex flex-col gap-1">
+                          {candidates.map((candidate) => (
+                            <div key={candidate.index} className="mono text-xs text-muted-foreground">
+                              候选{candidate.index} · 评分 {candidate.score} · 内容{" "}
+                              {candidate.content_cosine.toFixed(3)} · 稳定 {candidate.stability_ratio}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </>
                   ) : (

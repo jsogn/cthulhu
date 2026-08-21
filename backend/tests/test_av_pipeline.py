@@ -315,3 +315,31 @@ def test_make_preview_montage(tmp_path):
     preview = services.make_preview_montage(str(source), str(output))
     assert preview == str(output) + ".preview.png"
     assert Path(preview).exists() and Path(preview).stat().st_size > 0
+
+
+@needs_ffmpeg
+def test_generate_candidates_ranked(tmp_path):
+    """多候选生成应产出按低损优选评分排序的差异化文件。"""
+    video = samples.make_cut_video(2, 8, 160, 120, seed=38)
+    source = tmp_path / "src.mp4"
+    ffmpeg.encode_video(video, str(source), fps=30)
+    report = services.generate_candidates(
+        str(source),
+        str(tmp_path / "candidates"),
+        count=2,
+        options={
+            "reorder": False,
+            "speed": 1.0,
+            "regrade": False,
+            "audio_remix": False,
+            "sharpness": False,
+            "color_restore": False,
+            "denoise": False,
+        },
+    )
+    assert len(report["candidates"]) == 2
+    assert report["candidates"][0]["score"] >= report["candidates"][1]["score"]
+    for candidate in report["candidates"]:
+        assert Path(candidate["output"]).exists()
+        assert candidate["stability_ratio"] is not None
+        assert candidate["export_health"]["video_codec"] == "h264"
