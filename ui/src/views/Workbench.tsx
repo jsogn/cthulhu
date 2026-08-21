@@ -401,7 +401,7 @@ function MaterialPane() {
 
       <div className="pane-body">
         <div className="toolbar-row">
-          <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
+          <Button variant="default" size="sm" onClick={() => setImportOpen(true)}>
             <Upload />
             导入
           </Button>

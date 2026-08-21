@@ -1,4 +1,4 @@
-import { Moon, Settings, Sun, Upload } from "lucide-react";
+import { Moon, Settings, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolveTheme, useAppStore } from "@/stores/app";
@@ -7,7 +7,6 @@ export default function TopBar() {
   const themePref = useAppStore((state) => state.themePref);
   const setThemePref = useAppStore((state) => state.setThemePref);
   const connected = useAppStore((state) => state.backendConnected);
-  const setImportOpen = useAppStore((state) => state.setImportOpen);
   const setView = useAppStore((state) => state.setView);
 
   const effective = resolveTheme(themePref);
@@ -28,10 +27,6 @@ export default function TopBar() {
       </div>
 
       <div className="topbar-actions">
-        <Button onClick={() => setImportOpen(true)}>
-          <Upload />
-          导入素材
-        </Button>
         <span className={`status${connected ? " ok" : " err"}`} title={connected ? "后端已连接" : "后端未连接"}>
           <span className="status-dot" />
           {connected ? "引擎就绪" : "引擎离线"}
