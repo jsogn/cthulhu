@@ -528,6 +528,15 @@ async def preview_image(path: str = Query(...)) -> FileResponse:
     return FileResponse(path, media_type="image/png")
 
 
+@router.get("/outputs")
+async def outputs(path: str = Query(...)) -> dict:
+    """列出源素材的全部处理产物（清洗/修复/候选），最新在前。"""
+    try:
+        return services.list_outputs(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
+
+
 @router.post("/ffmpeg/select")
 def select_ffmpeg(request: PathRequest) -> dict:
     """用户手动指定本机已有的 ffmpeg 可执行文件。"""

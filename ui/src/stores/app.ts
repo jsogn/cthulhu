@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ViewKey = "workbench" | "jobs" | "templates" | "history" | "settings";
+export type ViewKey = "workbench" | "outputs" | "jobs" | "templates" | "history" | "settings";
 export type ThemePref = "dark" | "light" | "system";
 
 interface AppState {

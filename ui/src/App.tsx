@@ -6,6 +6,7 @@ import ImportDialog from "@/components/ImportDialog";
 import StatusBar from "@/components/StatusBar";
 import Workbench from "@/views/Workbench";
 import JobsView from "@/views/JobsView";
+import OutputsView from "@/views/OutputsView";
 import TemplatesView from "@/views/TemplatesView";
 import HistoryView from "@/views/HistoryView";
 import SettingsView from "@/views/SettingsView";
@@ -114,6 +115,7 @@ export default function App() {
           <Rail />
           <main className="view">
             {view === "workbench" && <Workbench />}
+            {view === "outputs" && <OutputsView />}
             {view === "jobs" && <JobsView />}
             {view === "templates" && <TemplatesView />}
             {view === "history" && <HistoryView />}

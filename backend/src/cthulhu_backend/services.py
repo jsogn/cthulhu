@@ -858,6 +858,33 @@ def _export_health(path: str) -> dict:
         return {}
 
 
+def list_outputs(source: str) -> dict:
+    """按源素材匹配全部清洗/修复/候选产物，最新在前。"""
+    source = _require_file(source)
+    source_path = Path(source)
+    patterns = {
+        "cleaned": f"{source_path.stem}_cleaned*.mp4",
+        "repaired": f"{source_path.stem}_repaired*.mp4",
+        "candidate": f"{source_path.stem}_候选*.mp4",
+    }
+    outputs: list[dict] = []
+    for kind, pattern in patterns.items():
+        for candidate in source_path.parent.glob(pattern):
+            if not candidate.is_file():
+                continue
+            outputs.append(
+                {
+                    "kind": kind,
+                    "path": str(candidate),
+                    "name": candidate.name,
+                    "size": candidate.stat().st_size,
+                    "mtime": candidate.stat().st_mtime,
+                }
+            )
+    outputs.sort(key=lambda item: item["mtime"], reverse=True)
+    return {"source": source, "outputs": outputs}
+
+
 def _candidate_score(result: dict) -> float:
     """低损优选评分：内容保持与画面稳定性为主，去重破坏为辅。"""
     similarity = result.get("similarity_after", {})

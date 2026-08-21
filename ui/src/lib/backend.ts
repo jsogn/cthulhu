@@ -433,6 +433,40 @@ export function previewImageUrl(path: string): string {
   return `${backendUrl}/api/preview-image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
 }
 
+export interface SimilarityReport {
+  content_cosine: number;
+  motion_cosine: number;
+  dhash_agreement: number;
+  ssim_mean: number;
+  reduction: { content: number; motion: number; dhash: number };
+}
+
+/** 两段视频的内容相似度报告。 */
+export async function runSimilarity(a: string, b: string): Promise<SimilarityReport> {
+  const res = await apiFetch("/api/similarity", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ a, b }),
+  });
+  if (!res.ok) throw new Error(`相似度计算失败（${res.status}）`);
+  return res.json();
+}
+
+export interface OutputInfo {
+  kind: "cleaned" | "repaired" | "candidate";
+  path: string;
+  name: string;
+  size: number;
+  mtime: number;
+}
+
+/** 列出源素材的全部处理产物，最新在前。 */
+export async function fetchOutputs(path: string): Promise<{ source: string; outputs: OutputInfo[] }> {
+  const res = await apiFetch(`/api/outputs?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new Error(`读取产物失败（${res.status}）`);
+  return res.json();
+}
+
 export interface CandidateInfo {
   index: number;
   output: string;
