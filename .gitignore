@@ -14,6 +14,7 @@ __pycache__/
 
 # 数据与实验（样本库不入库）
 data/
+backend/models/
 
 # 运行时产物
 output/

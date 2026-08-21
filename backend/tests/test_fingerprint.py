@@ -108,3 +108,32 @@ def test_compare_files_risk(tmp_path):
     report = proxy.compare_files(str(path), str(path))
     assert report["risk"]["level"] == "高"
     assert report["risk"]["score"] > 0.9
+
+
+def test_deep_model_preprocess_shape():
+    from cthulhu_backend.fingerprint import deep
+
+    if not deep.available():
+        pytest.skip("CLIP 模型未安装")
+    frame = np.random.default_rng(20).random((96, 64, 3), dtype=np.float32)
+    tensor = deep._preprocess(frame)
+    assert tensor.shape == (1, 3, 224, 224)
+    assert -4.0 < float(tensor.mean()) < 4.0
+
+
+def test_deep_model_identity_and_difference():
+    from scipy.ndimage import gaussian_filter
+
+    from cthulhu_backend.fingerprint import deep
+
+    if not deep.available():
+        pytest.skip("CLIP 模型未安装")
+    first = gaussian_filter(np.random.default_rng(21).random((96, 64, 3)), sigma=4)
+    second = np.random.default_rng(22).random((96, 64, 3))
+    same = deep.cosine(deep.video_embedding(np.asarray([first])), deep.video_embedding(np.asarray([first])))
+    different = deep.cosine(
+        deep.video_embedding(np.asarray([first])),
+        deep.video_embedding(np.asarray([second])),
+    )
+    assert same > 0.999
+    assert different < 0.9

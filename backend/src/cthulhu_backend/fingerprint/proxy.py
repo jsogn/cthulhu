@@ -91,6 +91,22 @@ def video_compare(ref_frames: np.ndarray, cand_frames: np.ndarray) -> dict:
         ),
         4,
     )
+    try:
+        from cthulhu_backend.fingerprint import deep
+
+        report["deep_cosine"] = (
+            round(
+                deep.cosine(
+                    deep.video_embedding(ref_frames),
+                    deep.video_embedding(cand_frames),
+                ),
+                4,
+            )
+            if deep.available()
+            else None
+        )
+    except Exception:  # noqa: BLE001 - 模型异常不影响其它代理维度
+        report["deep_cosine"] = None
     return report
 
 
@@ -151,6 +167,9 @@ def _risk_score(video: dict, audio: dict) -> dict:
         dimensions[f"hash_{kind}"] = min(1.0, rate * 4.0)
     dimensions["content"] = max(0.0, min(1.0, (video.get("content_cosine", 0.0) - 0.85) / 0.15))
     dimensions["edge"] = max(0.0, min(1.0, (video.get("edge_cosine", 0.0) - 0.8) / 0.2))
+    deep_cosine = video.get("deep_cosine")
+    if isinstance(deep_cosine, (int, float)):
+        dimensions["deep"] = max(0.0, min(1.0, (deep_cosine - 0.7) / 0.3))
     for key in ("mel_hash", "mfcc_hash"):
         entry = audio.get(key)
         if entry:
