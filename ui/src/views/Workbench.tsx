@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
+  Code2,
   Download,
   Pause,
   Play,
@@ -38,7 +39,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
-import ComparePlayer from "@/components/ComparePlayer";
 import {
   analyzeAudio,
   enqueueJob,
@@ -271,8 +271,29 @@ export default function Workbench() {
   const [frame, setFrame] = useState(132);
   const [playing, setPlaying] = useState(false);
   const [comparePct, setComparePct] = useState(50);
+  const [compareLeft, setCompareLeft] = useState<string>("");
+  const [compareRight, setCompareRight] = useState<string>("");
+  const [compareLeftLabel, setCompareLeftLabel] = useState("原片");
+  const [compareRightLabel, setCompareRightLabel] = useState("产物");
   const frameRef = useRef(frame);
   frameRef.current = frame;
+
+  const startCompare = (
+    left: string,
+    right: string,
+    leftLabel: string,
+    rightLabel: string,
+  ) => {
+    setCompareLeft(left);
+    setCompareRight(right);
+    setCompareLeftLabel(leftLabel);
+    setCompareRightLabel(rightLabel);
+  };
+
+  const exitCompare = () => {
+    setCompareLeft("");
+    setCompareRight("");
+  };
 
   return (
     <section className="workbench">
@@ -285,8 +306,13 @@ export default function Workbench() {
         setPlaying={setPlaying}
         comparePct={comparePct}
         setComparePct={setComparePct}
+        compareLeft={compareLeft}
+        compareRight={compareRight}
+        compareLeftLabel={compareLeftLabel}
+        compareRightLabel={compareRightLabel}
+        onExitCompare={exitCompare}
       />
-      <ContextPanel tab={tab} setTab={setTab} />
+      <ContextPanel tab={tab} setTab={setTab} onStartCompare={startCompare} />
       {Object.values(selected).length > 0 && (
         <BatchBar count={Object.values(selected).length} />
       )}
@@ -552,6 +578,11 @@ interface PreviewProps {
   setPlaying: (value: boolean) => void;
   comparePct: number;
   setComparePct: (value: number) => void;
+  compareLeft: string;
+  compareRight: string;
+  compareLeftLabel: string;
+  compareRightLabel: string;
+  onExitCompare: () => void;
 }
 
 function PreviewPane({
@@ -562,6 +593,11 @@ function PreviewPane({
   setPlaying,
   comparePct,
   setComparePct,
+  compareLeft,
+  compareRight,
+  compareLeftLabel,
+  compareRightLabel,
+  onExitCompare,
 }: PreviewProps) {
   const regions = useRegionsStore((state) => state.regions);
   const activeRegionId = useRegionsStore((state) => state.activeId);
@@ -571,6 +607,8 @@ function PreviewPane({
   const stageRef = useRef<HTMLDivElement>(null);
   const mediaBoxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const compareLeftRef = useRef<HTMLVideoElement>(null);
+  const compareMode = !!compareLeft && !!compareRight;
   const lastEmitRef = useRef(0);
   const [zoomPos, setZoomPos] = useState<{ x: number; y: number } | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -633,27 +671,34 @@ function PreviewPane({
   // 播放/暂停状态与真实 <video> 同步（静音播放，避免浏览器自动播放限制）。
   useEffect(() => {
     const video = videoRef.current;
+    const compare = compareLeftRef.current;
     if (!video || !hasRealFrame) return;
     if (playing) {
       if (video.ended) video.currentTime = 0;
       video.play().catch(() => setPlaying(false));
+      if (compare) compare.play().catch(() => undefined);
     } else {
       video.pause();
+      if (compare) compare.pause();
       setFrame(Math.min(maxFrame, Math.round(video.currentTime * fps)));
     }
-  }, [playing, hasRealFrame, setPlaying, setFrame, fps, maxFrame, material?.id]);
+  }, [playing, hasRealFrame, setPlaying, setFrame, fps, maxFrame, material?.id, compareLeft]);
 
   // 暂停状态下，时间轴/逐帧/快捷键改变帧号时把视频 seek 到对应时间；
   // 播放中由视频自身推进，避免帧号回灌造成卡顿。
   useEffect(() => {
     if (playing) return;
     const video = videoRef.current;
+    const compare = compareLeftRef.current;
     if (!video || !hasRealFrame || video.readyState < 1) return;
     const target = frame / fps;
     if (Math.abs(video.currentTime - target) > 0.5 / fps) {
       video.currentTime = target;
     }
-  }, [frame, fps, playing, hasRealFrame, material?.id]);
+    if (compare && Math.abs(compare.currentTime - target) > 0.5 / fps) {
+      compare.currentTime = target;
+    }
+  }, [frame, fps, playing, hasRealFrame, material?.id, compareLeft]);
 
   // 把当前视频画面快照成放大镜底图（跨源播放时需匿名 CORS）。
   const captureZoom = () => {
@@ -672,6 +717,10 @@ function PreviewPane({
   const onTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
+    const compare = compareLeftRef.current;
+    if (compare && Math.abs(compare.currentTime - video.currentTime) > 0.08) {
+      compare.currentTime = Math.min(video.currentTime, compare.duration || video.currentTime);
+    }
     // 帧号只以约 10Hz 回写，降低整页渲染频率；视频画面本身保持流畅。
     const now = performance.now();
     if (now - lastEmitRef.current >= 100) {
@@ -810,6 +859,11 @@ function PreviewPane({
         <span className="preview-name">{material?.name ?? "未选择素材"}</span>
         <span className="demo-badge">{hasRealFrame ? "实时预览" : "预览不可用"}</span>
         {material && <span className="preview-meta mono">{material.res} · {material.fps}</span>}
+        {compareMode && (
+          <Button variant="ghost" size="sm" onClick={onExitCompare}>
+            退出对比
+          </Button>
+        )}
       </div>
 
       <div className="preview-stage" ref={stageRef}>
@@ -820,19 +874,64 @@ function PreviewPane({
           onDoubleClick={onCompareDoubleClick}
         >
           {hasRealFrame ? (
-            <video
-              key={material?.id}
-              ref={videoRef}
-              className="preview-video"
-              src={material?.path ? mediaUrl(material.path) : undefined}
-              preload="metadata"
-              muted
-              playsInline
-              crossOrigin="anonymous"
-              onTimeUpdate={onTimeUpdate}
-              onLoadedMetadata={onLoadedMetadata}
-              onEnded={() => setPlaying(false)}
-            />
+            compareMode ? (
+              <div
+                className="compare compare-live"
+                onPointerDown={onComparePointerDown}
+                onPointerMove={onComparePointerMove}
+              >
+                <video
+                  key={`right-${compareRight}`}
+                  ref={videoRef}
+                  className="preview-video"
+                  src={mediaUrl(compareRight)}
+                  preload="metadata"
+                  muted
+                  playsInline
+                  crossOrigin="anonymous"
+                  onTimeUpdate={onTimeUpdate}
+                  onLoadedMetadata={onLoadedMetadata}
+                  onEnded={() => setPlaying(false)}
+                />
+                <div className="compare-before" style={{ clipPath: beforeClip }}>
+                  <video
+                    key={`left-${compareLeft}`}
+                    ref={compareLeftRef}
+                    className="preview-video"
+                    src={mediaUrl(compareLeft)}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    crossOrigin="anonymous"
+                  />
+                </div>
+                <div
+                  className="compare-handle"
+                  style={{ left: `${comparePct}%` }}
+                  role="presentation"
+                >
+                  <span className="compare-handle-knob">
+                    <Code2 />
+                  </span>
+                </div>
+                <span className="compare-badge compare-badge-left">{compareLeftLabel}</span>
+                <span className="compare-badge compare-badge-right">{compareRightLabel}</span>
+              </div>
+            ) : (
+              <video
+                key={material?.id}
+                ref={videoRef}
+                className="preview-video"
+                src={material?.path ? mediaUrl(material.path) : undefined}
+                preload="metadata"
+                muted
+                playsInline
+                crossOrigin="anonymous"
+                onTimeUpdate={onTimeUpdate}
+                onLoadedMetadata={onLoadedMetadata}
+                onEnded={() => setPlaying(false)}
+              />
+            )
           ) : (
             <div
               className="compare"
@@ -983,9 +1082,10 @@ function PreviewPane({
 interface ContextProps {
   tab: (typeof TAB_KEYS)[number];
   setTab: (tab: (typeof TAB_KEYS)[number]) => void;
+  onStartCompare: (left: string, right: string, leftLabel: string, rightLabel: string) => void;
 }
 
-function ContextPanel({ tab, setTab }: ContextProps) {
+function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const material = useMaterialsStore((state) =>
     state.materials.find((m) => m.id === state.activeId),
   );
@@ -1036,11 +1136,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
   const [compared, setCompared] = useState<string[]>([]);
-  const [compareOpen, setCompareOpen] = useState(false);
-  const [compareLeft, setCompareLeft] = useState<string>("");
-  const [compareRight, setCompareRight] = useState<string>("");
-  const [compareLeftLabel, setCompareLeftLabel] = useState<string>("");
-  const [compareRightLabel, setCompareRightLabel] = useState<string>("");
   const [hoverPath, setHoverPath] = useState<string | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
@@ -1230,11 +1325,7 @@ function ContextPanel({ tab, setTab }: ContextProps) {
   };
 
   const runComparePair = (a: string, b: string, leftLabel: string, rightLabel: string) => {
-    setCompareLeft(a);
-    setCompareRight(b);
-    setCompareLeftLabel(leftLabel);
-    setCompareRightLabel(rightLabel);
-    setCompareOpen(true);
+    onStartCompare(a, b, leftLabel, rightLabel);
   };
 
   const runCompare = () => {
@@ -2059,25 +2150,6 @@ function ContextPanel({ tab, setTab }: ContextProps) {
           </ScrollArea>
         </TabsContent>
       </Tabs>
-
-      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
-        <DialogContent className="max-w-[min(94vw,1100px)]">
-          <DialogHeader>
-            <DialogTitle>同步对比</DialogTitle>
-            <DialogDescription>
-              两侧画面同步播放，直观对照观感与处理差异。
-            </DialogDescription>
-          </DialogHeader>
-          {compareLeft && compareRight && (
-            <ComparePlayer
-              left={compareLeft}
-              right={compareRight}
-              leftLabel={compareLeftLabel}
-              rightLabel={compareRightLabel}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!playerPath} onOpenChange={(open) => !open && setPlayerPath(null)}>
         <DialogContent className="max-w-[min(90vw,720px)]">
