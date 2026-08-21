@@ -27,7 +27,7 @@ from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.numeric import channel_stats
 from cthulhu_backend.similarity import embedding
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import shots, strategies
+from cthulhu_backend.transform import extra_attacks, shots, strategies
 from cthulhu_backend.watermark import common as watermark_common
 from cthulhu_backend.watermark import detect
 
@@ -315,6 +315,14 @@ def run_desensitize(
     phash_epsilon: float = 0.03,
     phash_iters: int = 120,
     rotate: float = 0.0,
+    median: int = 0,
+    noise: float = 0.0,
+    requant: int = 0,
+    dct_step: float = 0.0,
+    drop_every: int = 0,
+    jitter: float = 0.0,
+    mirror: bool = False,
+    chroma_levels: int = 0,
     progress_cb=None,
     should_stop=None,
 ) -> dict:
@@ -380,6 +388,17 @@ def run_desensitize(
     if spoof:
         spoof_rng = np.random.default_rng(seed ^ 0x5F3759DF)
         spoof_bits = watermark_common.payload_bits(int(spoof_rng.integers(0, 2**31)), 64)
+    assault_rng = np.random.default_rng(seed ^ 0xA55A55A5)
+    assault_params = extra_attacks.AssaultParams(
+        mirror=mirror,
+        jitter=jitter,
+        median=median,
+        noise=noise,
+        requant=requant,
+        dct_step=dct_step,
+        chroma_levels=chroma_levels,
+        drop_every=drop_every,
+    )
 
     if color_restore:
         color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
@@ -476,6 +495,8 @@ def run_desensitize(
                         )
                         if rotate > 0:
                             frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+                        if assault_params.enabled:
+                            frames = extra_attacks.apply(frames, assault_params, assault_rng)
                         if phash_attack:
                             frames = adversarial.attack_frames(
                                 frames, epsilon=phash_epsilon, iterations=phash_iters
@@ -536,6 +557,8 @@ def run_desensitize(
                 frames = strategy.apply(frames, output_ids, transform_context, transform_options)
                 if rotate > 0:
                     frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+                if assault_params.enabled:
+                    frames = extra_attacks.apply(frames, assault_params, assault_rng)
                 if phash_attack:
                     frames = adversarial.attack_frames(
                         frames, epsilon=phash_epsilon, iterations=phash_iters
