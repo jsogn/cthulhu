@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import platform
 import secrets
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,23 @@ from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
 
 APP_VERSION = "0.1.0"
+
+
+def _host_info() -> dict:
+    """采集本机基础配置，供界面底部状态栏作为参考信息展示。"""
+    info = {
+        "os": platform.system(),
+        "arch": platform.machine(),
+        "cpu_count": os.cpu_count() or 0,
+        "memory_gb": None,
+    }
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        page_count = os.sysconf("SC_PHYS_PAGES")
+        info["memory_gb"] = round(page_size * page_count / (1024**3), 1)
+    except (AttributeError, OSError, ValueError):
+        info["memory_gb"] = None
+    return info
 
 # 本地服务鉴权：同一台机器上的任意进程/网页都能访问 127.0.0.1，
 # 因此以一次性令牌挡住未授权的本机调用（与用户登录无关）。
@@ -85,6 +103,7 @@ async def health() -> dict:
         "version": APP_VERSION,
         "service": "cthulhu-backend",
         "ffmpeg": ffmpeg.has_ffmpeg(),
+        "host": _host_info(),
     }
 
 

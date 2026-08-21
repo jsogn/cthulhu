@@ -78,6 +78,12 @@ export interface HealthInfo {
   ok: boolean;
   version: string;
   ffmpeg: boolean;
+  host?: {
+    os: string;
+    arch: string;
+    cpu_count: number;
+    memory_gb: number | null;
+  };
 }
 
 /** 读取后端健康状态（含 FFmpeg 可用性）。 */
