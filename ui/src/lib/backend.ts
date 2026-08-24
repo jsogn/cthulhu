@@ -464,6 +464,7 @@ export interface CandidateInfo {
   stability_ratio: number;
   dhash_reduction: number;
   order_disruption: number;
+  duplicate_risk?: number | null;
   export_health: {
     video_codec?: string;
     audio_codec?: string;

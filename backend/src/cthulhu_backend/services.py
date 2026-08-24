@@ -21,7 +21,7 @@ from scipy.signal import resample_poly
 
 from cthulhu_backend import db, samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import metrics
+from cthulhu_backend.evaluate import dedup_harness, metrics
 from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.numeric import channel_stats
@@ -875,14 +875,18 @@ def delete_output(path: str) -> bool:
     return True
 
 
-def _candidate_score(result: dict) -> float:
-    """低损优选评分：内容保持与画面稳定性为主，去重破坏为辅。"""
+def _candidate_score(result: dict, dedup_risk: float | None = None) -> float:
+    """候选优选评分：内容保持 + 画面稳定 + 判重逃逸（代理基准）。"""
     similarity = result.get("similarity_after", {})
     content = float(similarity.get("content_cosine", 0.0))
-    dhash = float(similarity.get("reduction", {}).get("dhash", 0.0))
     stability = float(result.get("stability_ratio", 1.0))
     stability_term = max(0.0, 1.0 - abs(stability - 1.0) * 2.0)
-    return round(0.55 * content + 0.25 * stability_term + 0.2 * min(dhash, 1.0), 4)
+    evasion = (
+        1.0 - float(dedup_risk)
+        if dedup_risk is not None
+        else float(similarity.get("reduction", {}).get("dhash", 0.0))
+    )
+    return round(0.55 * content + 0.25 * stability_term + 0.2 * evasion, 4)
 
 
 def generate_candidates(
@@ -904,6 +908,11 @@ def generate_candidates(
         if progress_cb:
             progress_cb(index, count, "生成候选")
         result = run_desensitize(path, output, seed=seed, **(options or {}))
+        dedup_risk = None
+        try:
+            dedup_risk = dedup_harness.compare(path, output)["duplicate_risk"]
+        except Exception:  # noqa: BLE001 - 判重打分失败不阻断候选生成
+            dedup_risk = None
         candidates.append(
             {
                 "index": index + 1,
@@ -916,7 +925,8 @@ def generate_candidates(
                 .get("dhash"),
                 "order_disruption": result.get("order_disruption"),
                 "export_health": result.get("export_health"),
-                "score": _candidate_score(result),
+                "duplicate_risk": dedup_risk,
+                "score": _candidate_score(result, dedup_risk),
             }
         )
     candidates.sort(key=lambda item: item["score"], reverse=True)

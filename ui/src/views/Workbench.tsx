@@ -1775,6 +1775,8 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                             <div key={candidate.index} className="mono text-xs text-muted-foreground">
                               候选{candidate.index} · 评分 {candidate.score} · 内容{" "}
                               {candidate.content_cosine.toFixed(3)} · 稳定 {candidate.stability_ratio}
+                              {candidate.duplicate_risk != null &&
+                                ` · 判重 ${(candidate.duplicate_risk * 100).toFixed(0)}%`}
                             </div>
                           ))}
                         </div>
@@ -2103,8 +2105,8 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                   <SelectContent>
                     <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
                     <SelectItem value="轻度">轻度 · 几乎无损，日常推荐</SelectItem>
-                    <SelectItem value="标准">标准 · 轻微损失，正常观看</SelectItem>
-                    <SelectItem value="强力">强力 · 可见轻微加工，建议预览</SelectItem>
+                    <SelectItem value="标准">标准 · 逐镜头变速 + 强音频，轻微损失</SelectItem>
+                    <SelectItem value="强力">强力 · 幅度更大，可见轻微加工</SelectItem>
                     <SelectItem value="全兵器">极限 · 仅研究测试，不保证观感</SelectItem>
                   </SelectContent>
                 </Select>
