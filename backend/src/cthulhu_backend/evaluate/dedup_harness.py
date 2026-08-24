@@ -23,7 +23,7 @@ from scipy.fft import dctn, rfft
 from cthulhu_backend.media import ffmpeg
 
 HASH_BITS = 64
-_WINDOWS = [(15.0, 12), (0.55, 12)]  # (秒, 帧数) 两个采样窗口
+_WINDOWS = [(8.0, 14), (0.25, 14), (0.5, 14), (0.75, 14), (None, 14)]  # 五个采样窗口
 
 # 无关联内容的经验距离锚点（来自不同素材对实测），用于把绝对距离归一到 0~1。
 # 这是第一版标定，后续用平台真值样本修正。
@@ -34,8 +34,10 @@ _CHANCE_DIST = {
     "blockhash": 0.34,
     "audio": 0.54,
     "structure": 0.09,
+    "deep": 0.6,
 }
-_WEIGHTS = {"image": 0.45, "temporal": 0.25, "audio": 0.2, "structure": 0.1}
+_WEIGHTS_DEEP = {"image": 0.35, "temporal": 0.15, "deep": 0.25, "audio": 0.15, "structure": 0.1}
+_WEIGHTS_FALLBACK = {"image": 0.5, "temporal": 0.25, "audio": 0.15, "structure": 0.1}
 
 
 def _zoom(frame: np.ndarray, size: int) -> np.ndarray:
@@ -90,14 +92,46 @@ def _hamming(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def _sample_frames(path: str) -> tuple[np.ndarray, dict]:
-    """采样两个窗口的灰度帧，返回 (frames, info)。"""
+    """采样五个窗口的灰度帧（共 70 帧），返回 (frames, info)。"""
     info = ffmpeg.video_info(path)
     parts = []
     for start_sec, count in _WINDOWS:
-        start = int(min(start_sec if start_sec < 1 else info["duration"] * start_sec, info["duration"] - count / info["fps"]))
+        if start_sec is None:
+            start = max(0.0, info["duration"] - count / info["fps"] - 2.0)
+        else:
+            start = min(start_sec if start_sec < 1 else info["duration"] * start_sec, info["duration"] - count / info["fps"])
         frames, _ = ffmpeg.decode_video_range(path, int(start * info["fps"]), count)
         parts.append(frames)
     return np.concatenate(parts, axis=0), info
+
+
+def _color_frames(path: str, count: int = 16) -> np.ndarray:
+    """深度嵌入用的彩色抽样帧（四个位置 × count/4 帧）。"""
+    info = ffmpeg.video_info(path)
+    parts = []
+    per = max(1, count // 4)
+    for frac in (0.08, 0.35, 0.6, 0.85):
+        start = max(0, int(info["duration"] * frac * info["fps"]))
+        frames, _ = ffmpeg.decode_video_range(path, start, per, grayscale=False)
+        parts.append(frames)
+    return np.concatenate(parts, axis=0)
+
+
+def deep_distance(original: str, candidate: str) -> float | None:
+    """CLIP ViT-B/32 视觉嵌入的余弦距离（1 - 余弦相似度）；模型缺失时返回 None。"""
+    try:
+        from cthulhu_backend.fingerprint import deep
+
+        if not deep.available():
+            return None
+        frames_a = _color_frames(original)
+        frames_b = _color_frames(candidate)
+        return 1.0 - deep.cosine(
+            deep.video_embedding(frames_a, max_frames=16),
+            deep.video_embedding(frames_b, max_frames=16),
+        )
+    except Exception:  # noqa: BLE001 - 嵌入维度失败时自动降级
+        return None
 
 
 def frame_hashes(path: str) -> dict:
@@ -210,6 +244,8 @@ def compare(original: str, candidate: str) -> dict:
     temporal = _temporal_sequence_distance(frames_a, frames_b)
     structure = _structure_distance(frames_a, frames_b)
     audio = audio_distance(original, candidate)
+    deep_dist = deep_distance(original, candidate)
+    weights = dict(_WEIGHTS_DEEP if deep_dist is not None else _WEIGHTS_FALLBACK)
 
     def norm(value: float, chance: float) -> float:
         return max(0.0, min(1.0, (chance - value) / chance))
@@ -220,11 +256,13 @@ def compare(original: str, candidate: str) -> dict:
     temporal_norm = norm(temporal, 0.36)  # 与图像均值同一量级锚点
     audio_norm = norm(audio, _CHANCE_DIST["audio"]) if audio is not None else image_norm
     structure_norm = norm(structure, _CHANCE_DIST["structure"])
+    deep_norm = norm(deep_dist, _CHANCE_DIST["deep"]) if deep_dist is not None else 0.0
     risk = (
-        _WEIGHTS["image"] * image_norm
-        + _WEIGHTS["temporal"] * temporal_norm
-        + _WEIGHTS["audio"] * audio_norm
-        + _WEIGHTS["structure"] * structure_norm
+        weights["image"] * image_norm
+        + weights["temporal"] * temporal_norm
+        + weights.get("deep", 0.0) * deep_norm
+        + weights["audio"] * audio_norm
+        + weights["structure"] * structure_norm
     )
     level = "高" if risk >= 0.75 else "中" if risk >= 0.45 else "低"
     return {
@@ -236,6 +274,7 @@ def compare(original: str, candidate: str) -> dict:
             "structure": round(structure, 4),
             "audio": None if audio is None else round(audio, 4),
             "temporal": round(temporal, 4),
+            "deep": None if deep_dist is None else round(deep_dist, 4),
         },
         "duplicate_risk": round(risk, 4),
         "risk_level": level,
@@ -244,9 +283,10 @@ def compare(original: str, candidate: str) -> dict:
             "temporal": round(temporal_norm, 4),
             "audio": round(audio_norm, 4),
             "structure": round(structure_norm, 4),
+            "deep": None if deep_dist is None else round(deep_norm, 4),
         },
-        "weights": _WEIGHTS,
-        "note": "距离按无关联内容锚点归一；代理栈研究口径，阈值需平台实测标定。",
+        "weights": weights,
+        "note": "距离按无关联内容锚点归一；含 CLIP 深度嵌入维度，研究口径阈值需平台实测标定。",
     }
 
 

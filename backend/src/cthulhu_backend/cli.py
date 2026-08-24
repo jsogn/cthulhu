@@ -12,7 +12,7 @@ from scipy.io import wavfile
 
 from cthulhu_backend import samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import attack_matrix, dedup_harness, harness
+from cthulhu_backend.evaluate import attack_matrix, calibrate, dedup_harness, harness
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
 from cthulhu_backend.similarity import embedding
@@ -146,6 +146,18 @@ def attack_matrix_run(
     """对抗原语效果矩阵：判重风险 × VMAF 双目标打分。"""
     report = attack_matrix.run_matrix(clip, out_dir, seed=seed, reuse=reuse)
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+@app.command("calibrate-presets")
+def calibrate_presets(
+    clips: list[str] = typer.Argument(..., help="多个短片段输入（≤60s）"),
+    out_dir: str = typer.Option("/tmp/cthulhu-calibration", help="工作目录"),
+    seeds: str = typer.Option("0,1", help="逗号分隔的种子列表"),
+) -> None:
+    """多片段 × 多种子标定三档对抗参数，输出均值与波动。"""
+    seed_list = tuple(int(part.strip()) for part in seeds.split(",") if part.strip())
+    report = calibrate.run_calibration(clips, out_dir, seeds=seed_list)
+    typer.echo(json.dumps(report["summary"], ensure_ascii=False, indent=2))
 
 
 @app.command()
