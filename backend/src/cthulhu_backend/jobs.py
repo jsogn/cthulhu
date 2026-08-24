@@ -10,6 +10,7 @@ from typing import Any
 
 from cthulhu_backend import db, services
 from cthulhu_backend.events import broker
+from cthulhu_backend.evaluate import dedup_harness
 from cthulhu_backend.transform import strategies
 
 
@@ -58,6 +59,16 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         raise
     except Exception:  # noqa: BLE001 - 复检失败不影响任务成功状态
         result["residual"] = None
+    # 判重代理基准：量化清洗产物相对原片的逃逸效果，供界面校验区展示。
+    try:
+        dedup = dedup_harness.compare(path, options["output"])
+        result["dedup"] = {
+            "duplicate_risk": dedup["duplicate_risk"],
+            "risk_level": dedup["risk_level"],
+            "distances": dedup["distances"],
+        }
+    except Exception:  # noqa: BLE001 - 判重打分失败不影响任务成功
+        result["dedup"] = None
     return result
 
 

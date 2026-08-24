@@ -1179,6 +1179,10 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
     vmaf?: number | null;
     vmaf_aligned?: number | null;
   } | null>(null);
+  const [dedupRisk, setDedupRisk] = useState<{
+    duplicate_risk: number;
+    risk_level: string;
+  } | null>(null);
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
@@ -1502,6 +1506,8 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
     if (!result?.output) return;
     setLastOutput(result.output);
     setLastClean(result as never);
+    const dedup = (task.result as { dedup?: { duplicate_risk: number; risk_level: string } | null } | null)?.dedup;
+    setDedupRisk(dedup ?? null);
     addHistory({
       name: material?.name ?? "",
       time: nowStr(),
@@ -1732,6 +1738,14 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                                 : "—"}
                           </div>
                           <div className="metric-label">VMAF（对齐）</div>
+                        </div>
+                        <div className="metric">
+                          <div className="metric-value">
+                            {dedupRisk
+                              ? `${(dedupRisk.duplicate_risk * 100).toFixed(0)}% · ${dedupRisk.risk_level}`
+                              : "—"}
+                          </div>
+                          <div className="metric-label">判重风险（相对原片）</div>
                         </div>
                       </div>
                       {lastOutput && (
