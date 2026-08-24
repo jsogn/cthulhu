@@ -22,7 +22,7 @@ from scipy.signal import resample_poly
 
 from cthulhu_backend import db, samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import dedup_harness, metrics
+from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.numeric import channel_stats
@@ -31,7 +31,6 @@ from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import extra_attacks, shots, strategies
 from cthulhu_backend.watermark import common as watermark_common
 from cthulhu_backend.watermark import detect
-from cthulhu_backend.version import APP_VERSION
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".ts", ".webm", ".m4v"}
 MAX_WORKING_BYTES = 2 * 1024**3
@@ -901,100 +900,6 @@ def record_variant(
         template_id=template_id,
         metrics=metrics,
     )
-
-
-def _candidate_score(result: dict, dedup_risk: float | None = None) -> float:
-    """候选优选评分：内容保持 + 画面稳定 + 判重逃逸（代理基准）。"""
-    similarity = result.get("similarity_after", {})
-    content = float(similarity.get("content_cosine", 0.0))
-    stability = float(result.get("stability_ratio", 1.0))
-    stability_term = max(0.0, 1.0 - abs(stability - 1.0) * 2.0)
-    evasion = (
-        1.0 - float(dedup_risk)
-        if dedup_risk is not None
-        else float(similarity.get("reduction", {}).get("dhash", 0.0))
-    )
-    return round(0.55 * content + 0.25 * stability_term + 0.2 * evasion, 4)
-
-
-def generate_candidates(
-    path: str,
-    output_dir: str,
-    count: int = 3,
-    options: dict | None = None,
-    progress_cb=None,
-) -> dict:
-    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。"""
-    path = _require_file(path)
-    target = Path(os.path.expanduser(output_dir))
-    target.mkdir(parents=True, exist_ok=True)
-    stem = Path(path).stem
-    candidates: list[dict] = []
-    opts = {
-        key: value
-        for key, value in (options or {}).items()
-        if key not in {"batch", "label", "output", "preset", "transform_strategy"}
-    }
-    preset_name = (
-        (options or {}).get("preset")
-        or db.load_settings().get("preset")
-        or "veryfast"
-    )
-    strategy_name = (
-        (options or {}).get("transform_strategy")
-        or db.load_settings().get("transform_strategy")
-        or "fast"
-    )
-    for index in range(max(1, count)):
-        seed = int.from_bytes(os.urandom(4), "big")
-        output = str(target / f"{stem}_候选{index + 1}.mp4")
-        if progress_cb:
-            progress_cb(index, count, "生成候选")
-        result = run_desensitize(
-            path,
-            output,
-            seed=seed,
-            preset=preset_name,
-            transform_strategy=strategy_name,
-            **opts,
-        )
-        dedup_risk = None
-        try:
-            dedup_risk = dedup_harness.compare(path, output)["duplicate_risk"]
-        except Exception:  # noqa: BLE001 - 判重打分失败不阻断候选生成
-            dedup_risk = None
-        try:
-            snapshot = dict(opts)
-            snapshot["_preset"] = preset_name
-            snapshot["_transform_strategy"] = strategy_name
-            snapshot["_app_version"] = APP_VERSION
-            record_variant(
-                path,
-                output,
-                snapshot,
-                seed=seed,
-                metrics={"duplicate_risk": dedup_risk},
-            )
-        except Exception:  # noqa: BLE001 - 记录失败不阻断候选生成
-            pass
-        candidates.append(
-            {
-                "index": index + 1,
-                "output": output,
-                "seed": seed,
-                "content_cosine": result.get("similarity_after", {}).get("content_cosine"),
-                "stability_ratio": result.get("stability_ratio"),
-                "dhash_reduction": result.get("similarity_after", {})
-                .get("reduction", {})
-                .get("dhash"),
-                "order_disruption": result.get("order_disruption"),
-                "export_health": result.get("export_health"),
-                "duplicate_risk": dedup_risk,
-                "score": _candidate_score(result, dedup_risk),
-            }
-        )
-    candidates.sort(key=lambda item: item["score"], reverse=True)
-    return {"source": path, "output_dir": str(target), "candidates": candidates}
 
 
 # ---------- 视频处理引擎（FFmpeg）自动安装 ----------

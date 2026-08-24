@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { MutableRefObject } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   Code2,
@@ -59,14 +58,12 @@ import {
   exportOutputs,
   fetchOutputs,
   frameUrl,
-  generateCandidates,
   getSettings,
   listVariants,
   listTemplates,
   mediaUrl,
   thumbUrl,
   type AudioAnalysis,
-  type CandidateInfo,
   type DetectReport,
   type DesensitizeOptions,
   type JobInfo,
@@ -285,7 +282,6 @@ export default function Workbench() {
   const [compareRight, setCompareRight] = useState<string>("");
   const [compareLeftLabel, setCompareLeftLabel] = useState("原片");
   const [compareRightLabel, setCompareRightLabel] = useState("产物");
-  const cleanOptionsRef = useRef<DesensitizeOptions | null>(null);
   const frameRef = useRef(frame);
   frameRef.current = frame;
 
@@ -328,7 +324,6 @@ export default function Workbench() {
           tab={tab}
           setTab={setTab}
           onStartCompare={startCompare}
-          cleanOptionsRef={cleanOptionsRef}
         />
       </div>
       <BatchPopup />
@@ -1128,10 +1123,9 @@ interface ContextProps {
   tab: (typeof TAB_KEYS)[number];
   setTab: (tab: (typeof TAB_KEYS)[number]) => void;
   onStartCompare: (left: string, right: string, leftLabel: string, rightLabel: string) => void;
-  cleanOptionsRef: MutableRefObject<DesensitizeOptions | null>;
 }
 
-function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextProps) {
+function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const material = useMaterialsStore((state) =>
     state.materials.find((m) => m.id === state.activeId),
   );
@@ -1185,12 +1179,10 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
     duplicate_risk: number;
     risk_level: string;
   } | null>(null);
-  const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
   const [variantDetail, setVariantDetail] = useState<VariantInfo | null>(null);
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
-  const [candidatesBusy, setCandidatesBusy] = useState(false);
   const tabRowRef = useRef<HTMLDivElement | null>(null);
   const tabItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [visibleTabCount, setVisibleTabCount] = useState<number>(TAB_KEYS.length);
@@ -1406,7 +1398,6 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
             }
           : {}),
       };
-      cleanOptionsRef.current = cleanOptions;
       await enqueueJob(`${material.name} · 清洗去重`, [
         {
           kind: "desensitize",
@@ -1443,26 +1434,6 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
       toast("入队失败，请确认引擎在线");
     } finally {
       setDetectSubmitting(false);
-    }
-  };
-
-  const runCandidates = async () => {
-    const target = material as (Material & { path?: string }) | null;
-    if (!target?.path || !cleanOptionsRef.current) {
-      toast("请先执行一次清洗，再生成候选");
-      return;
-    }
-    setCandidatesBusy(true);
-    try {
-      const dir = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_候选`;
-      const report = await generateCandidates(target.path, dir, 3, cleanOptionsRef.current);
-      setCandidates(report.candidates);
-      void useMaterialsStore.getState().refreshOutputCounts();
-      toast(`已生成 ${report.candidates.length} 个候选，按低损优选排序`);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "生成候选失败");
-    } finally {
-      setCandidatesBusy(false);
     }
   };
 
@@ -1790,27 +1761,6 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                         >
                           与原片同屏对比（同步播放）
                         </Button>
-                      )}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="mt-2 w-full"
-                        disabled={candidatesBusy}
-                        onClick={runCandidates}
-                      >
-                        {candidatesBusy ? "生成中…" : "生成候选（多版本优选）"}
-                      </Button>
-                      {candidates && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {candidates.map((candidate) => (
-                            <div key={candidate.index} className="mono text-xs text-muted-foreground">
-                              候选{candidate.index} · 评分 {candidate.score} · 内容{" "}
-                              {candidate.content_cosine.toFixed(3)} · 稳定 {candidate.stability_ratio}
-                              {candidate.duplicate_risk != null &&
-                                ` · 判重 ${(candidate.duplicate_risk * 100).toFixed(0)}%`}
-                            </div>
-                          ))}
-                        </div>
                       )}
                     </>
                   ) : (
@@ -2253,7 +2203,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
             <div className="flex min-w-0 flex-col gap-2.5">
               {outputs.length === 0 ? (
                 <p className="note">
-                  还没有处理产物，清洗或生成候选后会自动出现。
+                  还没有处理产物，清洗或修复后会自动出现。
                 </p>
               ) : (
                 <>

@@ -107,13 +107,6 @@ class PairRequest(BaseModel):
     b: str
 
 
-class CandidatesRequest(BaseModel):
-    path: str
-    output_dir: str
-    count: int = Field(3, ge=1, le=10)
-    options: dict = {}
-
-
 class ScanRequest(BaseModel):
     path: str
 
@@ -483,23 +476,6 @@ def export_videos(request: ExportRequest) -> dict:
     settings = db.load_settings()
     export_dir = request.export_dir or settings.get("export_dir") or "~/导出/暗水印清洗"
     return services.export_outputs(request.paths, str(export_dir))
-
-
-@router.post("/candidates")
-async def candidates(request: CandidatesRequest) -> dict:
-    """同一素材生成多个差异化候选并按低损优选评分排序。"""
-    try:
-        return await asyncio.to_thread(
-            services.generate_candidates,
-            request.path,
-            request.output_dir,
-            request.count,
-            request.options,
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
 
 
 @router.get("/outputs")

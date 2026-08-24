@@ -295,34 +295,6 @@ def test_desensitize_transcode_chain(tmp_path):
 
 
 @needs_ffmpeg
-def test_generate_candidates_ranked(tmp_path):
-    """多候选生成应产出按低损优选评分排序的差异化文件。"""
-    video = samples.make_cut_video(2, 8, 160, 120, seed=38)
-    source = tmp_path / "src.mp4"
-    ffmpeg.encode_video(video, str(source), fps=30)
-    report = services.generate_candidates(
-        str(source),
-        str(tmp_path / "candidates"),
-        count=2,
-        options={
-            "reorder": False,
-            "speed": 1.0,
-            "regrade": False,
-            "audio_remix": False,
-            "sharpness": False,
-            "color_restore": False,
-            "denoise": False,
-        },
-    )
-    assert len(report["candidates"]) == 2
-    assert report["candidates"][0]["score"] >= report["candidates"][1]["score"]
-    for candidate in report["candidates"]:
-        assert Path(candidate["output"]).exists()
-        assert candidate["stability_ratio"] is not None
-        assert candidate["export_health"]["video_codec"] == "h264"
-
-
-@needs_ffmpeg
 def test_list_outputs_matches_variants(tmp_path):
     """产物列表应按命名规则匹配清洗/修复/候选三类，最新在前。"""
     video = samples.make_cut_video(2, 8, 160, 120, seed=39)
