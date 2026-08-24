@@ -64,6 +64,7 @@ import {
   mediaUrl,
   thumbUrl,
   type AudioAnalysis,
+  type DesensitizeJobResult,
   type DetectReport,
   type DesensitizeOptions,
   type JobInfo,
@@ -1490,12 +1491,11 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       );
     if (!task) return;
     lastHandledTaskRef.current = task.id;
-    const result = task.result as { output?: string; similarity_after?: { content_cosine: number } } | null;
+    const result = task.result as DesensitizeJobResult | null;
     if (!result?.output) return;
     setLastOutput(result.output);
-    setLastClean(result as never);
-    const dedup = (task.result as { dedup?: { duplicate_risk: number; risk_level: string } | null } | null)?.dedup;
-    setDedupRisk(dedup ?? null);
+    setLastClean(result);
+    setDedupRisk(result.dedup ?? null);
     addHistory({
       name: material?.name ?? "",
       time: nowStr(),

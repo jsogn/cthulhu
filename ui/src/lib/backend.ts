@@ -261,6 +261,22 @@ export interface DesensitizeReport {
   } | null;
 }
 
+/** 清洗任务完成后的完整结果（含校验指标与判重代理分）。 */
+export interface DesensitizeJobResult {
+  output: string;
+  similarity_after?: { content_cosine: number };
+  psnr_db?: number;
+  ssim?: number;
+  vmaf?: number | null;
+  vmaf_aligned?: number | null;
+  stability_ratio?: number;
+  dedup?: {
+    duplicate_risk: number;
+    risk_level: string;
+    distances: Record<string, number | null>;
+  } | null;
+}
+
 export type JobKind = "detect" | "desensitize" | "repair";
 
 export interface JobTaskSpec {
@@ -388,38 +404,6 @@ export function connectEvents(onMessage: (msg: BackendEvent) => void): () => voi
     if (timer !== undefined) window.clearTimeout(timer);
     ws?.close();
   };
-}
-
-/** 对本地视频文件执行检测（容器 / SEI / 压缩域联合分析）。 */
-export async function runDetect(path: string): Promise<DetectReport> {
-  const res = await apiFetch("/api/detect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data as { detail?: string } | null)?.detail ?? `检测失败（${res.status}）`);
-  }
-  return res.json();
-}
-
-/** 对本地视频执行内容脱敏（清洗）变换。 */
-export async function runDesensitize(
-  path: string,
-  output: string,
-  options: DesensitizeOptions,
-): Promise<DesensitizeReport> {
-  const res = await apiFetch("/api/desensitize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, output, ...options }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data as { detail?: string } | null)?.detail ?? `处理失败（${res.status}）`);
-  }
-  return res.json();
 }
 
 export interface OutputInfo {

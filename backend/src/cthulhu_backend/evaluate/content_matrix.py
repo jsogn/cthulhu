@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 
@@ -27,7 +27,7 @@ def _aligned_ssim(ref: np.ndarray, cand: np.ndarray) -> float:
     indices = np.linspace(0, n - 1, 16).astype(int)
     scores = []
     for i in indices:
-        j = min(len(ref) - 1, int(round(i * len(ref) / len(cand))))
+        j = min(len(ref) - 1, round(i * len(ref) / len(cand)))
         lo, hi = max(0, j - 6), min(len(ref), j + 7)
         scores.append(max(metrics.ssim(ref[k], cand[i]) for k in range(lo, hi)))
     return float(np.mean(scores))

@@ -8,8 +8,7 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, zoom
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, gaussian_filter
 
 from cthulhu_backend.transform.shots import split_shots
 
@@ -52,7 +51,6 @@ def corner_mark(
     """右下角半透明文字角标（如账号/剧名），改变构图内容。"""
     from PIL import Image, ImageDraw, ImageFont
 
-    rng = np.random.default_rng(seed)
     h, w = frames.shape[1:3]
     box_w = int(w * 0.3)
     box_h = int(h * size_frac)

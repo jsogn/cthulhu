@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from typing import Annotated
 
 import numpy as np
 import typer
@@ -156,7 +157,7 @@ def attack_matrix_run(
 
 @app.command("calibrate-presets")
 def calibrate_presets(
-    clips: list[str] = typer.Argument(..., help="多个短片段输入（≤60s）"),
+    clips: Annotated[list[str], typer.Argument(help="多个短片段输入（≤60s）")],
     out_dir: str = typer.Option("/tmp/cthulhu-calibration", help="工作目录"),
     seeds: str = typer.Option("0,1", help="逗号分隔的种子列表"),
 ) -> None:

@@ -193,8 +193,8 @@ def _temporal_sequence_distance(frames_a: np.ndarray, frames_b: np.ndarray) -> f
 
 def _mel_filterbank(n_mels: int, n_fft: int, rate: int) -> np.ndarray:
     lo, hi = 300.0, min(8000.0, rate / 2)
-    mel = lambda f: 2595.0 * np.log10(1.0 + f / 700.0)  # noqa: E731
-    inverse = lambda m: 700.0 * (10.0 ** (m / 2595.0) - 1.0)  # noqa: E731
+    mel = lambda f: 2595.0 * np.log10(1.0 + f / 700.0)
+    inverse = lambda m: 700.0 * (10.0 ** (m / 2595.0) - 1.0)
     points = np.linspace(mel(lo), mel(hi), n_mels + 2)
     hz = inverse(points)
     bins = np.floor((n_fft + 1) * hz / rate).astype(int)

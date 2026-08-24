@@ -25,10 +25,6 @@ export default function App() {
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
 
-  if (import.meta.env.DEV) {
-    console.log("[appEnv keys]", Object.keys(window.appEnv ?? {}).join(","));
-  }
-
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);

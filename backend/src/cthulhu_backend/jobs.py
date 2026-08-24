@@ -9,8 +9,8 @@ import uuid
 from typing import Any
 
 from cthulhu_backend import db, services
-from cthulhu_backend.events import broker
 from cthulhu_backend.evaluate import dedup_harness
+from cthulhu_backend.events import broker
 from cthulhu_backend.transform import strategies
 from cthulhu_backend.version import APP_VERSION
 
@@ -90,7 +90,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
             seed=params.get("seed", 0),
             metrics=metrics,
         )
-    except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
+    except Exception:  # noqa: BLE001, S110 - 记录失败不影响任务结果
         pass
     return result
 
@@ -116,7 +116,7 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
             },
             seed=0,
         )
-    except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
+    except Exception:  # noqa: BLE001, S110 - 记录失败不影响任务结果
         pass
     return result
 

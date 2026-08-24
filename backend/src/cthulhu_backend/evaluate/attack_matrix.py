@@ -13,8 +13,7 @@ from pathlib import Path
 import numpy as np
 from scipy.io import wavfile
 
-from cthulhu_backend.evaluate import dedup_harness
-from cthulhu_backend.evaluate import metrics
+from cthulhu_backend.evaluate import dedup_harness, metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import shots, strategies
@@ -107,7 +106,7 @@ def _quality(ref_path: str, variant_path: str) -> dict:
     indices = list(range(0, len(cand), step))[:60]
     scores = []
     for i in indices:
-        j = min(len(ref) - 1, int(round(i * len(ref) / len(cand))))
+        j = min(len(ref) - 1, round(i * len(ref) / len(cand)))
         lo, hi = max(0, j - 8), min(len(ref), j + 9)
         scores.append(max(metrics.ssim(ref[k], cand[i]) for k in range(lo, hi)))
     return {
@@ -117,40 +116,40 @@ def _quality(ref_path: str, variant_path: str) -> dict:
 
 
 PRESETS = {
-    "日常": dict(
-        shot_retime=(0.95, 1.07),
-        cut_margin=3,
-        regrade=0.10,
-        recrop=0.02,
-        rotate_deg=0.25,
-        midband=0.1,
-        audio_tempo=1.05,
-        audio_pitch=0.98,
-        audio_eq_db=5.0,
-        audio_noise=0.004,
-    ),
-    "轻+": dict(
-        shot_retime=(0.98, 1.04),
-        cut_margin=2,
-        regrade=0.08,
-        recrop=0.015,
-        audio_tempo=1.04,
-        audio_pitch=0.985,
-        audio_eq_db=4.0,
-        audio_noise=0.003,
-    ),
-    "强": dict(
-        shot_retime=(0.95, 1.08),
-        cut_margin=4,
-        regrade=0.12,
-        recrop=0.03,
-        rotate_deg=0.8,
-        midband=0.5,
-        audio_tempo=1.06,
-        audio_pitch=0.97,
-        audio_eq_db=7.0,
-        audio_noise=0.006,
-    ),
+    "日常": {
+        "shot_retime": (0.95, 1.07),
+        "cut_margin": 3,
+        "regrade": 0.10,
+        "recrop": 0.02,
+        "rotate_deg": 0.25,
+        "midband": 0.1,
+        "audio_tempo": 1.05,
+        "audio_pitch": 0.98,
+        "audio_eq_db": 5.0,
+        "audio_noise": 0.004,
+    },
+    "轻+": {
+        "shot_retime": (0.98, 1.04),
+        "cut_margin": 2,
+        "regrade": 0.08,
+        "recrop": 0.015,
+        "audio_tempo": 1.04,
+        "audio_pitch": 0.985,
+        "audio_eq_db": 4.0,
+        "audio_noise": 0.003,
+    },
+    "强": {
+        "shot_retime": (0.95, 1.08),
+        "cut_margin": 4,
+        "regrade": 0.12,
+        "recrop": 0.03,
+        "rotate_deg": 0.8,
+        "midband": 0.5,
+        "audio_tempo": 1.06,
+        "audio_pitch": 0.97,
+        "audio_eq_db": 7.0,
+        "audio_noise": 0.006,
+    },
 }
 
 
