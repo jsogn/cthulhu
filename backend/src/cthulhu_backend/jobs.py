@@ -28,7 +28,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         or db.load_settings().get("transform_strategy")
         or strategies.DEFAULT_STRATEGY
     )
-    preset_name = options.get("preset") or db.load_settings().get("preset") or "medium"
+    preset_name = options.get("preset") or db.load_settings().get("preset") or "veryfast"
     params = {
         key: value
         for key, value in options.items()

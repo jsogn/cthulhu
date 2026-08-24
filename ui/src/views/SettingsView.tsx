@@ -29,7 +29,7 @@ const DEFAULTS: Record<string, string> = {
   parallelism: "3",
   gpu: "自动（H.265 硬编加速）",
   transform_strategy: "fast",
-  preset: "medium",
+  preset: "veryfast",
   temp_dir: "/tmp/watermark-cleaner",
 };
 

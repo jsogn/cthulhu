@@ -180,7 +180,7 @@ def _temporal_aligned_vmaf(
     ref: np.ndarray,
     mov: np.ndarray,
     matches: np.ndarray,
-    sample_pairs: int = 12,
+    sample_pairs: int = 8,
     fps: float = 30.0,
 ) -> float | None:
     """时间对齐 VMAF：把处理帧匹配回最近原始帧，抽样重编码后评分。"""
@@ -344,7 +344,7 @@ def run_desensitize(
     seed: int = 0,
     codec: str = "libx264",
     lossless: bool = False,
-    preset: str = "medium",
+    preset: str = "veryfast",
     spoof: bool = False,
     bitrate_kbps: int | None = None,
     gop: int | None = None,
@@ -715,8 +715,8 @@ def run_desensitize(
     # ---------- 指标遍：抽样重解码后计算，避免整片驻留 ----------
     if progress_cb:
         progress_cb(97, "计算画质指标")
-    original_sampled, _ = ffmpeg.decode_sampled(path, cap=200)
-    processed_sampled, _ = ffmpeg.decode_sampled(output, cap=200)
+    original_sampled, _ = ffmpeg.decode_sampled(path, cap=120)
+    processed_sampled, _ = ffmpeg.decode_sampled(output, cap=120)
     ref_s, mov_s, matches = metrics.temporal_match(original_sampled, processed_sampled)
     stability_in = metrics.temporal_stability(original_sampled)
     stability_out = metrics.temporal_stability(processed_sampled)

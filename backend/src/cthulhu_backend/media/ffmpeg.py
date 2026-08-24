@@ -307,7 +307,8 @@ def decode_sampled(
 
     pix_fmt = "gray" if grayscale else "rgb24"
     channels = 1 if grayscale else 3
-    positions = min(10, cap)
+    # 每窗口一次子进程；窗口数固定为 6，在长片省时与短片子进程开销间取平衡。
+    positions = min(6, cap)
     per = max(1, cap // positions)
     parts: list[np.ndarray] = []
     starts: list[int] = []
