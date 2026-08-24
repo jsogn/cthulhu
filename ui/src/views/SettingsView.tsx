@@ -138,6 +138,17 @@ export default function SettingsView() {
     }
   };
 
+  const chooseExportDir = async () => {
+    const picker = window.appEnv?.chooseFolder;
+    if (!picker) {
+      toast("选择目录仅在桌面版可用");
+      return;
+    }
+    const path = await picker();
+    if (!path) return;
+    setValue("export_dir", path);
+  };
+
   const installing = install?.status === "downloading";
   const engineDesc =
     ffmpegOk === null
@@ -160,11 +171,16 @@ export default function SettingsView() {
         <div className="form-grid">
           <div className="form-field full">
             <Label>默认导出目录</Label>
-            <Input
-              className="form-input"
-              value={form.export_dir}
-              onChange={(e) => setValue("export_dir", e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                className="form-input flex-1"
+                value={form.export_dir}
+                onChange={(e) => setValue("export_dir", e.target.value)}
+              />
+              <Button variant="secondary" size="sm" onClick={() => void chooseExportDir()}>
+                选择目录
+              </Button>
+            </div>
             <div className="form-help">清洗产物默认存放目录；批量导出也复制到这里</div>
           </div>
           <div className="form-field">
