@@ -1236,15 +1236,17 @@ body {
   color: var(--destructive);
 }
 
-.job-top {
+.job-row {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .job-name {
   font-weight: 600;
+  min-width: 0;
 }
 
 .job-status {

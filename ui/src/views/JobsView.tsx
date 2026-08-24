@@ -238,8 +238,8 @@ function JobCard({
   );
 
   return (
-    <Card className="mb-3 flex flex-col gap-2.5 p-3.5">
-      <div className="job-top">
+    <div className="job-row">
+      <div className="flex items-center gap-2">
         <span className="job-name min-w-0 truncate">{job.name}</span>
         <span className={`job-status ${STATUS_LABEL[job.status]}`}>{STATUS_LABEL[job.status]}</span>
       </div>
@@ -250,9 +250,9 @@ function JobCard({
       {job.tasks.length === 1 ? (
         <div className="flex flex-col gap-1">{renderTaskDetail(job.tasks[0])}</div>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1">
           {job.tasks.map((task) => (
-            <div key={task.id} className="flex flex-col gap-1 rounded-md border border-border p-2">
+            <div key={task.id} className="flex flex-col gap-0.5">
               <div className="flex items-center gap-2 text-xs">
                 <span className="shrink-0 text-muted-foreground">{KIND_LABEL[task.kind]}</span>
                 <span className="mono min-w-0 flex-1 truncate">{basename(task.path)}</span>
@@ -270,7 +270,7 @@ function JobCard({
         job.status === "running" ||
         job.status === "paused" ||
         failedCount > 0) && (
-        <div className="job-actions">
+        <div className="job-actions justify-end">
           {job.status === "queued" && (
             <Button
               variant="secondary"
@@ -303,6 +303,6 @@ function JobCard({
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
