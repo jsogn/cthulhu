@@ -57,6 +57,23 @@ def evaluate(clip: str, out_dir: str) -> dict:
             rng,
             length=3,
         ),
+        "字幕对比重塑": lambda: content.subtitle_restyle(frames, rng, "contrast"),
+        "字幕色偏": lambda: content.subtitle_restyle(frames, rng, "tint"),
+        "字幕锐化": lambda: content.subtitle_restyle(frames, rng, "sharpen"),
+        "字幕微移位": lambda: content.subtitle_restyle(frames, rng, "shift"),
+        "字幕组合": lambda: content.subtitle_restyle(
+            content.subtitle_restyle(frames, rng, "contrast"), rng, "shift"
+        ),
+        "字幕+全组合": lambda: content.subtitle_restyle(
+            content.shot_dissolve(
+                content.per_shot_reframe(content.film_grade(frames, rng), boundaries, rng),
+                boundaries,
+                rng,
+                length=3,
+            ),
+            rng,
+            "contrast",
+        ),
     }
 
     rows = []
