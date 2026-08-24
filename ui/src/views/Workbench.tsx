@@ -645,7 +645,7 @@ function PreviewPane({
     return () => observer.disconnect();
   }, [hasRealFrame, mediaSize, material?.id]);
 
-  // 播放/暂停状态与真实 <video> 同步（静音播放，避免浏览器自动播放限制）。
+  // 播放/暂停状态与真实 <video> 同步。
   useEffect(() => {
     const video = videoRef.current;
     const compare = compareLeftRef.current;
@@ -862,7 +862,6 @@ function PreviewPane({
                   className="preview-video"
                   src={mediaUrl(compareRight)}
                   preload="metadata"
-                  muted
                   playsInline
                   crossOrigin="anonymous"
                   onTimeUpdate={onTimeUpdate}
@@ -876,7 +875,6 @@ function PreviewPane({
                     className="preview-video"
                     src={mediaUrl(compareLeft)}
                     preload="metadata"
-                    muted
                     playsInline
                     crossOrigin="anonymous"
                   />
@@ -900,7 +898,6 @@ function PreviewPane({
                 className="preview-video"
                 src={material?.path ? mediaUrl(material.path) : undefined}
                 preload="metadata"
-                muted
                 playsInline
                 crossOrigin="anonymous"
                 onTimeUpdate={onTimeUpdate}
