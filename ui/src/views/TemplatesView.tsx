@@ -271,7 +271,7 @@ export default function TemplatesView() {
               </div>
 
               {switchRow("同步处理音频指纹", "对音轨做频谱轻微处理", "audioRemix")}
-              {switchRow("抗二次检测增强", "对 8×8 中频 DCT 系数施加扰动", "antiReembed")}
+              {switchRow("抗二次检测增强", "扰动中频 DCT 系数，破坏二次嵌入", "antiReembed")}
               {switchRow("重新构图（裁剪回缩）", "对抗内容指纹，画质损失较大", "recropOn")}
               {switchRow("细节保护（人脸/字幕/纹理）", "保护区域回退原帧，保留部分水印特征", "detailProtectOn")}
 
@@ -291,7 +291,7 @@ export default function TemplatesView() {
 
               {switchRow("锐度补偿", "抵消清除算法带来的轻微模糊", "sharpness")}
               {switchRow("色彩还原", "把处理后亮度均值校准回原片统计", "colorRestore")}
-              {switchRow("空间降噪", "Wiener 滤波，破坏空域扩频水印", "denoise")}
+              {switchRow("空间降噪", "破坏空域扩频水印", "denoise")}
               {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，轻微损失画质", "spoof")}
 
               <div className="field">

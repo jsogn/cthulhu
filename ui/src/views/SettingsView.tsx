@@ -143,8 +143,8 @@ export default function SettingsView() {
     ffmpegOk === null
       ? "正在检查…"
       : ffmpegOk
-        ? "已就绪，视频检测、清洗与修复均可正常使用"
-        : "尚未安装，点击「自动安装」即可开始使用，也可手动指定本机已有的组件";
+      ? "已就绪，视频检测、清洗与修复均可正常使用"
+        : "尚未安装，可自动安装或指定本机已有组件";
 
   return (
     <>
@@ -211,7 +211,7 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">
-              快速管线经检测基准验证与完整管线效果相当，实测约快 2 倍
+              与完整管线效果相当，约快 2 倍
             </div>
           </div>
           <div className="form-field">
@@ -241,7 +241,7 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">
-              H.265 硬编约快 2 倍但文件更大；H.264 始终软件编码（实测更快更小）
+              H.265 硬编更快但文件更大；H.264 软件编码体积更小
             </div>
           </div>
           <div className="form-field full">
@@ -252,7 +252,7 @@ export default function SettingsView() {
               onChange={(e) => setValue("temp_dir", e.target.value)}
               disabled
             />
-            <div className="form-help">当前使用系统临时目录，自定义路径将在后续版本开放</div>
+            <div className="form-help">当前使用系统临时目录</div>
           </div>
           <div className="form-field full">
             <Label>界面主题</Label>

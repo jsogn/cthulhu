@@ -102,7 +102,7 @@ export default function JobsView() {
       <div className="view-body">
         {etaMinutes != null && pendingCount > 0 && (
           <p className="mb-3 text-xs text-muted-foreground">
-            依据历史速度估算，剩余任务约需{" "}
+            预计剩余{" "}
             {etaMinutes < 1 ? "不到 1 分钟" : `${Math.ceil(etaMinutes)} 分钟`}
           </p>
         )}

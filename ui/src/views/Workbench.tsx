@@ -1663,7 +1663,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                       ))}
                     </ul>
                   ) : (
-                    <p className="note">未发现明显码流层异常（启发式结果，不替代平台实测）。</p>
+                    <p className="note">未发现明显码流异常。</p>
                   )}
 
                   {report.blind && (
@@ -1686,9 +1686,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                         )}
                       </div>
                       <p className="note">
-                        0~1 置信度；真实视频基线随内容差异较大，且 LSB 位平面在压缩域
-                        恒定误报（已不展示）。任何单项分数都不能直接判定，需干净同源
-                        基准做差分判定。
+                        0~1 置信度，单项分数仅供参考，需干净同源基准做差分判定。
                       </p>
                     </>
                   )}
@@ -1766,7 +1764,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                     </>
                   ) : (
                     <p className="note">
-                      执行清洗或修复后，此处将展示 PSNR / SSIM / VMAF 与清除复核结果。
+                      清洗后展示 PSNR / SSIM / VMAF 与清除复核结果。
                     </p>
                   )}
 
@@ -1798,7 +1796,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                         ))}
                       </div>
                       <p className="note">
-                        波形与频谱供人工核验；回声置信度 0~1，压缩与转码会抬高基线。
+                        回声置信度 0~1，压缩与转码会抬高基线。
                       </p>
                     </>
                   ) : audioMissing ? (
@@ -1836,7 +1834,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                       }
                       if (suggestions.length === 0) {
                         suggestions.push(
-                          "未命中明显异常，保持基础清洗即可；对抗强度按投放需求自行选择",
+                          "未命中明显异常，保持基础清洗即可",
                         );
                       }
                       return suggestions.map((text) => <li key={text}>{text}</li>);
@@ -1862,7 +1860,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
 
                   <Card className="border border-border p-4 shadow-none ring-0">
                     <p className="note">
-                      尚未检测。扫描完成后，此处将展示码流层异常、容器元数据与命中维度等完整报告；当前素材没有可展示的检测数据。
+                      尚未检测，检测后此处展示码流异常、元数据与命中维度。
                     </p>
                   </Card>
                 </>
@@ -1960,7 +1958,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                 执行修复
               </Button>
               <p className="note">
-                点击「添加水印区域」后，在预览中拖动选框圈住水印位置，可继续调整大小与参数；撤销/重做请用上方按钮。
+                在预览中拖动选框圈住水印位置，可调整大小与参数。
               </p>
             </div>
           </ScrollArea>
@@ -1993,8 +1991,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                 <div className="form-help">选择后自动回填下方参数，可继续调整</div>
               </div>
               <p className="note">
-                清洗对空域扩频、DCT-QIM、小波、LSB 与音频回声五类常见水印方案
-                有针对性手段；对未知方案建议加强对抗档并人工复核。
+                针对空域、DCT-QIM、小波、LSB 与音频回声五类常见水印；未知方案建议加强对抗档。
               </p>
               <div className="section-title">清除档位</div>
               <Tabs
@@ -2036,7 +2033,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                 </div>
               </div>
               <p className="note">
-                三档只控制变速与微扰强度；指纹对抗与编码参数在下方独立设置。
+                三档只控制变速与微扰强度，指纹对抗与编码在下方独立设置。
               </p>
 
               <div className="field">
@@ -2061,25 +2058,21 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="switch">
                 <div>
                   <div className="switch-label">抗二次检测增强</div>
-                  <div className="switch-desc">对 8×8 中频 DCT 系数施加扰动，破坏二次嵌入条件</div>
+                  <div className="switch-desc">扰动中频 DCT 系数，破坏二次嵌入</div>
                 </div>
                 <Switch checked={antiReembed} onCheckedChange={setAntiReembed} />
               </div>
               <div className="switch">
                 <div>
                   <div className="switch-label">重新构图（裁剪回缩）</div>
-                  <div className="switch-desc">
-                    对抗内容指纹，但实测对真实素材画质损失大，默认关闭
-                  </div>
+                  <div className="switch-desc">对抗内容指纹，画质损失较大</div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
               </div>
               <div className="switch">
                 <div>
                   <div className="switch-label">细节保护（人脸/字幕/纹理）</div>
-                  <div className="switch-desc">
-                    观感优先：保护区域回退原帧，但会保留部分水印特征，默认关闭
-                  </div>
+                  <div className="switch-desc">保护区域回退原帧，保留部分水印特征</div>
                 </div>
                 <Switch checked={detailProtectOn} onCheckedChange={setDetailProtectOn} />
               </div>
@@ -2098,7 +2091,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                   </SelectContent>
                 </Select>
                 <div className="form-help">
-                  观感优先：轻度/标准适合日常，强力有轻微可见加工，极限仅供素材研究
+                  轻度/标准日常可用；强力可见轻微加工；极限仅供研究
                 </div>
               </div>
 
@@ -2113,24 +2106,21 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="switch">
                 <div>
                   <div className="switch-label">色彩还原</div>
-                  <div className="switch-desc">把处理后的逐通道亮度均值校准回原片统计</div>
+                  <div className="switch-desc">把处理后亮度均值校准回原片</div>
                 </div>
                 <Switch checked={colorFix} onCheckedChange={setColorFix} />
               </div>
               <div className="switch">
                 <div>
                   <div className="switch-label">空间降噪</div>
-                  <div className="switch-desc">Wiener 滤波，有效破坏空域扩频水印（默认开启）</div>
+                  <div className="switch-desc">破坏空域扩频水印</div>
                 </div>
                 <Switch checked={aiDenoise} onCheckedChange={setAiDenoise} />
               </div>
               <div className="switch">
                 <div>
                   <div className="switch-label">伪水印注入（溯源干扰）</div>
-                  <div className="switch-desc">
-                    注入随机干扰水印，可能在平台二次嵌入层面干扰溯源提取；
-                    效果需投流实测验证，轻微损失画质
-                  </div>
+                  <div className="switch-desc">注入随机干扰水印，轻微损失画质</div>
                 </div>
                 <Switch checked={spoof} onCheckedChange={setSpoof} />
               </div>
@@ -2200,7 +2190,6 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                 <Switch checked={lossless} onCheckedChange={setLossless} />
               </div>
 
-              <p className="note">默认低强度优先，需在预览中确认效果。</p>
               <Button variant="secondary" className="w-full" disabled={cleaning} onClick={runClean}>
                 {cleaning ? "处理中…" : "执行清洗"}
               </Button>
@@ -2213,11 +2202,11 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
             <div className="flex min-w-0 flex-col gap-2.5">
               {outputs.length === 0 ? (
                 <p className="note">
-                  该素材还没有处理产物；执行清洗、修复或生成候选后会自动出现在这里。
+                  还没有处理产物，清洗或生成候选后会自动出现。
                 </p>
               ) : (
                 <>
-                  <p className="note">选择产物与原片同步对比，或播放查看效果。</p>
+                  <p className="note">与原片对比，或播放查看。</p>
                   {outputs.map((output) => (
                     <div key={output.path} className="out-item">
                       <div className="out-item-head">
