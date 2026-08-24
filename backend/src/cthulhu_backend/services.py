@@ -470,25 +470,25 @@ def run_desensitize(
         spoof_rng = np.random.default_rng(seed ^ 0x5F3759DF)
         spoof_bits = watermark_common.payload_bits(int(spoof_rng.integers(0, 2**31)), 64)
     assault_rng = np.random.default_rng(seed ^ 0xA55A55A5)
-    # FFmpeg 原生滤镜迁移：把可平移的原语交给编码器滤镜链，numpy 侧跳过。
+    # FFmpeg 原生滤镜迁移：可平移的原语始终交给编码器滤镜链，numpy 侧跳过，
+    # 不依赖对抗档位开关，默认路径即可获得成倍提速。
     native_chain: list[str] = []
     sharpness_eff = sharpness
     noise_eff = noise
     requant_eff = requant
     denoise_eff = denoise
-    if native_filters:
-        if sharpness and ffmpeg.has_filter("unsharp"):
-            native_chain.append("unsharp=5:5:0.25:3:3:0.0")
-            sharpness_eff = False
-        if denoise and ffmpeg.has_filter("removegrain"):
-            native_chain.append("removegrain=4")
-            denoise_eff = False
-        if noise > 0 and ffmpeg.has_filter("noise"):
-            native_chain.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
-            noise_eff = 0.0
-        if requant > 0 and ffmpeg.has_filter("posterize"):
-            native_chain.append(f"posterize={requant}")
-            requant_eff = 0
+    if sharpness and ffmpeg.has_filter("unsharp"):
+        native_chain.append("unsharp=5:5:0.25:3:3:0.0")
+        sharpness_eff = False
+    if denoise and ffmpeg.has_filter("removegrain"):
+        native_chain.append("removegrain=4")
+        denoise_eff = False
+    if noise > 0 and ffmpeg.has_filter("noise"):
+        native_chain.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
+        noise_eff = 0.0
+    if requant > 0 and ffmpeg.has_filter("posterize"):
+        native_chain.append(f"posterize={requant}")
+        requant_eff = 0
     assault_params = extra_attacks.AssaultParams(
         mirror=mirror,
         jitter=jitter,

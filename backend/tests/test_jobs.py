@@ -207,5 +207,9 @@ def test_retry_failed_job(client):
     _wait(client, created["id"])
     response = client.post(f"/api/jobs/{created['id']}/retry")
     assert response.status_code == 202
-    assert len(response.json()["tasks"]) == 1
-    assert response.json()["name"].endswith("重试")
+    retried = response.json()
+    # 原地重试：保留原任务，不再新开一条，也不追加名字后缀。
+    assert retried["id"] == created["id"]
+    assert retried["name"] == "失败批次"
+    assert len(retried["tasks"]) == 1
+    assert retried["tasks"][0]["status"] == "queued"

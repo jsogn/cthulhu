@@ -57,15 +57,6 @@ export default function JobsView() {
   const tasks = jobs.flatMap((job) => job.tasks);
   const count = (status: string) => tasks.filter((task) => task.status === status).length;
   const finishedCount = count("done") + count("failed");
-  const doneElapsed = tasks
-    .filter((task) => task.status === "done" && task.elapsed != null)
-    .map((task) => task.elapsed as number);
-  const avgElapsed = doneElapsed.length
-    ? doneElapsed.reduce((sum, value) => sum + value, 0) / doneElapsed.length
-    : null;
-  const pendingCount = count("queued") + count("running");
-  const etaMinutes =
-    avgElapsed != null && pendingCount > 0 ? (avgElapsed * pendingCount) / 60 : null;
 
   const confirmClear = async () => {
     if (!pendingClear) return;
@@ -105,12 +96,6 @@ export default function JobsView() {
       </div>
 
       <div className="view-body">
-        {etaMinutes != null && pendingCount > 0 && (
-          <p className="mb-3 text-xs text-muted-foreground">
-            预计剩余{" "}
-            {etaMinutes < 1 ? "不到 1 分钟" : `${Math.ceil(etaMinutes)} 分钟`}
-          </p>
-        )}
         <div className="stats">
           <Card className="stat s-队列中 p-3.5">
             <div className="stat-num">{count("queued")}</div>
@@ -298,7 +283,7 @@ function JobCard({
           )}
           {failedCount > 0 && (
             <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
-              重试失败项（{failedCount}）
+              重试
             </Button>
           )}
         </div>

@@ -267,18 +267,23 @@ class JobQueue:
         job = self._jobs.get(job_id)
         if not job:
             return None
-        failed = [
-            {
-                "kind": task["kind"],
-                "path": task["path"],
-                "options": task["options"],
-            }
-            for task in job["tasks"]
-            if task["status"] == "failed"
-        ]
-        if not failed:
+        if not any(task["status"] == "failed" for task in job["tasks"]):
             return None
-        return self.create_job(f"{job['name']} · 重试", failed, job["parallelism"])
+        # 原地重试：失败子任务回到队列，保留原任务记录，不再新开一条任务。
+        for task in job["tasks"]:
+            if task["status"] == "failed":
+                task["status"] = "queued"
+                task["percent"] = 0
+                task["progress_note"] = None
+                task["elapsed"] = None
+                task["error"] = None
+                task["result"] = None
+                task.pop("started_at", None)
+        job["status"] = "queued"
+        job.pop("enqueue_seq", None)
+        db.save_job(self.public_view(job))
+        self._enqueue(job)
+        return job
 
     def restore(self) -> None:
         """启动时载入持久化任务，未完成任务自动重新入队续跑。"""
