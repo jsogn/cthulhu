@@ -26,7 +26,7 @@ import { toast } from "@/stores/toasts";
 const DEFAULTS: Record<string, string> = {
   export_dir: "~/导出/Cthulhu",
   naming: "原文件名 + 时间戳",
-  parallelism: "3",
+  parallelism: "2",
   gpu: "仅 CPU（软件编码）",
   transform_strategy: "fast",
   preset: "veryfast",
