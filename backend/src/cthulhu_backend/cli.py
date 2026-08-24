@@ -12,7 +12,7 @@ from scipy.io import wavfile
 
 from cthulhu_backend import samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import harness
+from cthulhu_backend.evaluate import dedup_harness, harness
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
 from cthulhu_backend.similarity import embedding
@@ -114,6 +114,26 @@ def probe(file: str = typer.Argument(..., help="视频文件路径")) -> None:
         "sei_count": sei,
     }
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+@app.command()
+def dedup_fingerprint(file: str = typer.Argument(..., help="视频文件路径")) -> None:
+    """输出判重代理指纹：图像哈希族（逐帧位图）。"""
+    typer.echo(json.dumps(dedup_harness.frame_hashes(file), ensure_ascii=False, indent=2))
+
+
+@app.command()
+def dedup_compare(
+    original: str = typer.Argument(..., help="原片路径"),
+    candidate: str = typer.Argument(..., help="待比较视频路径"),
+    out_dir: str = typer.Option("docs/baselines", help="报告输出目录"),
+    tag: str = typer.Option("compare", help="报告文件名后缀"),
+) -> None:
+    """代理判重栈对比：图像哈希族 + 镜头结构 + 音频梅尔谱指纹。"""
+    report = dedup_harness.compare(original, candidate)
+    path = dedup_harness.save_report(report, out_dir, tag)
+    typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
+    typer.echo(f"报告已写入：{path}")
 
 
 @app.command()
