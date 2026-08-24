@@ -44,15 +44,6 @@ def test_templates_empty_by_default_and_crud(client):
     assert client.delete(f"/api/templates/{template_id}").status_code == 404
 
 
-def test_audit_append_and_list(client):
-    client.post(
-        "/api/audit",
-        json={"name": "x.mp4", "time": "2026-08-20 10:00", "action": "检测", "params": "全维度", "out": "—", "result": "低风险 12"},
-    )
-    entries = client.get("/api/audit").json()
-    assert entries and entries[0]["name"] == "x.mp4"
-
-
 @needs_ffmpeg
 def test_job_persisted_after_completion(client, tmp_path):
     path = tmp_path / "v.mp4"
@@ -123,16 +114,6 @@ def test_library_register_and_remove(client, tmp_path):
     assert path.exists()
 
 
-def test_clear_audit(client):
-    client.post(
-        "/api/audit",
-        json={"name": "x.mp4", "time": "2026-08-20 11:00", "action": "检测", "params": "", "out": "—", "result": "低风险 8"},
-    )
-    assert client.get("/api/audit").json()
-    assert client.delete("/api/audit").json()["removed"] >= 1
-    assert client.get("/api/audit").json() == []
-
-
 def test_clear_finished_jobs(client):
     created = client.post(
         "/api/jobs",
@@ -148,23 +129,8 @@ def test_clear_finished_jobs(client):
     assert all(item["id"] != created["id"] for item in client.get("/api/jobs").json())
 
 
-def test_audit_and_jobs_newest_first(client):
-    """处理历史与任务清单都应最新在前。"""
-    for index in range(3):
-        client.post(
-            "/api/audit",
-            json={
-                "name": f"条目{index}.mp4",
-                "time": f"2026-08-20 12:0{index}",
-                "action": "检测",
-                "params": "",
-                "out": "—",
-                "result": "待检测",
-            },
-        )
-    audit = client.get("/api/audit").json()
-    assert [item["name"] for item in audit[:3]] == ["条目2.mp4", "条目1.mp4", "条目0.mp4"]
-
+def test_jobs_newest_first(client):
+    """任务清单应最新在前。"""
     older = client.post(
         "/api/jobs",
         json={"name": "旧任务", "parallelism": 1, "tasks": [{"kind": "detect", "path": "/no/old.mp4"}]},

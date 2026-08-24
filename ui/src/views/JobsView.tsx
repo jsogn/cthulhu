@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { clearJobs, type JobInfo } from "@/lib/backend";
 import { useQueueStore } from "@/stores/queue";
-import { toast } from "@/stores/toasts";
+import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<string, string> = {
   detect: "暗水印检测",
@@ -191,9 +191,23 @@ function JobCard({
       {task.error && <span className="text-xs text-destructive">失败：{task.error}</span>}
       {task.status === "done" && task.kind === "desensitize" && (
         <>
-          <span className="mono truncate text-xs text-muted-foreground">
-            输出：{(task.result as { output?: string } | null)?.output ?? "—"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="mono min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              输出：{(task.result as { output?: string } | null)?.output ?? "—"}
+            </span>
+            {(() => {
+              const output = (task.result as { output?: string } | null)?.output;
+              return output ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openInFolder(output)}
+                >
+                  打开文件夹
+                </Button>
+              ) : null;
+            })()}
+          </div>
           {(() => {
             const residual = (task.result as {
               residual?: { ss: number | null } | null;

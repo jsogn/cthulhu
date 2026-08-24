@@ -25,15 +25,6 @@ CREATE TABLE IF NOT EXISTS templates (
     payload TEXT NOT NULL,
     created_at REAL NOT NULL
 );
-CREATE TABLE IF NOT EXISTS audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    time TEXT NOT NULL,
-    action TEXT NOT NULL,
-    params TEXT NOT NULL,
-    out TEXT NOT NULL,
-    result TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -91,6 +82,8 @@ def init_db() -> None:
         for legacy in ("batch", "label"):
             if legacy in columns:
                 connection.execute(f"ALTER TABLE variants DROP COLUMN {legacy}")
+        # 处理历史已与任务中心合并，清理旧审计表。
+        connection.execute("DROP TABLE IF EXISTS audit")
         # 演示素材默认关闭；清理旧版本写入的演示库残留，避免用户素材库里
         # 出现无法删除的合成演示视频。
         if os.environ.get("CTHULHU_DEMO_LIBRARY") != "1":
@@ -257,56 +250,6 @@ def delete_variant_by_output(output: str) -> bool:
     except sqlite3.OperationalError:
         # 表尚未初始化时（如测试直接调用删除），视为无记录。
         return False
-
-
-# ---------- 审计 ----------
-def append_audit(entry: dict) -> dict:
-    with _connect() as connection:
-        cursor = connection.execute(
-            "INSERT INTO audit (name, time, action, params, out, result) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                entry["name"],
-                entry["time"],
-                entry["action"],
-                entry["params"],
-                entry["out"],
-                entry["result"],
-            ),
-        )
-    entry["id"] = cursor.lastrowid
-    return entry
-
-
-def update_audit(audit_id: int, result: str) -> bool:
-    with _connect() as connection:
-        cursor = connection.execute("UPDATE audit SET result = ? WHERE id = ?", (result, audit_id))
-    return cursor.rowcount > 0
-
-
-def list_audit(limit: int = 200) -> list[dict]:
-    with _connect() as connection:
-        rows = connection.execute(
-            "SELECT id, name, time, action, params, out, result FROM audit ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "name": row["name"],
-            "time": row["time"],
-            "action": row["action"],
-            "params": row["params"],
-            "out": row["out"],
-            "result": row["result"],
-        }
-        for row in rows
-    ]
-
-
-def clear_audit() -> int:
-    with _connect() as connection:
-        cursor = connection.execute("DELETE FROM audit")
-    return cursor.rowcount
 
 
 # ---------- 任务 ----------

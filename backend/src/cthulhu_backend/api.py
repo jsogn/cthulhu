@@ -203,19 +203,6 @@ class TemplateUpdate(BaseModel):
     payload: dict = {}
 
 
-class AuditCreate(BaseModel):
-    name: str
-    time: str
-    action: str
-    params: str = ""
-    out: str = ""
-    result: str = ""
-
-
-class AuditUpdate(BaseModel):
-    result: str
-
-
 @router.post("/detect")
 async def detect(request: PathRequest) -> dict:
     await broker.publish({"type": "task:start", "task": "detect", "path": request.path})
@@ -642,28 +629,6 @@ def list_variants(
 ) -> list[dict]:
     """产物记录清单：按源文件过滤，返回完整参数与指标快照。"""
     return db.list_variants(source=source)
-
-
-@router.get("/audit")
-def get_audit() -> list[dict]:
-    return db.list_audit()
-
-
-@router.post("/audit", status_code=201)
-def post_audit(request: AuditCreate) -> dict:
-    return db.append_audit(request.model_dump())
-
-
-@router.put("/audit/{audit_id}")
-def put_audit(audit_id: int, request: AuditUpdate) -> dict:
-    if not db.update_audit(audit_id, request.result):
-        raise HTTPException(status_code=404, detail="审计记录不存在")
-    return {"id": audit_id, "result": request.result}
-
-
-@router.delete("/audit")
-def remove_audit() -> dict:
-    return {"removed": db.clear_audit()}
 
 
 @router.delete("/jobs")

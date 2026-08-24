@@ -335,16 +335,6 @@ export interface TemplateInfo {
   created_at: number;
 }
 
-export interface AuditEntry {
-  id?: number;
-  name: string;
-  time: string;
-  action: string;
-  params: string;
-  out: string;
-  result: string;
-}
-
 /** 素材库文件的视频元信息（与后端 ffprobe 结果对齐）。 */
 export interface LibraryVideoInfo {
   codec?: string;
@@ -602,44 +592,10 @@ export async function listVariants(
   return res.json();
 }
 
-export async function listAudit(): Promise<AuditEntry[]> {
-  const res = await apiFetch("/api/audit");
-  if (!res.ok) throw new Error(`读取审计失败（${res.status}）`);
-  return res.json();
-}
-
-export async function appendAudit(entry: AuditEntry): Promise<AuditEntry> {
-  const res = await apiFetch("/api/audit", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(entry),
-  });
-  if (!res.ok) throw new Error(`写入审计失败（${res.status}）`);
-  return res.json();
-}
-
-/** 更新审计记录的结果状态（如排队中 → 成功/失败）。 */
-export async function updateAudit(auditId: number, result: string): Promise<void> {
-  const res = await apiFetch(`/api/audit/${auditId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ result }),
-  });
-  if (!res.ok) throw new Error(`更新审计失败（${res.status}）`);
-}
-
 /** 清空任务（scope: finished | all）。 */
 export async function clearJobs(scope: "finished" | "all" = "finished"): Promise<number> {
   const res = await apiFetch(`/api/jobs?scope=${scope}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`清空任务失败（${res.status}）`);
-  const data = (await res.json()) as { removed: number };
-  return data.removed;
-}
-
-/** 清空审计（处理历史）。 */
-export async function clearAudit(): Promise<number> {
-  const res = await apiFetch("/api/audit", { method: "DELETE" });
-  if (!res.ok) throw new Error(`清空历史失败（${res.status}）`);
   const data = (await res.json()) as { removed: number };
   return data.removed;
 }

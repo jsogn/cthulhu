@@ -47,7 +47,7 @@ import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
+import { fmtFrames, fmtSize } from "@/lib/format";
 import {
   analyzeAudio,
   deleteOutput,
@@ -72,7 +72,6 @@ import {
 import { payloadOf, type TemplatePayload } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
-import { useHistoryStore } from "@/stores/history";
 import { useMaterialsStore, type Material, type RiskLevel } from "@/stores/materials";
 import { useQueueStore } from "@/stores/queue";
 import { useRegionsStore } from "@/stores/regions";
@@ -1052,7 +1051,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const patchRegion = useRegionsStore((state) => state.patchRegion);
   const undo = useRegionsStore((state) => state.undo);
   const redo = useRegionsStore((state) => state.redo);
-  const addHistory = useHistoryStore((state) => state.add);
   const jobs = useQueueStore((state) => state.jobs);
 
   const [level, setLevel] = useState<CleanLevel>("平衡");
@@ -1408,14 +1406,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     setLastOutput(result.output);
     setLastClean(result);
     setDedupRisk(result.dedup ?? null);
-    addHistory({
-      name: material?.name ?? "",
-      time: nowStr(),
-      action: "清洗去重",
-      params: `${level}档 · 对抗${antiLevel} · ${codec}`,
-      out: result.output,
-      result: "成功",
-    });
     void useMaterialsStore.getState().refreshOutputCounts();
     void fetchOutputs(material?.path ?? "")
       .then((report) => setOutputs(report.outputs))
@@ -1424,7 +1414,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       label: "打开文件夹",
       onClick: () => openInFolder(result.output as string),
     });
-  }, [jobs, material?.path, level, antiLevel, codec, addHistory]);
+  }, [jobs, material?.path]);
 
   const runRepairJob = async () => {
     const target = material as (Material & { path?: string }) | null;
@@ -1456,14 +1446,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
           },
         },
       ]);
-      addHistory({
-        name: target.name,
-        time: nowStr(),
-        action: "可见水印修复",
-        params: `${regions.length} 个区域 · delogo`,
-        out: output,
-        result: "排队中",
-      });
       toast("修复任务已加入队列");
     } catch {
       toast("入队失败，请确认引擎在线");

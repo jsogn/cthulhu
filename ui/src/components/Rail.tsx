@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { History, Layers, LayoutDashboard, ListTodo, Settings } from "lucide-react";
+import { Layers, LayoutDashboard, ListTodo, Settings } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppStore, type ViewKey } from "@/stores/app";
 
@@ -7,7 +7,6 @@ const MAIN_ITEMS: { key: ViewKey; label: string; icon: LucideIcon }[] = [
   { key: "workbench", label: "素材处理", icon: LayoutDashboard },
   { key: "jobs", label: "任务中心", icon: ListTodo },
   { key: "templates", label: "去重模板", icon: Layers },
-  { key: "history", label: "处理历史", icon: History },
 ];
 
 export default function Rail() {

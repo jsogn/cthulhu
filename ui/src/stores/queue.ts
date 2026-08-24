@@ -6,12 +6,10 @@ import {
   resumeJob,
   retryJob,
   setJobPriority,
-  updateAudit,
   type BackendEvent,
   type JobInfo,
   type JobTaskInfo,
 } from "@/lib/backend";
-import { useHistoryStore } from "@/stores/history";
 import { useMaterialsStore } from "@/stores/materials";
 import { toast } from "@/stores/toasts";
 
@@ -73,25 +71,6 @@ export const useQueueStore = create<QueueState>((set) => ({
           new Notification(`Cthulhu · 任务完成`, { body: job.name });
         } catch {
           // 环境不支持系统通知时静默降级
-        }
-      }
-      // 任务终态同步到处理历史：把「排队中」条目更新为成功/失败。
-      if (job.status === "done" || job.status === "failed") {
-        const history = useHistoryStore.getState();
-        for (const task of job.tasks) {
-          if (task.kind !== "desensitize" && task.kind !== "repair") continue;
-          const output =
-            (task.result as { output?: string } | null)?.output ??
-            (task.options as { output?: string } | undefined)?.output;
-          if (!output) continue;
-          const entry = history.entries.find(
-            (item) => item.out === output && item.result === "排队中",
-          );
-          if (!entry?.id) continue;
-          const result = task.status === "done" ? "成功" : task.status === "failed" ? "失败" : null;
-          if (!result) continue;
-          useHistoryStore.getState().markResult(entry.id, result);
-          void updateAudit(entry.id, result).catch(() => undefined);
         }
       }
       if (job.status === "failed") toast(`任务失败：${job.name}`);

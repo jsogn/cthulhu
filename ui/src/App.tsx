@@ -7,7 +7,6 @@ import StatusBar from "@/components/StatusBar";
 import Workbench from "@/views/Workbench";
 import JobsView from "@/views/JobsView";
 import TemplatesView from "@/views/TemplatesView";
-import HistoryView from "@/views/HistoryView";
 import SettingsView from "@/views/SettingsView";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { connectEvents, getHealth } from "@/lib/backend";
@@ -112,7 +111,6 @@ export default function App() {
             {view === "workbench" && <Workbench />}
             {view === "jobs" && <JobsView />}
             {view === "templates" && <TemplatesView />}
-            {view === "history" && <HistoryView />}
             {view === "settings" && <SettingsView />}
           </main>
         </div>
