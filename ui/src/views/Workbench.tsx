@@ -2125,7 +2125,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                   </SelectContent>
                 </Select>
                 <div className="form-help">
-                  轻度/标准日常可用；强力可见轻微加工；极限仅供研究
+                  轻度/标准日常可用；强力可见轻微加工；极限仅供研究。语义级指纹提升有限，建议配合多版本分发
                 </div>
               </div>
 
