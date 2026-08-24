@@ -186,6 +186,57 @@ function JobCard({
 }) {
   const failedCount = job.tasks.filter((task) => task.status === "failed").length;
 
+  const renderTaskDetail = (task: JobInfo["tasks"][number]) => (
+    <>
+      {task.status === "running" && (
+        <>
+          <span className="text-xs text-muted-foreground">
+            {task.progress_note ?? "处理中"}
+            {task.elapsed != null ? ` · 已运行 ${task.elapsed}s` : ""}
+          </span>
+          {task.percent === 0 ? (
+            <div className="progress-track h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div className="progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
+            </div>
+          ) : (
+            <Progress value={task.percent} className="h-1" />
+          )}
+        </>
+      )}
+      {task.error && <span className="text-xs text-destructive">失败：{task.error}</span>}
+      {task.status === "done" && task.kind === "desensitize" && (
+        <>
+          <span className="mono truncate text-xs text-muted-foreground">
+            输出：{(task.result as { output?: string } | null)?.output ?? "—"}
+          </span>
+          {(() => {
+            const residual = (task.result as {
+              residual?: { ss: number | null } | null;
+            } | null)?.residual;
+            return residual?.ss != null ? (
+              <span className="text-xs text-muted-foreground">
+                空间水印残留 {residual.ss.toFixed(2)}（干净基线约 0.28）
+              </span>
+            ) : null;
+          })()}
+          {(() => {
+            const meta = task.result as {
+              transform_strategy?: string;
+              preset?: string;
+            } | null;
+            if (!meta?.transform_strategy) return null;
+            const strategyLabel = meta.transform_strategy === "fast" ? "快速" : "完整";
+            return (
+              <span className="text-xs text-muted-foreground">
+                管线：{strategyLabel} · 编码 {meta.preset ?? "medium"}
+              </span>
+            );
+          })()}
+        </>
+      )}
+    </>
+  );
+
   return (
     <Card className="mb-3 flex flex-col gap-2.5 p-3.5">
       <div className="job-top">
@@ -196,65 +247,24 @@ function JobCard({
         {job.tasks.length} 个素材 · {formatTime(job.created_at)}
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        {job.tasks.map((task) => (
-          <div key={task.id} className="flex flex-col gap-1 rounded-md border border-border p-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-16 shrink-0 text-muted-foreground">{KIND_LABEL[task.kind]}</span>
-              <span className="mono min-w-0 flex-1 truncate">{basename(task.path)}</span>
-              <span className={`job-status ${STATUS_LABEL[task.status]}`}>
-                {STATUS_LABEL[task.status]}
-              </span>
-            </div>
-            {task.status === "running" && (
-              <>
-              <span className="text-xs text-muted-foreground">
-                {task.progress_note ?? "处理中"}
-                {task.elapsed != null ? ` · 已运行 ${task.elapsed}s` : ""}
-              </span>
-              {task.percent === 0 ? (
-                <div className="progress-track h-1 w-full overflow-hidden rounded-full bg-muted">
-                  <div className="progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
-                </div>
-              ) : (
-                <Progress value={task.percent} className="h-1" />
-              )}
-              </>
-            )}
-            {task.error && <span className="text-xs text-destructive">失败：{task.error}</span>}
-            {task.status === "done" && task.kind === "desensitize" && (
-              <>
-                <span className="mono truncate text-xs text-muted-foreground">
-                  输出：{(task.result as { output?: string } | null)?.output ?? "—"}
+      {job.tasks.length === 1 ? (
+        <div className="flex flex-col gap-1">{renderTaskDetail(job.tasks[0])}</div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {job.tasks.map((task) => (
+            <div key={task.id} className="flex flex-col gap-1 rounded-md border border-border p-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="shrink-0 text-muted-foreground">{KIND_LABEL[task.kind]}</span>
+                <span className="mono min-w-0 flex-1 truncate">{basename(task.path)}</span>
+                <span className={`job-status ${STATUS_LABEL[task.status]}`}>
+                  {STATUS_LABEL[task.status]}
                 </span>
-                {(() => {
-                  const residual = (task.result as {
-                    residual?: { ss: number | null } | null;
-                  } | null)?.residual;
-                  return residual?.ss != null ? (
-                    <span className="text-xs text-muted-foreground">
-                      空间水印残留 {residual.ss.toFixed(2)}（干净基线约 0.28）
-                      </span>
-                  ) : null;
-                })()}
-                {(() => {
-                  const meta = task.result as {
-                    transform_strategy?: string;
-                    preset?: string;
-                  } | null;
-                  if (!meta?.transform_strategy) return null;
-                  const strategyLabel = meta.transform_strategy === "fast" ? "快速" : "完整";
-                  return (
-                    <span className="text-xs text-muted-foreground">
-                      管线：{strategyLabel} · 编码 {meta.preset ?? "medium"}
-                    </span>
-                  );
-                })()}
-              </>
-            )}
-          </div>
-        ))}
-      </div>
+              </div>
+              {renderTaskDetail(task)}
+            </div>
+          ))}
+        </div>
+      )}
 
       {(job.status === "queued" ||
         job.status === "running" ||
