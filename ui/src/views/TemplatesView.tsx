@@ -249,7 +249,7 @@ export default function TemplatesView() {
                     }));
                   }}
                 >
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="轻度">轻度（画质优先）</SelectItem>
                     <SelectItem value="平衡">平衡（推荐）</SelectItem>
@@ -278,7 +278,7 @@ export default function TemplatesView() {
               <div className="field">
                 <span className="field-label">指纹对抗强度</span>
                 <Select value={form.anti} onValueChange={(value) => setField("anti", value as AntiLevel)}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
                     <SelectItem value="轻度">轻度 · 几乎无损，日常推荐</SelectItem>
@@ -297,7 +297,7 @@ export default function TemplatesView() {
               <div className="field">
                 <Label>输出编码</Label>
                 <Select value={form.codec} onValueChange={(value) => setField("codec", value as Codec)}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="H.264">H.264</SelectItem>
                     <SelectItem value="H.265">H.265</SelectItem>
@@ -309,7 +309,7 @@ export default function TemplatesView() {
               <div className="field">
                 <span className="field-label">分辨率策略</span>
                 <Select value={form.resolution} onValueChange={(value) => setField("resolution", value)}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="保持原始分辨率">保持原始分辨率</SelectItem>
                     <SelectItem value="1920x1080">1920×1080</SelectItem>

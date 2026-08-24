@@ -1972,7 +1972,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="field">
                 <span className="field-label">模板</span>
                 <Select value={templateValue} onValueChange={applyTemplateById}>
-                  <SelectTrigger className="form-input h-8">
+                  <SelectTrigger className="form-input h-8 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -2086,7 +2086,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="field">
                 <span className="field-label">指纹对抗强度</span>
                 <Select value={antiLevel} onValueChange={setAntiLevel}>
-                  <SelectTrigger className="form-input h-9">
+                  <SelectTrigger className="form-input h-9 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -2139,7 +2139,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="field">
                 <span className="field-label">视频编码</span>
                 <Select value={codec} onValueChange={setCodec}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="H.264">H.264</SelectItem>
                     <SelectItem value="H.265">H.265</SelectItem>
@@ -2149,7 +2149,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               <div className="field">
                 <span className="field-label">分辨率策略</span>
                 <Select value={resolution} onValueChange={setResolution}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="保持原始分辨率">保持原始分辨率</SelectItem>
                     <SelectItem value="1920x1080">1920×1080</SelectItem>

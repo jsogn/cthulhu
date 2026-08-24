@@ -170,7 +170,7 @@ export default function SettingsView() {
           <div className="form-field">
             <Label>产物命名规则</Label>
             <Select value={form.naming} onValueChange={(v) => setValue("naming", v)}>
-              <SelectTrigger className="form-input h-9">
+              <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -183,7 +183,7 @@ export default function SettingsView() {
           <div className="form-field">
             <Label>批量并行度上限</Label>
             <Select value={form.parallelism} onValueChange={(v) => setValue("parallelism", v)}>
-              <SelectTrigger className="form-input h-9">
+              <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -202,7 +202,7 @@ export default function SettingsView() {
               value={form.transform_strategy}
               onValueChange={(v) => setValue("transform_strategy", v)}
             >
-              <SelectTrigger className="form-input h-9">
+              <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -217,7 +217,7 @@ export default function SettingsView() {
           <div className="form-field">
             <Label>编码速度档</Label>
             <Select value={form.preset} onValueChange={(v) => setValue("preset", v)}>
-              <SelectTrigger className="form-input h-9">
+              <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -230,7 +230,7 @@ export default function SettingsView() {
           <div className="form-field">
             <Label>编码加速（H.265）</Label>
             <Select value={form.gpu} onValueChange={(v) => setValue("gpu", v)}>
-              <SelectTrigger className="form-input h-9">
+              <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
