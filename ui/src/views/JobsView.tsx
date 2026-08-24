@@ -244,7 +244,7 @@ function JobCard({
         <span className={`job-status ${STATUS_LABEL[job.status]}`}>{STATUS_LABEL[job.status]}</span>
       </div>
       <div className="text-xs text-muted-foreground">
-        {job.tasks.length} 个素材 · {formatTime(job.created_at)}
+        {formatTime(job.created_at)}
       </div>
 
       {job.tasks.length === 1 ? (
