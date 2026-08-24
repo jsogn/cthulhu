@@ -41,3 +41,32 @@ def remix(
     out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
     out = normalize_loudness(out)
     return out + 0.002 * rng.standard_normal(n)
+
+
+def pitch_shift(signal: np.ndarray, ratio: float) -> np.ndarray:
+    """变调不变速：先按 ratio 拉伸，再拉回原长。"""
+    n = len(signal)
+    stretched = resample_poly(signal, 1000, max(1, round(1000 * ratio)))
+    return resample_poly(stretched, n, max(1, len(stretched)))
+
+
+def remix_strong(
+    signal: np.ndarray,
+    sample_rate: int,
+    rng: np.random.Generator,
+    tempo: float = 1.05,
+    pitch_ratio: float = 0.98,
+    eq_db: float = 6.0,
+    noise_floor: float = 0.004,
+) -> np.ndarray:
+    """强音频重混：变速 + 变调 + 强 EQ 倾斜 + 底噪，破坏 chromaprint/梅尔谱指纹。
+
+    与 remix 的轻量频谱处理不同，本链针对音频指纹的时间-频率对齐做双重扰动。
+    """
+    out = eq_tilt(signal, sample_rate, rng, gain_db=eq_db)
+    out = pitch_shift(out, pitch_ratio)
+    n = len(signal)
+    stretched = resample_poly(out, 1000, max(1, round(1000 * tempo)))
+    out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
+    out = normalize_loudness(out)
+    return out + noise_floor * rng.standard_normal(n)

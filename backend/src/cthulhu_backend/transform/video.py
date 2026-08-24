@@ -26,6 +26,52 @@ def retime(frames: np.ndarray, factor: float) -> np.ndarray:
     return np.asarray(frames)[indices]
 
 
+def per_shot_retime(
+    frames: np.ndarray,
+    boundaries: list[int],
+    rng: np.random.Generator,
+    min_factor: float = 0.97,
+    max_factor: float = 1.06,
+) -> np.ndarray:
+    """按镜头微变速：每个镜头独立 0.97~1.06 倍，叙事顺序保持不变。
+
+    全片统一变速容易被逐帧对齐恢复，逐镜头变速会打散时间轴对齐，
+    对 pHash 族与帧间结构指纹的破坏大于同预算的统一变速。
+    """
+    from cthulhu_backend.transform.shots import split_shots
+
+    parts = []
+    for shot in split_shots(frames, boundaries):
+        factor = float(rng.uniform(min_factor, max_factor))
+        parts.append(retime(shot, factor))
+    return np.concatenate(parts, axis=0)
+
+
+def cut_jitter(
+    frames: np.ndarray,
+    boundaries: list[int],
+    rng: np.random.Generator,
+    margin: int = 3,
+) -> np.ndarray:
+    """切点微调：每个镜头首尾随机去掉 0~margin 帧，轻微移动切点。
+
+    平台结构指纹会记录镜头切点序列；几帧的切点漂移在不破坏观感的前提下
+    打散该序列，且不需要重排叙事。
+    """
+    from cthulhu_backend.transform.shots import split_shots
+
+    parts = []
+    for shot in split_shots(frames, boundaries):
+        if len(shot) <= 2 * margin + 1:
+            parts.append(shot)
+            continue
+        drop_start = int(rng.integers(0, margin + 1))
+        drop_end = int(rng.integers(0, margin + 1))
+        end = len(shot) - drop_end if drop_end else None
+        parts.append(shot[drop_start:end])
+    return np.concatenate(parts, axis=0)
+
+
 def recrop(frames: np.ndarray, crop_frac: float = 0.04) -> np.ndarray:
     """重新构图：四周裁剪后缩回原分辨率。"""
     h, w = frames.shape[1:3]

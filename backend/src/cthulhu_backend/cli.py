@@ -12,7 +12,7 @@ from scipy.io import wavfile
 
 from cthulhu_backend import samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import dedup_harness, harness
+from cthulhu_backend.evaluate import attack_matrix, dedup_harness, harness
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
 from cthulhu_backend.similarity import embedding
@@ -134,6 +134,18 @@ def dedup_compare(
     path = dedup_harness.save_report(report, out_dir, tag)
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
     typer.echo(f"报告已写入：{path}")
+
+
+@app.command("attack-matrix")
+def attack_matrix_run(
+    clip: str = typer.Argument(..., help="短片段输入（≤60s）"),
+    out_dir: str = typer.Option("/tmp/cthulhu-attack-matrix", help="工作目录"),
+    seed: int = typer.Option(0),
+    reuse: bool = typer.Option(False, help="复用已生成的变体文件"),
+) -> None:
+    """对抗原语效果矩阵：判重风险 × VMAF 双目标打分。"""
+    report = attack_matrix.run_matrix(clip, out_dir, seed=seed, reuse=reuse)
+    typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
 @app.command()
