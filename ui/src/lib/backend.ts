@@ -219,8 +219,6 @@ export interface DesensitizeOptions {
   shotRetimeMax?: number;
   cutJitter?: number;
   audioStrong?: boolean;
-  batch?: string;
-  label?: string;
 }
 
 export interface AudioAnalysis {
