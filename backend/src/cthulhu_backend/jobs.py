@@ -69,11 +69,21 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         }
     except Exception:  # noqa: BLE001 - 判重打分失败不影响任务成功
         result["dedup"] = None
+    try:
+        metrics = {
+            "duplicate_risk": (result.get("dedup") or {}).get("duplicate_risk"),
+            "psnr_db": result.get("psnr_db"),
+            "ssim": result.get("ssim"),
+            "stability_ratio": result.get("stability_ratio"),
+        }
+        services.write_product_record(options["output"], path, params, metrics)
+    except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
+        pass
     return result
 
 
 def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
-    return services.run_repair(
+    result = services.run_repair(
         path,
         options["output"],
         options.get("regions", []),
@@ -82,6 +92,15 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
         stop=stop,
         pause=pause,
     )
+    try:
+        services.write_product_record(
+            options["output"],
+            path,
+            {"regions": options.get("regions", []), "crf": options.get("crf", 23)},
+        )
+    except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
+        pass
+    return result
 
 
 RUNNERS = {

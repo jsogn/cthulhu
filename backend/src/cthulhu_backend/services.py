@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import queue
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -804,6 +806,10 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
         product = max(existing, key=lambda candidate: candidate.stat().st_mtime)
         destination = export_root / product.name
         shutil.copy2(product, destination)
+        # 产物参数记录随文件一起导出，保证追溯链不中断。
+        meta = Path(str(product) + ".meta.json")
+        if meta.is_file():
+            shutil.copy2(meta, Path(str(destination) + ".meta.json"))
         exported.append({"source": product.name, "dest": str(destination)})
     return {"exported": exported, "missing": missing}
 
@@ -878,7 +884,32 @@ def delete_output(path: str) -> bool:
     if not any(part in name for part in ("_cleaned", "_repaired", "_候选")):
         raise ValueError("仅允许删除清洗/修复/候选产物")
     target.unlink()
+    meta = Path(str(target) + ".meta.json")
+    if meta.is_file():
+        meta.unlink()
     return True
+
+
+def write_product_record(
+    output: str,
+    source: str,
+    options: dict,
+    metrics: dict | None = None,
+) -> str:
+    """给产物写一份轻量参数记录（同名 .meta.json），A/B 追溯用。
+
+    记录源文件、完整生成参数、结果指标与生成时间；删除与导出时随产物联动。
+    """
+    record = {
+        "source": source,
+        "output": output,
+        "created_at": time.time(),
+        "options": options,
+        "metrics": metrics or {},
+    }
+    path = Path(str(output) + ".meta.json")
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(path)
 
 
 def _candidate_score(result: dict, dedup_risk: float | None = None) -> float:
@@ -919,6 +950,12 @@ def generate_candidates(
             dedup_risk = dedup_harness.compare(path, output)["duplicate_risk"]
         except Exception:  # noqa: BLE001 - 判重打分失败不阻断候选生成
             dedup_risk = None
+        try:
+            write_product_record(
+                output, path, options or {}, {"duplicate_risk": dedup_risk}
+            )
+        except Exception:  # noqa: BLE001 - 记录失败不阻断候选生成
+            pass
         candidates.append(
             {
                 "index": index + 1,
