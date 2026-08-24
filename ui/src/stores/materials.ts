@@ -31,12 +31,10 @@ interface MaterialsState {
   materials: Material[];
   activeId: string | null;
   selected: Record<string, boolean>;
-  riskFilter: "全部" | RiskLevel;
   search: string;
   loadFailed: boolean;
   select: (id: string) => void;
   toggleSelected: (id: string) => void;
-  setRiskFilter: (filter: "全部" | RiskLevel) => void;
   setSearch: (search: string) => void;
   toggleSelectAll: (ids: string[]) => void;
   deleteSelected: (ids: string[]) => void;
@@ -67,7 +65,6 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
   materials: [],
   activeId: null,
   selected: {},
-  riskFilter: "全部",
   search: "",
   loadFailed: false,
 
@@ -81,7 +78,6 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
       return { selected };
     }),
 
-  setRiskFilter: (riskFilter) => set({ riskFilter }),
   setSearch: (search) => set({ search }),
 
   toggleSelectAll: (ids) =>

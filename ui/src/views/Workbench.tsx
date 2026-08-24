@@ -8,7 +8,6 @@ import {
   Play,
   Plus,
   Redo2,
-  ScanSearch,
   SkipBack,
   SkipForward,
   Trash2,
@@ -16,7 +15,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,7 +47,6 @@ import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtFrames, fmtSize, nowStr } from "@/lib/format";
 import {
   analyzeAudio,
@@ -81,12 +78,6 @@ import { useQueueStore } from "@/stores/queue";
 import { useRegionsStore } from "@/stores/regions";
 import { openInFolder, toast } from "@/stores/toasts";
 
-const RISK_OPTIONS: ("全部" | RiskLevel)[] = [
-  "全部",
-  "有疑似特征",
-  "未检出异常",
-  "待检测",
-];
 const TAB_KEYS = ["清洗去重", "检测参考", "处理产物", "水印区域"] as const;
 const FRAME_MAX = 540;
 
@@ -265,10 +256,6 @@ function riskLabel(risk: RiskLevel): string {
   return risk;
 }
 
-function riskClass(risk: RiskLevel): string {
-  return risk === "有疑似特征" ? "suspect" : risk === "未检出异常" ? "clear" : "pending";
-}
-
 export default function Workbench() {
   const materials = useMaterialsStore((state) => state.materials);
   const activeId = useMaterialsStore((state) => state.activeId);
@@ -338,20 +325,15 @@ function MaterialPane() {
   const loadFailed = useMaterialsStore((state) => state.loadFailed);
   const activeId = useMaterialsStore((state) => state.activeId);
   const selected = useMaterialsStore((state) => state.selected);
-  const riskFilter = useMaterialsStore((state) => state.riskFilter);
   const search = useMaterialsStore((state) => state.search);
   const select = useMaterialsStore((state) => state.select);
   const toggleSelected = useMaterialsStore((state) => state.toggleSelected);
-  const setRiskFilter = useMaterialsStore((state) => state.setRiskFilter);
   const setSearch = useMaterialsStore((state) => state.setSearch);
   const toggleSelectAll = useMaterialsStore((state) => state.toggleSelectAll);
   const setImportOpen = useAppStore((state) => state.setImportOpen);
   const backendConnected = useAppStore((state) => state.backendConnected);
-  const jobs = useQueueStore((state) => state.jobs);
-  const [scanBusy, setScanBusy] = useState(false);
 
   const visible = materials.filter((m) => {
-    if (riskFilter !== "全部" && m.risk !== riskFilter) return false;
     const kw = search.trim().toLowerCase();
     if (kw && !m.name.toLowerCase().includes(kw) && !m.tags.join(" ").toLowerCase().includes(kw)) {
       return false;
@@ -359,34 +341,6 @@ function MaterialPane() {
     return true;
   });
   const allSelected = visible.length > 0 && visible.every((m) => selected[m.id]);
-  const pendingPaths = pendingDetectPaths(jobs);
-
-  const runScan = async () => {
-    if (scanBusy) return;
-    const targets = visible
-      .filter(
-        (m): m is Material & { path: string } => !!m.path && !pendingPaths.has(m.path),
-      )
-      .map((m) => ({ kind: "detect" as const, path: m.path }));
-    if (!targets.length) {
-      toast(
-        visible.some((m) => m.path)
-          ? "这些素材均已在检测中，请等待完成"
-          : "没有可检测的素材，请先导入本地视频",
-      );
-      return;
-    }
-    setScanBusy(true);
-    try {
-      const job = await enqueueJob("批量检测", targets);
-      useQueueStore.getState().applyEvent({ type: "job:state", job });
-      toast(`已入队 ${targets.length} 个检测任务`);
-    } catch {
-      toast("入队失败，请确认引擎在线");
-    } finally {
-      setScanBusy(false);
-    }
-  };
 
   return (
     <aside className="pane pane-left">
@@ -395,24 +349,6 @@ function MaterialPane() {
           <div className="pane-title">素材库</div>
           <div className="pane-count">{visible.length} 个素材</div>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="批量扫描暗水印"
-              disabled={
-                scanBusy ||
-                visible.some((m) => m.path) &&
-                visible.every((m) => !m.path || pendingPaths.has(m.path))
-              }
-              onClick={() => runScan()}
-            >
-              <ScanSearch />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>批量扫描暗水印</TooltipContent>
-        </Tooltip>
       </div>
 
       <div className="pane-body">
@@ -434,29 +370,6 @@ function MaterialPane() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-
-        <div className="chips">
-          {RISK_OPTIONS.map((option) => (
-            <Badge
-              key={option}
-              asChild
-              variant={riskFilter === option ? "secondary" : "outline"}
-            >
-              <button
-                type="button"
-                className={cn(
-                  "cursor-pointer",
-                  riskFilter === option &&
-                    "border-primary bg-primary/10 text-primary hover:bg-primary/15",
-                  !(riskFilter === option) && "hover:bg-muted/60 hover:text-foreground",
-                )}
-                onClick={() => setRiskFilter(option)}
-              >
-                {option === "全部" ? "全部" : riskLabel(option)}
-              </button>
-            </Badge>
-          ))}
-        </div>
 
         {materials.length === 0 ? (
           loadFailed ? (
@@ -523,12 +436,11 @@ function MaterialPane() {
                     <span className="mat-meta mono">
                       {m.dur} · {m.res} · {m.fps} · {m.size}
                     </span>
-                    <span className="mat-tags">
-                      <span className={`tag ${riskClass(m.risk)}`}>{riskLabel(m.risk)}</span>
-                      {(m.outputCount ?? 0) > 0 && (
+                    {(m.outputCount ?? 0) > 0 && (
+                      <span className="mat-tags">
                         <span className="tag tag-out">产物 {m.outputCount}</span>
-                      )}
-                    </span>
+                      </span>
+                    )}
                   </span>
                 </div>
               ))}
