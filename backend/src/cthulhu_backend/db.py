@@ -129,9 +129,13 @@ def init_db() -> None:
 
 # ---------- 设置 ----------
 def load_settings() -> dict[str, Any]:
-    with _connect() as connection:
-        rows = connection.execute("SELECT key, value FROM settings").fetchall()
-    return {row["key"]: json.loads(row["value"]) for row in rows}
+    try:
+        with _connect() as connection:
+            rows = connection.execute("SELECT key, value FROM settings").fetchall()
+        return {row["key"]: json.loads(row["value"]) for row in rows}
+    except sqlite3.OperationalError:
+        # 数据库尚未初始化（如测试直接调用服务）时返回空设置。
+        return {}
 
 
 def save_settings(values: dict[str, Any]) -> None:

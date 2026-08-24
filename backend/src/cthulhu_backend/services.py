@@ -32,14 +32,13 @@ from cthulhu_backend.watermark import common as watermark_common
 from cthulhu_backend.watermark import detect
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".ts", ".webm", ".m4v"}
-MAX_WORKING_BYTES = 2 * 1024**3
+MAX_WORKING_BYTES = 512 * 1024**3 // 2  # 低内存机器兜底：256MB
 
 
 def _memory_budget_bytes() -> int:
-    """按物理内存的 55% 自适应工作预算（2GB~32GB）。
+    """按物理内存自适应工作预算（256MB~32GB）。
 
-    固定的 2GB 上限会把真实 1080p 素材误判为过大，
-    改用实际内存自适应后，小内存机器仍受保护。
+    大内存按 55% 取用，小内存（<4GB）按 40% 取用，避免预算超过物理内存。
     """
     try:
         total = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
@@ -47,7 +46,8 @@ def _memory_budget_bytes() -> int:
         total = 0
     if total <= 0:
         return MAX_WORKING_BYTES
-    return max(MAX_WORKING_BYTES, min(32 * 1024**3, int(total * 0.55)))
+    fraction = 0.55 if total >= 4 * 1024**3 else 0.4
+    return max(MAX_WORKING_BYTES, min(32 * 1024**3, int(total * fraction)))
 
 DEMO_LIBRARY_DIR = Path(os.environ.get("CTHULHU_DEMO_LIBRARY", str(Path(__file__).resolve().parents[2] / "data" / "demo-library")))
 # 演示素材默认关闭：仅在显式设置 CTHULHU_DEMO_LIBRARY=1 时生成，
@@ -549,12 +549,19 @@ def run_desensitize(
 
     # 分块大小：按内存预算自适应（float32 每帧 4 字节，预留 8 倍中间量余量）。
     budget = _memory_budget_bytes()
+    try:
+        concurrency = max(1, int(db.load_settings().get("parallelism", 2)))
+    except (TypeError, ValueError):
+        concurrency = 2
+    # 预算按并行任务数均分，保证并行度再高也不会叠加超内存。
+    budget //= concurrency
     frame_dtype = getattr(strategy, "frame_dtype", "float32")
     frame_bytes = info["width"] * info["height"] * 3 * (1 if frame_dtype == "uint8" else 4)
-    chunk = max(8, min(480, int(budget // 8 // max(frame_bytes, 1))))
+    # 中间量按 12 倍预留余量，分块上限 240，低内存机器自动变小块。
+    chunk = max(8, min(240, int(budget // 12 // max(frame_bytes, 1))))
     # pHash/多哈希对抗在批级持有大量 float32 中间量，收窄分块避免长片 OOM。
     if phash_attack or multi_hash_attack:
-        chunk = min(chunk, 60)
+        chunk = min(chunk, 48)
 
     # 音轨独立准备（整段重混后统一 mux）。
     audio_signal = None

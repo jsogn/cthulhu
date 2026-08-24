@@ -194,7 +194,9 @@ export default function SettingsView() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="form-help">新建任务时生效，数值越高处理越快但占用资源越多</div>
+            <div className="form-help">
+              数值越高处理越快但占用资源越多；内存预算会按并行度自动均分
+            </div>
           </div>
           <div className="form-field">
             <Label>处理管线</Label>
