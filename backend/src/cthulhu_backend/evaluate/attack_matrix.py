@@ -108,7 +108,7 @@ def _quality(ref_path: str, variant_path: str) -> dict:
     scores = []
     for i in indices:
         j = min(len(ref) - 1, int(round(i * len(ref) / len(cand))))
-        lo, hi = max(0, j - 4), min(len(ref), j + 5)
+        lo, hi = max(0, j - 8), min(len(ref), j + 9)
         scores.append(max(metrics.ssim(ref[k], cand[i]) for k in range(lo, hi)))
     return {
         "ssim_aligned": round(float(np.mean(scores)), 4),
@@ -117,6 +117,18 @@ def _quality(ref_path: str, variant_path: str) -> dict:
 
 
 PRESETS = {
+    "日常": dict(
+        shot_retime=(0.95, 1.07),
+        cut_margin=3,
+        regrade=0.10,
+        recrop=0.02,
+        rotate_deg=0.25,
+        midband=0.1,
+        audio_tempo=1.05,
+        audio_pitch=0.98,
+        audio_eq_db=5.0,
+        audio_noise=0.004,
+    ),
     "轻+": dict(
         shot_retime=(0.98, 1.04),
         cut_margin=2,

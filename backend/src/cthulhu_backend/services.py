@@ -356,6 +356,11 @@ def run_desensitize(
     phash_epsilon: float = 0.03,
     phash_iters: int = 120,
     multi_hash_attack: bool = False,
+    shot_retime: bool = False,
+    shot_retime_min: float = 0.98,
+    shot_retime_max: float = 1.04,
+    cut_jitter: int = 0,
+    audio_strong: bool = False,
     rotate: float = 0.0,
     transcode_chain: bool = False,
     median: int = 0,
@@ -413,15 +418,39 @@ def run_desensitize(
     shot_ranges = list(pairwise(boundaries))
 
     rng = np.random.default_rng(seed)
+    # 逐镜头对抗参数按原镜头序号确定性生成：切点漂移 + 逐镜头变速因子。
+    shot_offsets: list[tuple[int, int]] = []
+    shot_factors: list[float] = []
+    for start, end in shot_ranges:
+        length = end - start
+        drop_start = int(rng.integers(0, cut_jitter + 1)) if cut_jitter > 0 else 0
+        drop_end = int(rng.integers(0, cut_jitter + 1)) if cut_jitter > 0 else 0
+        if drop_start + drop_end >= length:
+            drop_start = min(drop_start, max(0, length - 1))
+            drop_end = 0
+        shot_offsets.append((drop_start, drop_end))
+        shot_factors.append(
+            float(rng.uniform(shot_retime_min, shot_retime_max)) if shot_retime else 1.0
+        )
     order = rng.permutation(len(shot_ranges)) if reorder else np.arange(len(shot_ranges))
-    # 重排后的输入区间（重排空间连续，便于按旧口径全局变速）。
+    # 重排后的输入区间；seg_factors 为该段最终变速因子（全局 speed × 逐镜头）。
     segments: list[tuple[int, int, int]] = []
-    reord_total = 0
+    seg_factors: list[float] = []
+    seg_out_lens: list[int] = []
+    cursor = 0
     for shot_index in order:
         orig_start, orig_end = shot_ranges[int(shot_index)]
-        segments.append((reord_total, orig_start, orig_end - orig_start))
-        reord_total += orig_end - orig_start
-    total_out = max(1, round(reord_total / speed)) if speed != 1.0 else reord_total
+        drop_start, drop_end = shot_offsets[int(shot_index)]
+        eff_start = orig_start + drop_start
+        eff_len = (orig_end - orig_start) - drop_start - drop_end
+        factor = speed * shot_factors[int(shot_index)]
+        retimed = speed != 1.0 or shot_retime
+        out_len = max(1, round(eff_len / factor)) if retimed else eff_len
+        segments.append((cursor, eff_start, eff_len))
+        seg_factors.append(factor)
+        seg_out_lens.append(out_len)
+        cursor += out_len
+    total_out = cursor
 
     gammas = np.ones(total_out, dtype=np.float32)
     deltas = np.zeros(total_out, dtype=np.float32)
@@ -526,7 +555,13 @@ def run_desensitize(
         if decoded_audio is not None:
             signal, sample_rate = decoded_audio
             audio_rng = np.random.default_rng(seed ^ 0x9E3779B9)
-            signal = audio_transform.remix(signal, sample_rate, audio_rng, speed_factor=0.97)
+            if audio_strong:
+                signal = audio_transform.remix_strong(
+                    signal, sample_rate, audio_rng,
+                    tempo=1.04, pitch_ratio=0.985, eq_db=4.0, noise_floor=0.003,
+                )
+            else:
+                signal = audio_transform.remix(signal, sample_rate, audio_rng, speed_factor=0.97)
             target_len = round(total_out / output_fps * sample_rate)
             if target_len != len(signal):
                 signal = resample_poly(signal, target_len, len(signal))
@@ -551,9 +586,31 @@ def run_desensitize(
         stop=should_stop,
     )
     out_index = 0
+
+    def apply_attacks(frames, output_ids):
+        """pHash 攻击、几何去同步与细节保护等与分块无关的后置变换。"""
+        protected = frames.copy() if detail_protect > 0 else None
+        if rotate > 0:
+            frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+        if assault_params.enabled:
+            frames = extra_attacks.apply(frames, assault_params, assault_rng)
+        if phash_attack:
+            frames = adversarial.attack_frames(
+                frames, epsilon=phash_epsilon, iterations=phash_iters
+            )
+        elif multi_hash_attack:
+            frames = adversarial.attack_frames_joint(
+                frames, epsilon=phash_epsilon, iterations=phash_iters
+            )
+        if protected is not None:
+            frames = extra_attacks.protect_details(frames, protected, detail_protect)
+        if saliency_obj is not None:
+            frames = extra_attacks.salient_overlay(frames, saliency_obj)
+        return frames
+
     try:
-        if speed == 1.0:
-            # 默认路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
+        if speed == 1.0 and not shot_retime and cut_jitter == 0:
+            # 默认快路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
             for seg_start, orig_start, seg_len in segments:
                 check_cancelled()
@@ -565,25 +622,7 @@ def run_desensitize(
                         frames = strategy.apply(
                             batch, output_ids, transform_context, transform_options
                         )
-                        protected = frames.copy() if detail_protect > 0 else None
-                        if rotate > 0:
-                            frames = strategies.rotate_de_sync(frames, output_ids, rotate)
-                        if assault_params.enabled:
-                            frames = extra_attacks.apply(frames, assault_params, assault_rng)
-                        if phash_attack:
-                            frames = adversarial.attack_frames(
-                                frames, epsilon=phash_epsilon, iterations=phash_iters
-                            )
-                        elif multi_hash_attack:
-                            frames = adversarial.attack_frames_joint(
-                                frames, epsilon=phash_epsilon, iterations=phash_iters
-                            )
-                        if protected is not None:
-                            frames = extra_attacks.protect_details(
-                                frames, protected, detail_protect
-                            )
-                        if saliency_obj is not None:
-                            frames = extra_attacks.salient_overlay(frames, saliency_obj)
+                        frames = apply_attacks(frames, output_ids)
                         encoder.write(frames)
                         out_index += len(batch)
                         if progress_cb and total_out:
@@ -594,73 +633,47 @@ def run_desensitize(
                 finally:
                     decoder.close()
         else:
-            # 变速路径：保留逐块随机访问解码（地板映射要求精确帧对齐）。
-            for reord_block_start in range(0, reord_total, chunk):
+            # O(N) 流式变速路径：逐镜头因子映射，每个镜头只 seek 一次。
+            # 避免逐块随机访问解码的 O(N²) 开销。
+            for si, (seg_start, orig_start, seg_len) in enumerate(segments):
                 check_cancelled()
-                reord_block_end = min(reord_total, reord_block_start + chunk)
-                block_parts: list[np.ndarray] = []
-                for seg_start, orig_start, seg_len in segments:
-                    overlap_start = max(reord_block_start, seg_start)
-                    overlap_end = min(reord_block_end, seg_start + seg_len)
-                    if overlap_start >= overlap_end:
-                        continue
-                    part, _ = ffmpeg.decode_video_range(
-                        path,
-                        orig_start + (overlap_start - seg_start),
-                        overlap_end - overlap_start,
-                        grayscale=False,
-                    )
-                    if len(part):
-                        block_parts.append(part)
-                if not block_parts:
-                    continue
-                block_frames = (
-                    np.concatenate(block_parts, axis=0) if len(block_parts) > 1 else block_parts[0]
-                )
-                del block_parts
-                # 变速：收集本块对应的全局输出帧号（floor(j*speed) 落在块内）。
-                output_ids: list[int] = []
-                while out_index < total_out:
-                    if int(np.floor(out_index * speed)) >= reord_block_end:
-                        break
-                    output_ids.append(out_index)
-                    out_index += 1
-                if not output_ids:
-                    continue
-                source_ids = np.clip(
-                    np.floor(np.asarray(output_ids, dtype=np.float64) * speed)
-                    - reord_block_start,
-                    0,
-                    len(block_frames) - 1,
-                ).astype(int)
-                frames = block_frames[source_ids]
-                del block_frames
-                if frame_dtype == "uint8":
-                    frames = (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
-                frames = strategy.apply(frames, output_ids, transform_context, transform_options)
-                protected = frames.copy() if detail_protect > 0 else None
-                if rotate > 0:
-                    frames = strategies.rotate_de_sync(frames, output_ids, rotate)
-                if assault_params.enabled:
-                    frames = extra_attacks.apply(frames, assault_params, assault_rng)
-                if phash_attack:
-                    frames = adversarial.attack_frames(
-                        frames, epsilon=phash_epsilon, iterations=phash_iters
-                    )
-                elif multi_hash_attack:
-                    frames = adversarial.attack_frames_joint(
-                        frames, epsilon=phash_epsilon, iterations=phash_iters
-                    )
-                if protected is not None:
-                    frames = extra_attacks.protect_details(frames, protected, detail_protect)
-                if saliency_obj is not None:
-                    frames = extra_attacks.salient_overlay(frames, saliency_obj)
-                encoder.write(frames)
-                if progress_cb and total_out:
-                    progress_cb(
-                        8 + int(out_index / total_out * 82),
-                        f"处理中 {out_index}/{total_out} 帧",
-                    )
+                factor = seg_factors[si]
+                seg_out_len = seg_out_lens[si]
+                seg_out_index = 0
+                decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
+                try:
+                    for pos, batch in _prefetch_batches(decoder, seg_len, chunk, frame_dtype):
+                        batch_len = len(batch)
+                        output_ids: list[int] = []
+                        while seg_out_index < seg_out_len:
+                            source = int(np.floor(seg_out_index * factor))
+                            if source >= pos + batch_len:
+                                break
+                            output_ids.append(seg_start + seg_out_index)
+                            seg_out_index += 1
+                        if output_ids:
+                            sources = np.clip(
+                                np.floor(
+                                    (np.asarray(output_ids) - seg_start) * factor
+                                ).astype(np.int64)
+                                - pos,
+                                0,
+                                batch_len - 1,
+                            )
+                            frames = np.asarray(batch)[sources]
+                            frames = strategy.apply(
+                                frames, output_ids, transform_context, transform_options
+                            )
+                            frames = apply_attacks(frames, output_ids)
+                            encoder.write(frames)
+                            out_index += len(output_ids)
+                            if progress_cb and total_out:
+                                progress_cb(
+                                    8 + int(out_index / total_out * 82),
+                                    f"处理中 {out_index}/{total_out} 帧",
+                                )
+                finally:
+                    decoder.close()
         encoder.finish()
         if audio_signal is not None:
             audio_payload = (

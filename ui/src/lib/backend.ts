@@ -214,6 +214,11 @@ export interface DesensitizeOptions {
   saliency?: number;
   nativeFilters?: boolean;
   detailProtect?: number;
+  shotRetime?: boolean;
+  shotRetimeMin?: number;
+  shotRetimeMax?: number;
+  cutJitter?: number;
+  audioStrong?: boolean;
 }
 
 export interface AudioAnalysis {

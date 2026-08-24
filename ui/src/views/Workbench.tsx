@@ -134,6 +134,9 @@ const SNAKE_OPTION_KEYS: Record<string, string> = {
   transcodeChain: "transcode_chain",
   nativeFilters: "native_filters",
   detailProtect: "detail_protect",
+  shotRetime: "shot_retime",
+  cutJitter: "cut_jitter",
+  audioStrong: "audio_strong",
 };
 
 function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
@@ -197,6 +200,9 @@ type AntiPreset = {
   saliency?: number;
   nativeFilters?: boolean;
   detailProtect?: number;
+  shotRetime?: boolean;
+  cutJitter?: number;
+  audioStrong?: boolean;
 };
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
@@ -212,6 +218,9 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     noise: 0.006,
     jitter: 0.006,
     nativeFilters: true,
+    shotRetime: true,
+    cutJitter: 2,
+    audioStrong: true,
   },
   强力: {
     rotate: 1.8,
@@ -226,6 +235,9 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     saliency: 1,
     jointAttack: true,
     nativeFilters: true,
+    shotRetime: true,
+    cutJitter: 3,
+    audioStrong: true,
   },
   全兵器: {
     rotate: 2.2,
@@ -243,6 +255,9 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     jointAttack: true,
     saliency: 3,
     nativeFilters: true,
+    shotRetime: true,
+    cutJitter: 4,
+    audioStrong: true,
   },
 };
 
@@ -1378,6 +1393,9 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
               ...(anti.saliency ? { saliency: anti.saliency } : {}),
               ...(anti.nativeFilters ? { nativeFilters: true } : {}),
               ...(anti.detailProtect ? { detailProtect: anti.detailProtect } : {}),
+              ...(anti.shotRetime ? { shotRetime: true } : {}),
+              ...(anti.cutJitter ? { cutJitter: anti.cutJitter } : {}),
+              ...(anti.audioStrong ? { audioStrong: true } : {}),
             }
           : {}),
       };

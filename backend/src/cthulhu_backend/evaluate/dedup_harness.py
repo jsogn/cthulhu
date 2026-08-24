@@ -35,7 +35,7 @@ _CHANCE_DIST = {
     "audio": 0.54,
     "structure": 0.09,
 }
-_WEIGHTS = {"image": 0.6, "audio": 0.3, "structure": 0.1}
+_WEIGHTS = {"image": 0.45, "temporal": 0.25, "audio": 0.2, "structure": 0.1}
 
 
 def _zoom(frame: np.ndarray, size: int) -> np.ndarray:
@@ -142,6 +142,21 @@ def _structure_distance(frames_a: np.ndarray, frames_b: np.ndarray) -> float:
     return float(np.mean(va != vb))
 
 
+def _temporal_sequence_distance(frames_a: np.ndarray, frames_b: np.ndarray) -> float:
+    """时序指纹：逐帧哈希序列按索引直接比较（不做 ±search 对齐）。
+
+    变速/逐镜头变速会平移帧序列，即使单帧内容几乎一致，序列指纹也会产生
+    距离。这是内容对齐距离无法捕捉、平台视频级指纹却高度敏感的一维。
+    """
+    n = min(len(frames_a), len(frames_b))
+    distances = []
+    for fn in _FAMILIES.values():
+        bits_a = np.stack([fn(f) for f in frames_a[:n]])
+        bits_b = np.stack([fn(f) for f in frames_b[:n]])
+        distances.append(float(np.mean([_hamming(bits_a[i], bits_b[i]) for i in range(n)])))
+    return float(np.mean(distances))
+
+
 def _mel_filterbank(n_mels: int, n_fft: int, rate: int) -> np.ndarray:
     lo, hi = 300.0, min(8000.0, rate / 2)
     mel = lambda f: 2595.0 * np.log10(1.0 + f / 700.0)  # noqa: E731
@@ -192,6 +207,7 @@ def compare(original: str, candidate: str) -> dict:
     frames_a, info_a = _sample_frames(original)
     frames_b, _ = _sample_frames(candidate)
     image = _frame_dists(frames_a, frames_b)
+    temporal = _temporal_sequence_distance(frames_a, frames_b)
     structure = _structure_distance(frames_a, frames_b)
     audio = audio_distance(original, candidate)
 
@@ -201,10 +217,12 @@ def compare(original: str, candidate: str) -> dict:
     image_norm = float(
         np.mean([norm(image[k], _CHANCE_DIST[k]) for k in ("phash", "dhash", "whash", "blockhash")])
     )
+    temporal_norm = norm(temporal, 0.36)  # 与图像均值同一量级锚点
     audio_norm = norm(audio, _CHANCE_DIST["audio"]) if audio is not None else image_norm
     structure_norm = norm(structure, _CHANCE_DIST["structure"])
     risk = (
         _WEIGHTS["image"] * image_norm
+        + _WEIGHTS["temporal"] * temporal_norm
         + _WEIGHTS["audio"] * audio_norm
         + _WEIGHTS["structure"] * structure_norm
     )
@@ -217,11 +235,13 @@ def compare(original: str, candidate: str) -> dict:
             **{f"image_{k}": round(v, 4) for k, v in image.items()},
             "structure": round(structure, 4),
             "audio": None if audio is None else round(audio, 4),
+            "temporal": round(temporal, 4),
         },
         "duplicate_risk": round(risk, 4),
         "risk_level": level,
         "normalized": {
             "image": round(image_norm, 4),
+            "temporal": round(temporal_norm, 4),
             "audio": round(audio_norm, 4),
             "structure": round(structure_norm, 4),
         },
