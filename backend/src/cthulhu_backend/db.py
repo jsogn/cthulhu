@@ -54,6 +54,20 @@ CREATE TABLE IF NOT EXISTS library (
     meta TEXT NOT NULL DEFAULT '{}',
     added_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS variants (
+    id TEXT PRIMARY KEY,
+    batch TEXT NOT NULL,
+    label TEXT NOT NULL,
+    source TEXT NOT NULL,
+    output TEXT NOT NULL,
+    options TEXT NOT NULL,
+    seed INTEGER NOT NULL,
+    template_id TEXT,
+    metrics TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_variants_batch ON variants (batch, created_at);
+CREATE INDEX IF NOT EXISTS idx_variants_output ON variants (output);
 """
 
 def _connect() -> sqlite3.Connection:
@@ -151,6 +165,89 @@ def update_template(template_id: str, name: str, payload: dict) -> bool:
 def delete_template(template_id: str) -> bool:
     with _connect() as connection:
         cursor = connection.execute("DELETE FROM templates WHERE id = ?", (template_id,))
+    return cursor.rowcount > 0
+
+
+# ---------- 产物记录（变体） ----------
+def create_variant(
+    batch: str,
+    label: str,
+    source: str,
+    output: str,
+    options: dict,
+    seed: int,
+    template_id: str | None = None,
+    metrics: dict | None = None,
+) -> dict:
+    import time
+
+    variant_id = uuid.uuid4().hex[:12]
+    with _connect() as connection:
+        connection.execute(
+            "INSERT INTO variants (id, batch, label, source, output, options, seed, template_id, metrics, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                variant_id,
+                batch,
+                label,
+                source,
+                output,
+                json.dumps(options, ensure_ascii=False),
+                int(seed),
+                template_id,
+                json.dumps(metrics or {}, ensure_ascii=False),
+                time.time(),
+            ),
+        )
+    return {
+        "id": variant_id,
+        "batch": batch,
+        "label": label,
+        "source": source,
+        "output": output,
+        "options": options,
+        "seed": int(seed),
+        "template_id": template_id,
+        "metrics": metrics or {},
+        "created_at": time.time(),
+    }
+
+
+def list_variants(source: str | None = None, batch: str | None = None) -> list[dict]:
+    query = "SELECT * FROM variants"
+    conditions: list[str] = []
+    params: list[Any] = []
+    if source:
+        conditions.append("source = ?")
+        params.append(source)
+    if batch:
+        conditions.append("batch = ?")
+        params.append(batch)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY created_at DESC"
+    with _connect() as connection:
+        rows = connection.execute(query, params).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "batch": row["batch"],
+            "label": row["label"],
+            "source": row["source"],
+            "output": row["output"],
+            "options": json.loads(row["options"]),
+            "seed": row["seed"],
+            "template_id": row["template_id"],
+            "metrics": json.loads(row["metrics"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def delete_variant_by_output(output: str) -> bool:
+    with _connect() as connection:
+        cursor = connection.execute("DELETE FROM variants WHERE output = ?", (output,))
     return cursor.rowcount > 0
 
 

@@ -1,31 +1,42 @@
-"""产物参数记录：写入、读取与删除联动。"""
+"""产物记录（variants 数据表）：写入、查询、删除联动。"""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-from cthulhu_backend import services
+from cthulhu_backend import db, services
 
 
-def test_product_record_roundtrip(tmp_path):
-    output = tmp_path / "demo_cleaned_1.mp4"
-    output.write_bytes(b"x")
-    meta = services.write_product_record(
-        str(output),
+def test_variant_roundtrip_and_filters():
+    db.init_db()
+    record = services.record_variant(
         "/src/demo.mp4",
+        "/out/demo_cleaned_1.mp4",
         {"speed": 0.955, "seed": 7, "denoise": True},
-        {"ssim": 0.8, "duplicate_risk": 0.3},
+        seed=7,
+        batch="A组",
+        label="标准档",
+        metrics={"duplicate_risk": 0.3},
     )
-    data = json.loads(Path(meta).read_text(encoding="utf-8"))
-    assert data["source"] == "/src/demo.mp4"
-    assert data["options"]["seed"] == 7
-    assert data["metrics"]["ssim"] == 0.8
+    rows = db.list_variants(source="/src/demo.mp4")
+    assert len(rows) == 1
+    assert rows[0]["id"] == record["id"]
+    assert rows[0]["options"]["seed"] == 7
+    assert rows[0]["metrics"]["duplicate_risk"] == 0.3
+    assert db.list_variants(batch="A组")[0]["label"] == "标准档"
+    assert db.list_variants(batch="不存在") == []
+    db.delete_variant_by_output("/out/demo_cleaned_1.mp4")
 
 
-def test_delete_output_removes_record(tmp_path):
+def test_delete_output_removes_variant(tmp_path):
+    db.init_db()
     output = tmp_path / "demo_cleaned_1.mp4"
     output.write_bytes(b"x")
-    services.write_product_record(str(output), "/src/demo.mp4", {})
+    services.record_variant(
+        "/src/demo.mp4",
+        str(output),
+        {"speed": 1.0},
+        seed=0,
+        batch="B组",
+        label="手动",
+    )
     assert services.delete_output(str(output)) is True
-    assert not Path(str(output) + ".meta.json").exists()
+    assert db.list_variants(source="/src/demo.mp4") == []

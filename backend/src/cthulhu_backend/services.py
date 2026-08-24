@@ -781,7 +781,7 @@ def run_repair(
 
 
 def export_outputs(paths: list[str], export_dir: str) -> dict:
-    """把源视频已生成的清洗/修复产物复制到导出目录。
+    """把源视频已生成的清洗/修复产物复制到导出目录，并导出产物记录清单。
 
     产物按清洗优先、修复其次的规则匹配，同一素材存在多个产物时取最新修改的。
     源视频尚未处理时归入 missing，由前端提示用户先执行清洗或修复。
@@ -806,11 +806,19 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
         product = max(existing, key=lambda candidate: candidate.stat().st_mtime)
         destination = export_root / product.name
         shutil.copy2(product, destination)
-        # 产物参数记录随文件一起导出，保证追溯链不中断。
-        meta = Path(str(product) + ".meta.json")
-        if meta.is_file():
-            shutil.copy2(meta, Path(str(destination) + ".meta.json"))
         exported.append({"source": product.name, "dest": str(destination)})
+    if exported:
+        exported_names = {Path(item["source"]).name for item in exported}
+        manifest = [
+            record
+            for record in db.list_variants()
+            if Path(record["output"]).name in exported_names
+        ]
+        manifest_path = export_root / "manifest.json"
+        manifest_path.write_text(
+            json.dumps({"exported": exported, "variants": manifest}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     return {"exported": exported, "missing": missing}
 
 
@@ -884,32 +892,31 @@ def delete_output(path: str) -> bool:
     if not any(part in name for part in ("_cleaned", "_repaired", "_候选")):
         raise ValueError("仅允许删除清洗/修复/候选产物")
     target.unlink()
-    meta = Path(str(target) + ".meta.json")
-    if meta.is_file():
-        meta.unlink()
+    db.delete_variant_by_output(str(target))
     return True
 
 
-def write_product_record(
-    output: str,
+def record_variant(
     source: str,
+    output: str,
     options: dict,
+    seed: int,
+    batch: str,
+    label: str,
+    template_id: str | None = None,
     metrics: dict | None = None,
-) -> str:
-    """给产物写一份轻量参数记录（同名 .meta.json），A/B 追溯用。
-
-    记录源文件、完整生成参数、结果指标与生成时间；删除与导出时随产物联动。
-    """
-    record = {
-        "source": source,
-        "output": output,
-        "created_at": time.time(),
-        "options": options,
-        "metrics": metrics or {},
-    }
-    path = Path(str(output) + ".meta.json")
-    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
+) -> dict:
+    """把产物参数与指标写入 variants 数据表，A/B 追溯用。"""
+    return db.create_variant(
+        batch=batch,
+        label=label,
+        source=source,
+        output=output,
+        options=options,
+        seed=seed,
+        template_id=template_id,
+        metrics=metrics,
+    )
 
 
 def _candidate_score(result: dict, dedup_risk: float | None = None) -> float:
@@ -939,20 +946,31 @@ def generate_candidates(
     target.mkdir(parents=True, exist_ok=True)
     stem = Path(path).stem
     candidates: list[dict] = []
+    opts = {
+        key: value
+        for key, value in (options or {}).items()
+        if key not in {"batch", "label", "output"}
+    }
     for index in range(max(1, count)):
         seed = int.from_bytes(os.urandom(4), "big")
         output = str(target / f"{stem}_候选{index + 1}.mp4")
         if progress_cb:
             progress_cb(index, count, "生成候选")
-        result = run_desensitize(path, output, seed=seed, **(options or {}))
+        result = run_desensitize(path, output, seed=seed, **opts)
         dedup_risk = None
         try:
             dedup_risk = dedup_harness.compare(path, output)["duplicate_risk"]
         except Exception:  # noqa: BLE001 - 判重打分失败不阻断候选生成
             dedup_risk = None
         try:
-            write_product_record(
-                output, path, options or {}, {"duplicate_risk": dedup_risk}
+            record_variant(
+                path,
+                output,
+                opts,
+                seed=seed,
+                batch="候选",
+                label=f"候选{index + 1}",
+                metrics={"duplicate_risk": dedup_risk},
             )
         except Exception:  # noqa: BLE001 - 记录失败不阻断候选生成
             pass

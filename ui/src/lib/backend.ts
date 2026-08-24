@@ -640,6 +640,32 @@ export async function deleteTemplate(templateId: string): Promise<void> {
   if (!res.ok) throw new Error(`删除模板失败（${res.status}）`);
 }
 
+export interface VariantInfo {
+  id: string;
+  batch: string;
+  label: string;
+  source: string;
+  output: string;
+  options: Record<string, unknown>;
+  seed: number;
+  template_id: string | null;
+  metrics: Record<string, unknown>;
+  created_at: number;
+}
+
+/** 产物记录清单：按源文件 / 批次过滤。 */
+export async function listVariants(
+  source?: string,
+  batch?: string,
+): Promise<VariantInfo[]> {
+  const params = new URLSearchParams();
+  if (source) params.set("source", source);
+  if (batch) params.set("batch", batch);
+  const res = await apiFetch(`/api/variants?${params.toString()}`);
+  if (!res.ok) throw new Error(`读取产物记录失败（${res.status}）`);
+  return res.json();
+}
+
 export async function listAudit(): Promise<AuditEntry[]> {
   const res = await apiFetch("/api/audit");
   if (!res.ok) throw new Error(`读取审计失败（${res.status}）`);
