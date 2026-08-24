@@ -290,18 +290,58 @@ def decode_sampled(
     path: str,
     cap: int = 200,
     grayscale: bool = True,
-) -> tuple[np.ndarray, dict]:
-    """按等间隔抽样解码至多 cap 帧，用于镜头检测与画质指标。"""
+    return_starts: bool = False,
+):
+    """跨全片抽样解码至多 cap 帧（关键帧 seek，长视频不再整段解码）。
+
+    等间隔取 10 个位置，每个位置连续解码 cap/10 帧；仅解码 cap 帧左右，
+    相比 fps 滤镜全片解码，长片（8 分钟以上）耗时下降一个量级。
+    return_starts=True 时额外返回每个窗口首帧的全局帧号（用于镜头边界映射）。
+    """
     info = video_info(path)
     total = max(1, round(info["duration"] * info["fps"]))
-    stride = max(1, total // cap)
-    frames, _ = decode_video(
-        path,
-        grayscale=grayscale,
-        vf=f"fps={info['fps']}/{stride}",
-        out_dtype="float32",
-    )
-    return frames[:cap], info
+    if total <= cap:
+        frames, _ = decode_video(path, grayscale=grayscale, out_dtype="float32")
+        frames = frames[:cap]
+        return (frames, info, [0]) if return_starts else (frames, info)
+
+    pix_fmt = "gray" if grayscale else "rgb24"
+    channels = 1 if grayscale else 3
+    positions = min(10, cap)
+    per = max(1, cap // positions)
+    parts: list[np.ndarray] = []
+    starts: list[int] = []
+    for index in range(positions):
+        start_frame = int(total * (index + 0.5) / positions)
+        cmd = [
+            FFMPEG_BIN, "-v", "error",
+            "-ss", str(start_frame / info["fps"]),
+            "-i", path,
+            "-frames:v", str(per),
+            "-f", "rawvideo", "-pix_fmt", pix_fmt, "-",
+        ]
+        raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+        count = len(raw) // (info["height"] * info["width"] * channels)
+        if count == 0:
+            continue
+        shape = (
+            (count, info["height"], info["width"])
+            if grayscale
+            else (count, info["height"], info["width"], 3)
+        )
+        part = np.frombuffer(raw, dtype=np.uint8).reshape(shape).astype(np.float32) / 255.0
+        parts.append(part)
+        starts.append(start_frame)
+    if not parts:
+        shape = (
+            (0, info["height"], info["width"])
+            if grayscale
+            else (0, info["height"], info["width"], 3)
+        )
+        frames = np.zeros(shape, dtype=np.float32)
+    else:
+        frames = np.concatenate(parts, axis=0)[:cap]
+    return (frames, info, starts) if return_starts else (frames, info)
 
 
 class StreamingEncoder:

@@ -400,19 +400,21 @@ def run_desensitize(
     # ---------- 分析遍：抽样镜头边界 + 预生成逐帧随机参数 ----------
     if progress_cb:
         progress_cb(8, "扫描镜头结构")
-    sampled, _ = ffmpeg.decode_sampled(path, cap=400)
-    if reorder and len(sampled) > 2:
-        stride = max(1, total_in // max(len(sampled), 1))
-        boundaries = [min(total_in, cut * stride) for cut in shots.detect_cuts(sampled)]
-        if not boundaries or boundaries[0] != 0:
-            boundaries = [0] + boundaries
-        if boundaries[-1] != total_in:
-            boundaries.append(total_in)
-        deduped: list[int] = []
-        for boundary in boundaries:
-            if not deduped or boundary > deduped[-1]:
-                deduped.append(boundary)
-        boundaries = deduped
+    sampled, _, sampled_starts = ffmpeg.decode_sampled(path, cap=400, return_starts=True)
+    need_shots = reorder or shot_retime or cut_jitter > 0
+    if need_shots and len(sampled) > 2 and sampled_starts:
+        # 抽样按窗口返回；逐窗口检测切点再映射回全局帧号，避免窗口拼接处的假切点。
+        per_window = max(1, len(sampled) // len(sampled_starts))
+        boundaries = []
+        for window, start in enumerate(sampled_starts):
+            segment = sampled[window * per_window : (window + 1) * per_window]
+            if len(segment) < 2:
+                continue
+            for cut in shots.detect_cuts(segment):
+                if 0 < cut < len(segment):
+                    boundaries.append(start + cut)
+        boundaries = sorted({boundary for boundary in boundaries if 0 < boundary < total_in})
+        boundaries = [0] + boundaries + [total_in]
     else:
         boundaries = [0, total_in]
     shot_ranges = list(pairwise(boundaries))
