@@ -1,0 +1,31 @@
+{
+  "file": "/Users/alone/Downloads/抖音素材/0717房东收楼后，我带走了生意卡10-6下载抖音素材.mp4",
+  "codec": "h264",
+  "resolution": "720x1280",
+  "qp": {
+    "qp_frames": 13741,
+    "qp_mean": 25.1643,
+    "qp_std": 3.1715,
+    "qp_spatial_entropy": 0.7659,
+    "qp_temporal_periodicity": 0.5682
+  },
+  "allocation": {
+    "frame_packets": 13741,
+    "size_mean": 6174.101884870097,
+    "size_std": 9969.51591824218,
+    "size_periodicity": 0.5904072832480012,
+    "i_frame_period": 109.0,
+    "i_frame_count": 120
+  },
+  "sei_count": 0,
+  "suspicious_boxes": [],
+  "heuristic": true,
+  "reference": "/Users/alone/Downloads/抖音素材原版/0717房东收楼后，我带走了生意卡10-6.mp4",
+  "delta_qp_periodicity": -0.3344,
+  "delta_size_periodicity": 0.2747,
+  "flags": [
+    "码量周期性高于基准 +0.27"
+  ],
+  "score": 40,
+  "level": "中"
+}
