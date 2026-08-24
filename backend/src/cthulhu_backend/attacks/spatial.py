@@ -12,7 +12,15 @@ def median(frames: np.ndarray, size: int = 3) -> np.ndarray:
 
 
 def gaussian(frames: np.ndarray, sigma: float = 1.0) -> np.ndarray:
-    return np.stack([gaussian_filter(f, sigma=sigma) for f in frames])
+    """高斯空域滤波（批量向量化，彩色帧逐通道共享 sigma）。"""
+    arr = np.asarray(frames, dtype=np.float32)
+    if arr.ndim == 4:
+        sigma_axes = (0, sigma, sigma, 0)
+    elif arr.ndim == 3:
+        sigma_axes = (0, sigma, sigma)
+    else:
+        sigma_axes = (sigma, sigma)
+    return gaussian_filter(arr, sigma=sigma_axes, mode="nearest").astype(arr.dtype)
 
 
 def wiener_denoise(frames: np.ndarray, size: int = 5) -> np.ndarray:

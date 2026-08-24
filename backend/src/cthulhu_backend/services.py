@@ -472,10 +472,14 @@ def run_desensitize(
     sharpness_eff = sharpness
     noise_eff = noise
     requant_eff = requant
+    denoise_eff = denoise
     if native_filters:
         if sharpness and ffmpeg.has_filter("unsharp"):
             native_chain.append("unsharp=5:5:0.25:3:3:0.0")
             sharpness_eff = False
+        if denoise and ffmpeg.has_filter("removegrain"):
+            native_chain.append("removegrain=4")
+            denoise_eff = False
         if noise > 0 and ffmpeg.has_filter("noise"):
             native_chain.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
             noise_eff = 0.0
@@ -512,9 +516,9 @@ def run_desensitize(
         recrop=recrop,
         regrade=regrade,
         anti_reembed=anti_reembed,
-        denoise=denoise,
         color_restore=color_restore,
         sharpness=sharpness_eff,
+        denoise=denoise_eff,
         spoof=spoof,
     )
     transform_context = strategies.TransformContext(

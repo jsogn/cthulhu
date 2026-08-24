@@ -90,7 +90,7 @@ class ThoroughStrategy:
         if options.anti_reembed:
             frames = video_transform.midband_perturb(frames, strength=0.4, rng=ctx.mid_rng)
         if options.denoise:
-            frames = spatial_attacks.wiener_denoise(frames, size=5)
+            frames = spatial_attacks.gaussian(frames, sigma=1.4)
         if options.color_restore:
             frames = video_transform.color_restore(frames, ctx.ref_mean, ctx.ref_std)
         if options.sharpness:
@@ -173,16 +173,16 @@ def _fast_color_restore_u8(
     ref_mean: float,
     ref_std: float,
 ) -> np.ndarray:
-    """亮度还原（uint8 域）：逐通道均值校准，避免方差归一带来的暗部裁剪。"""
+    """亮度还原（纯 uint8 整数域）：逐通道均值校准，免 float 往返。"""
     from cthulhu_backend.transform.parallel import map_chunks
 
     ref_mean8 = np.asarray(ref_mean) * 255.0
     del ref_std
 
     def restore(sub: np.ndarray) -> np.ndarray:
-        work = sub.astype(np.float32)
-        means = work.mean(axis=(1, 2), keepdims=True)
-        return np.clip(work + (ref_mean8 - means), 0.0, 255.0).astype(np.uint8)
+        means = sub.astype(np.float32).mean(axis=(1, 2), keepdims=True)
+        delta = ref_mean8 - means
+        return np.clip(sub + delta, 0, 255).astype(np.uint8)
 
     return map_chunks(frames, restore, workers=4)
 
@@ -295,7 +295,7 @@ class FastStrategy:
                 frames, lambda f: video_transform.midband_perturb(f, strength=0.4, rng=ctx.mid_rng)
             )
         if options.denoise:
-            frames = _u8_roundtrip(frames, lambda f: spatial_attacks.wiener_denoise(f, size=5))
+            frames = _u8_roundtrip(frames, lambda f: spatial_attacks.gaussian(f, sigma=1.4))
         if options.color_restore:
             frames = _fast_color_restore_u8(frames, ctx.ref_mean, ctx.ref_std)
         if options.sharpness:
