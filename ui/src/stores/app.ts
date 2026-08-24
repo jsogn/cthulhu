@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import type { TemplatePayload } from "@/lib/templates";
 
+export interface PendingTemplate {
+  id: string;
+  name: string;
+  payload: TemplatePayload;
+}
+
 export type ViewKey = "workbench" | "jobs" | "templates" | "history" | "settings";
 export type ThemePref = "dark" | "light" | "system";
 
@@ -9,13 +15,13 @@ interface AppState {
   themePref: ThemePref;
   backendConnected: boolean;
   importOpen: boolean;
-  pendingTemplate: TemplatePayload | null;
+  pendingTemplate: PendingTemplate | null;
   setView: (view: ViewKey) => void;
   setThemePref: (pref: ThemePref) => void;
   setBackendConnected: (connected: boolean) => void;
   setImportOpen: (open: boolean) => void;
-  queueTemplate: (payload: TemplatePayload) => void;
-  consumePendingTemplate: () => TemplatePayload | null;
+  queueTemplate: (template: PendingTemplate) => void;
+  consumePendingTemplate: () => PendingTemplate | null;
 }
 
 function initialThemePref(): ThemePref {
@@ -34,7 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setThemePref: (themePref) => set({ themePref }),
   setBackendConnected: (backendConnected) => set({ backendConnected }),
   setImportOpen: (importOpen) => set({ importOpen }),
-  queueTemplate: (payload) => set({ pendingTemplate: payload }),
+  queueTemplate: (template) => set({ pendingTemplate: template }),
   consumePendingTemplate: () => {
     const pending = get().pendingTemplate;
     if (pending) set({ pendingTemplate: null });

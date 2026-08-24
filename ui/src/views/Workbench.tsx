@@ -1152,6 +1152,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   const [settingsExportDir, setSettingsExportDir] = useState("");
   const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
   const [templateList, setTemplateList] = useState<TemplateInfo[]>([]);
+  const [templateValue, setTemplateValue] = useState("manual");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cleaning = !!material?.path && pendingCleanPaths(jobs).has(material.path);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
@@ -1237,9 +1238,14 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   };
 
   const applyTemplateById = (id: string) => {
+    if (id === "manual") {
+      setTemplateValue("manual");
+      return;
+    }
     const template = templateList.find((item) => item.id === id);
     if (!template) return;
     applyTemplatePayload(payloadOf(template));
+    setTemplateValue(id);
     toast(`已套用模板：${template.name}`);
   };
 
@@ -1252,8 +1258,18 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   // 模板页点击「使用」后，切回工作台时把参数回填到右侧面板。
   useEffect(() => {
     const pending = useAppStore.getState().consumePendingTemplate();
-    if (pending) applyTemplatePayload(pending);
+    if (pending) {
+      applyTemplatePayload(pending.payload);
+      setTemplateValue(pending.id);
+    }
   }, []);
+
+  // 已套用的模板被删除或列表刷新后，回退为手动状态，避免下拉框悬空。
+  useEffect(() => {
+    if (templateValue !== "manual" && !templateList.some((item) => item.id === templateValue)) {
+      setTemplateValue("manual");
+    }
+  }, [templateList, templateValue]);
 
   // 产物列表绑定当前素材上下文，切换素材即刷新。
   useEffect(() => {
@@ -1954,12 +1970,13 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-2.5">
               <div className="field">
-                <span className="field-label">套用模板</span>
-                <Select value="" onValueChange={applyTemplateById}>
-                  <SelectTrigger className="form-input h-9">
-                    <SelectValue placeholder="选择已保存的模板回填参数" />
+                <span className="field-label">模板</span>
+                <Select value={templateValue} onValueChange={applyTemplateById}>
+                  <SelectTrigger className="form-input h-8">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="manual">不使用模板（手动）</SelectItem>
                     {templateList.length === 0 ? (
                       <SelectItem value="__empty__" disabled>
                         还没有模板，可到「去重模板」页创建
@@ -1973,7 +1990,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                     )}
                   </SelectContent>
                 </Select>
-                <div className="form-help">套用后参数回填到下方，可继续调整再执行清洗</div>
+                <div className="form-help">选择后自动回填下方参数，可继续调整</div>
               </div>
               <p className="note">
                 清洗对空域扩频、DCT-QIM、小波、LSB 与音频回声五类常见水印方案

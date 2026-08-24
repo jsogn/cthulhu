@@ -130,7 +130,7 @@ export default function TemplatesView() {
   };
 
   const useTemplate = (template: TemplateInfo) => {
-    queueTemplate(payloadOf(template));
+    queueTemplate({ id: template.id, name: template.name, payload: payloadOf(template) });
     setView("workbench");
     toast(`已套用模板：${template.name}`, "参数已回填到右侧，可调整后执行清洗");
   };
