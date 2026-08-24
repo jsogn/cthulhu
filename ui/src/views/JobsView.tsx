@@ -35,6 +35,11 @@ function basename(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
+function formatTime(timestamp: number | undefined): string {
+  if (!timestamp) return "";
+  return new Date(timestamp * 1000).toLocaleString();
+}
+
 export default function JobsView() {
   const jobs = useQueueStore((state) => state.jobs);
   const refresh = useQueueStore((state) => state.refresh);
@@ -79,8 +84,8 @@ export default function JobsView() {
     <>
       <div className="view-head">
         <div>
-          <div className="view-title">批量任务中心</div>
-          <div className="view-desc">并行调度 · 失败隔离 · 全程可取消 / 重试</div>
+          <div className="view-title">任务中心</div>
+          <div className="view-desc">所有检测、清洗与修复任务都在这里统一管理</div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -180,15 +185,15 @@ function JobCard({
   onRetry: (id: string) => void;
 }) {
   const failedCount = job.tasks.filter((task) => task.status === "failed").length;
-  const active = job.status === "queued" || job.status === "running";
 
   return (
     <Card className="mb-3 flex flex-col gap-2.5 p-3.5">
       <div className="job-top">
         <span className="job-name min-w-0 truncate">{job.name}</span>
-        <span className="job-id shrink-0">#{job.id}</span>
-        <span className="job-meta shrink-0">并行 {job.parallelism}</span>
         <span className={`job-status ${STATUS_LABEL[job.status]}`}>{STATUS_LABEL[job.status]}</span>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {job.tasks.length} 个素材 · {formatTime(job.created_at)}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -202,17 +207,19 @@ function JobCard({
               </span>
             </div>
             {task.status === "running" && (
+              <>
               <span className="text-xs text-muted-foreground">
                 {task.progress_note ?? "处理中"}
                 {task.elapsed != null ? ` · 已运行 ${task.elapsed}s` : ""}
               </span>
-            )}
-            {task.status === "running" && task.percent === 0 ? (
-              <div className="progress-track h-1 w-full overflow-hidden rounded-full bg-muted">
-                <div className="progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
-              </div>
-            ) : (
-              <Progress value={task.percent} className="h-1" />
+              {task.percent === 0 ? (
+                <div className="progress-track h-1 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="progress-indeterminate h-full w-1/3 rounded-full bg-primary" />
+                </div>
+              ) : (
+                <Progress value={task.percent} className="h-1" />
+              )}
+              </>
             )}
             {task.error && <span className="text-xs text-destructive">失败：{task.error}</span>}
             {task.status === "done" && task.kind === "desensitize" && (
@@ -249,39 +256,43 @@ function JobCard({
         ))}
       </div>
 
-      <div className="job-actions">
-        <Button variant="secondary" size="sm" disabled={!active} onClick={() => onCancel(job.id)}>
-          取消
-        </Button>
-        {job.status === "paused" ? (
-          <Button variant="secondary" size="sm" onClick={() => onResume(job.id)}>
-            继续
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={job.status !== "queued" && job.status !== "running"}
-            onClick={() => onPause(job.id)}
-          >
-            暂停
-          </Button>
-        )}
-        {job.status === "queued" && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onPriority(job.id, Math.max(0, job.priority - 1))}
-          >
-            提前执行
-          </Button>
-        )}
-        {failedCount > 0 && (
-          <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
-            重试失败项（{failedCount}）
-          </Button>
-        )}
-      </div>
+      {(job.status === "queued" ||
+        job.status === "running" ||
+        job.status === "paused" ||
+        failedCount > 0) && (
+        <div className="job-actions">
+          {job.status === "queued" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onPriority(job.id, Math.max(0, job.priority - 1))}
+            >
+              提前执行
+            </Button>
+          )}
+          {job.status === "paused" ? (
+            <Button variant="secondary" size="sm" onClick={() => onResume(job.id)}>
+              继续
+            </Button>
+          ) : (
+            (job.status === "queued" || job.status === "running") && (
+              <Button variant="secondary" size="sm" onClick={() => onPause(job.id)}>
+                暂停
+              </Button>
+            )
+          )}
+          {(job.status === "queued" || job.status === "running" || job.status === "paused") && (
+            <Button variant="secondary" size="sm" onClick={() => onCancel(job.id)}>
+              取消
+            </Button>
+          )}
+          {failedCount > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
+              重试失败项（{failedCount}）
+            </Button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
