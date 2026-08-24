@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 import uuid
@@ -85,7 +86,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         }
         services.record_variant(
             path,
-            options["output"],
+            result.get("output") or os.path.expanduser(options["output"]),
             snapshot,
             seed=params.get("seed", 0),
             metrics=metrics,
@@ -108,7 +109,7 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
     try:
         services.record_variant(
             path,
-            options["output"],
+            result.get("output") or os.path.expanduser(options["output"]),
             {
                 "regions": options.get("regions", []),
                 "crf": options.get("crf", 23),

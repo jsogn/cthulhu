@@ -843,9 +843,9 @@ def _export_health(path: str) -> dict:
 def _product_candidates(source: str) -> list[Path]:
     """汇总某源素材的全部产物路径：优先 variants 记录，兼容源目录旧产物。"""
     paths = {
-        Path(record["output"])
+        Path(os.path.expanduser(record["output"]))
         for record in db.list_variants(source=source)
-        if record.get("output") and Path(record["output"]).is_file()
+        if record.get("output") and Path(os.path.expanduser(record["output"])).is_file()
     }
     source_path = Path(source)
     for pattern in (
