@@ -37,93 +37,27 @@ import {
   updateTemplate,
   type TemplateInfo,
 } from "@/lib/backend";
+import {
+  DEFAULT_TEMPLATE,
+  LEVEL_PRESETS,
+  payloadOf,
+  type AntiLevel,
+  type CleanLevel,
+  type Codec,
+  type TemplatePayload,
+} from "@/lib/templates";
+import { useAppStore } from "@/stores/app";
 import { toast } from "@/stores/toasts";
-
-type CleanLevel = "轻度" | "平衡" | "深度";
-type AntiLevel = "关闭" | "轻度" | "标准" | "强力" | "全兵器";
-type Codec = "H.264" | "H.265";
-
-/** 与右侧「清洗去重」面板参数一一对应，模板保存完整配置。 */
-interface TemplatePayload {
-  level: CleanLevel;
-  retime: number;
-  perturb: number;
-  audioRemix: boolean;
-  antiReembed: boolean;
-  anti: AntiLevel;
-  recropOn: boolean;
-  detailProtectOn: boolean;
-  sharpness: boolean;
-  colorRestore: boolean;
-  denoise: boolean;
-  spoof: boolean;
-  codec: Codec;
-  lossless: boolean;
-  resolution: string;
-  bitrate: number | null;
-  gop: number | null;
-  fpsOut: number | null;
-}
-
-const LEVEL_PRESETS: Record<CleanLevel, { retime: number; perturb: number }> = {
-  轻度: { retime: 25, perturb: 15 },
-  平衡: { retime: 30, perturb: 20 },
-  深度: { retime: 40, perturb: 30 },
-};
-
-const EMPTY_FORM: TemplatePayload = {
-  level: "平衡",
-  retime: 30,
-  perturb: 20,
-  audioRemix: true,
-  antiReembed: false,
-  anti: "关闭",
-  recropOn: false,
-  detailProtectOn: false,
-  sharpness: true,
-  colorRestore: true,
-  denoise: true,
-  spoof: false,
-  codec: "H.264",
-  lossless: false,
-  resolution: "保持原始分辨率",
-  bitrate: null,
-  gop: null,
-  fpsOut: null,
-};
-
-/** 读取模板参数；兼容旧版 restruct/audio 字段。 */
-function payloadOf(template: TemplateInfo): TemplatePayload {
-  const raw = (template.payload ?? {}) as Record<string, unknown>;
-  return {
-    level: (raw.level as CleanLevel) ?? "平衡",
-    retime: (raw.retime as number) ?? (raw.restruct as number) ?? 30,
-    perturb: (raw.perturb as number) ?? 20,
-    audioRemix: (raw.audioRemix as boolean) ?? (raw.audio as boolean) ?? true,
-    antiReembed: (raw.antiReembed as boolean) ?? false,
-    anti: (raw.anti as AntiLevel) ?? "关闭",
-    recropOn: (raw.recropOn as boolean) ?? false,
-    detailProtectOn: (raw.detailProtectOn as boolean) ?? false,
-    sharpness: (raw.sharpness as boolean) ?? true,
-    colorRestore: (raw.colorRestore as boolean) ?? true,
-    denoise: (raw.denoise as boolean) ?? true,
-    spoof: (raw.spoof as boolean) ?? false,
-    codec: (raw.codec as Codec) ?? "H.264",
-    lossless: (raw.lossless as boolean) ?? false,
-    resolution: (raw.resolution as string) ?? "保持原始分辨率",
-    bitrate: (raw.bitrate as number) ?? null,
-    gop: (raw.gop as number) ?? null,
-    fpsOut: (raw.fpsOut as number) ?? null,
-  };
-}
 
 export default function TemplatesView() {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
-  const [form, setForm] = useState<TemplatePayload>({ ...EMPTY_FORM });
+  const [form, setForm] = useState<TemplatePayload>({ ...DEFAULT_TEMPLATE });
   const [editing, setEditing] = useState<TemplateInfo | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TemplateInfo | null>(null);
+  const queueTemplate = useAppStore((state) => state.queueTemplate);
+  const setView = useAppStore((state) => state.setView);
 
   const setField = <K extends keyof TemplatePayload>(key: K, value: TemplatePayload[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -161,7 +95,7 @@ export default function TemplatesView() {
   const openCreate = () => {
     setEditing(null);
     setName("");
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...DEFAULT_TEMPLATE });
     setDialogOpen(true);
   };
 
@@ -195,6 +129,12 @@ export default function TemplatesView() {
     }
   };
 
+  const useTemplate = (template: TemplateInfo) => {
+    queueTemplate(payloadOf(template));
+    setView("workbench");
+    toast(`已套用模板：${template.name}`, "参数已回填到右侧，可调整后执行清洗");
+  };
+
   type SwitchKey = keyof Pick<
     TemplatePayload,
     | "audioRemix"
@@ -223,7 +163,7 @@ export default function TemplatesView() {
       <div className="view-head">
         <div>
           <div className="view-title">去重模板管理</div>
-          <div className="view-desc">保存完整的去重与对抗参数，作为可复用的清洗预设</div>
+          <div className="view-desc">保存完整去重参数，点击「使用」在素材处理页一键回填</div>
         </div>
         <Button onClick={openCreate}>+ 新建模板</Button>
       </div>
@@ -252,6 +192,9 @@ export default function TemplatesView() {
                   </div>
                 </div>
                 <div className="tpl-actions">
+                  <Button size="sm" onClick={() => useTemplate(template)}>
+                    使用
+                  </Button>
                   <Button variant="secondary" size="sm" onClick={() => openEdit(template)}>
                     编辑
                   </Button>

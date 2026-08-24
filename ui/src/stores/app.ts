@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { TemplatePayload } from "@/lib/templates";
 
 export type ViewKey = "workbench" | "jobs" | "templates" | "history" | "settings";
 export type ThemePref = "dark" | "light" | "system";
@@ -8,10 +9,13 @@ interface AppState {
   themePref: ThemePref;
   backendConnected: boolean;
   importOpen: boolean;
+  pendingTemplate: TemplatePayload | null;
   setView: (view: ViewKey) => void;
   setThemePref: (pref: ThemePref) => void;
   setBackendConnected: (connected: boolean) => void;
   setImportOpen: (open: boolean) => void;
+  queueTemplate: (payload: TemplatePayload) => void;
+  consumePendingTemplate: () => TemplatePayload | null;
 }
 
 function initialThemePref(): ThemePref {
@@ -20,15 +24,22 @@ function initialThemePref(): ThemePref {
   return "system";
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   view: "workbench",
   themePref: initialThemePref(),
   backendConnected: false,
   importOpen: false,
+  pendingTemplate: null,
   setView: (view) => set({ view }),
   setThemePref: (themePref) => set({ themePref }),
   setBackendConnected: (backendConnected) => set({ backendConnected }),
   setImportOpen: (importOpen) => set({ importOpen }),
+  queueTemplate: (payload) => set({ pendingTemplate: payload }),
+  consumePendingTemplate: () => {
+    const pending = get().pendingTemplate;
+    if (pending) set({ pendingTemplate: null });
+    return pending;
+  },
 }));
 
 /** 把偏好解析为当前实际主题。 */

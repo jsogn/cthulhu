@@ -61,6 +61,7 @@ import {
   frameUrl,
   generateCandidates,
   getSettings,
+  listTemplates,
   mediaUrl,
   thumbUrl,
   type AudioAnalysis,
@@ -69,7 +70,9 @@ import {
   type DesensitizeOptions,
   type JobInfo,
   type OutputInfo,
+  type TemplateInfo,
 } from "@/lib/backend";
+import { payloadOf, type TemplatePayload } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
 import { useHistoryStore } from "@/stores/history";
@@ -1148,6 +1151,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   const [fpsOut, setFpsOut] = useState("");
   const [settingsExportDir, setSettingsExportDir] = useState("");
   const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
+  const [templateList, setTemplateList] = useState<TemplateInfo[]>([]);
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cleaning = !!material?.path && pendingCleanPaths(jobs).has(material.path);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
@@ -1209,6 +1213,46 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
         setSettingsNaming((settings.naming as string) ?? "原文件名 + 时间戳");
       })
       .catch(() => undefined);
+  }, []);
+
+  const applyTemplatePayload = (payload: TemplatePayload) => {
+    setLevel(payload.level);
+    setRetime(payload.retime);
+    setPerturb(payload.perturb);
+    setAudioClean(payload.audioRemix);
+    setAntiReembed(payload.antiReembed);
+    setAntiLevel(payload.anti);
+    setRecropOn(payload.recropOn);
+    setDetailProtectOn(payload.detailProtectOn);
+    setSharpness(payload.sharpness);
+    setColorFix(payload.colorRestore);
+    setAiDenoise(payload.denoise);
+    setSpoof(payload.spoof);
+    setCodec(payload.codec);
+    setLossless(payload.lossless);
+    setResolution(payload.resolution);
+    setBitrate(payload.bitrate != null ? String(payload.bitrate) : "");
+    setGop(payload.gop != null ? String(payload.gop) : "");
+    setFpsOut(payload.fpsOut != null ? String(payload.fpsOut) : "");
+  };
+
+  const applyTemplateById = (id: string) => {
+    const template = templateList.find((item) => item.id === id);
+    if (!template) return;
+    applyTemplatePayload(payloadOf(template));
+    toast(`已套用模板：${template.name}`);
+  };
+
+  useEffect(() => {
+    void listTemplates()
+      .then(setTemplateList)
+      .catch(() => undefined);
+  }, []);
+
+  // 模板页点击「使用」后，切回工作台时把参数回填到右侧面板。
+  useEffect(() => {
+    const pending = useAppStore.getState().consumePendingTemplate();
+    if (pending) applyTemplatePayload(pending);
   }, []);
 
   // 产物列表绑定当前素材上下文，切换素材即刷新。
@@ -1909,6 +1953,28 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
         <TabsContent value="清洗去重" className="tab-pane">
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-2.5">
+              <div className="field">
+                <span className="field-label">套用模板</span>
+                <Select value="" onValueChange={applyTemplateById}>
+                  <SelectTrigger className="form-input h-9">
+                    <SelectValue placeholder="选择已保存的模板回填参数" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templateList.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>
+                        还没有模板，可到「去重模板」页创建
+                      </SelectItem>
+                    ) : (
+                      templateList.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <div className="form-help">套用后参数回填到下方，可继续调整再执行清洗</div>
+              </div>
               <p className="note">
                 清洗对空域扩频、DCT-QIM、小波、LSB 与音频回声五类常见水印方案
                 有针对性手段；对未知方案建议加强对抗档并人工复核。
