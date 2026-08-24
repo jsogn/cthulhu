@@ -414,7 +414,7 @@ body {
 .search {
   flex: none;
   width: calc(100% - 24px);
-  margin: 10px 12px 0;
+  margin: 10px 12px 12px;
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -427,15 +427,6 @@ body {
 .search:focus {
   outline: 2px solid var(--ring);
   outline-offset: -1px;
-}
-
-.chips {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
 }
 
 /* ============ 素材列表 ============ */
