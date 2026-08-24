@@ -2192,13 +2192,15 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         <DialogContent className="max-w-[min(92vw,520px)]">
           <DialogHeader>
             <DialogTitle>产物参数</DialogTitle>
-            <DialogDescription>{variantDetail?.output}</DialogDescription>
+            <DialogDescription className="break-all text-xs">
+              {variantDetail?.output}
+            </DialogDescription>
           </DialogHeader>
           {variantDetail && (
             <div className="flex flex-col gap-2 text-sm">
-              <div className="kv-row">
-                <span>源素材</span>
-                <b className="mono truncate">{variantDetail.source}</b>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">源素材</span>
+                <span className="mono break-all text-xs">{variantDetail.source}</span>
               </div>
               <div className="kv-row">
                 <span>随机种子</span>
@@ -2225,7 +2227,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                 </div>
               )}
               <div className="section-title">完整参数</div>
-              <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-2 text-xs leading-5">
+              <pre className="max-h-60 overflow-auto rounded-md border border-border bg-muted/40 p-3 pb-4 text-xs leading-5">
                 {JSON.stringify(variantDetail.options, null, 2)}
               </pre>
             </div>
