@@ -231,7 +231,7 @@ def list_variants(source: str | None = None) -> list[dict]:
         {
             "id": row["id"],
             "source": row["source"],
-            "output": row["output"],
+            "output": os.path.expanduser(row["output"]),
             "options": json.loads(row["options"]),
             "seed": row["seed"],
             "template_id": row["template_id"],
@@ -245,7 +245,10 @@ def list_variants(source: str | None = None) -> list[dict]:
 def delete_variant_by_output(output: str) -> bool:
     try:
         with _connect() as connection:
-            cursor = connection.execute("DELETE FROM variants WHERE output = ?", (output,))
+            cursor = connection.execute(
+                "DELETE FROM variants WHERE output IN (?, ?)",
+                (output, os.path.expanduser(output)),
+            )
         return cursor.rowcount > 0
     except sqlite3.OperationalError:
         # 表尚未初始化时（如测试直接调用删除），视为无记录。
