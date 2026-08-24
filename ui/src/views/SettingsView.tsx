@@ -177,7 +177,12 @@ export default function SettingsView() {
                 value={form.export_dir}
                 onChange={(e) => setValue("export_dir", e.target.value)}
               />
-              <Button variant="secondary" size="sm" onClick={() => void chooseExportDir()}>
+              <Button
+                variant="secondary"
+                size="sm"
+                style={{ height: 34 }}
+                onClick={() => void chooseExportDir()}
+              >
                 选择目录
               </Button>
             </div>
