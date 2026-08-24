@@ -12,7 +12,13 @@ from scipy.io import wavfile
 
 from cthulhu_backend import samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
-from cthulhu_backend.evaluate import attack_matrix, calibrate, dedup_harness, harness
+from cthulhu_backend.evaluate import (
+    attack_matrix,
+    calibrate,
+    content_matrix,
+    dedup_harness,
+    harness,
+)
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
 from cthulhu_backend.similarity import embedding
@@ -158,6 +164,16 @@ def calibrate_presets(
     seed_list = tuple(int(part.strip()) for part in seeds.split(",") if part.strip())
     report = calibrate.run_calibration(clips, out_dir, seeds=seed_list)
     typer.echo(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+
+
+@app.command("content-matrix")
+def content_matrix_run(
+    clip: str = typer.Argument(..., help="短片段输入（≤60s）"),
+    out_dir: str = typer.Option("/tmp/cthulhu-content-matrix", help="报告输出目录"),
+) -> None:
+    """内容级变换矩阵：CLIP 距离 × 画质 × 叙事连续性。"""
+    report = content_matrix.evaluate(clip, out_dir)
+    typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
 @app.command()

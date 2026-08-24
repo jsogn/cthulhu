@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -149,9 +150,13 @@ def decode_video(
         check=True,
     ).stdout
     channels = 1 if grayscale else 3
-    total = len(raw) // (info["height"] * info["width"] * channels)
+    # vf 缩放会改变输出尺寸，info 里的宽高不再适用于 reshape。
+    scale = re.search(r"scale=(\d+):(\d+)", vf or "")
+    width = int(scale.group(1)) if scale else info["width"]
+    height = int(scale.group(2)) if scale else info["height"]
+    total = len(raw) // (height * width * channels)
     arr = np.frombuffer(raw, dtype=np.uint8)
-    shape = (total, info["height"], info["width"]) if grayscale else (total, info["height"], info["width"], 3)
+    shape = (total, height, width) if grayscale else (total, height, width, 3)
     frames = arr.reshape(shape).astype(out_dtype)
     frames /= 255.0
     return frames, info
