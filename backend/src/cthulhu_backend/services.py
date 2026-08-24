@@ -552,6 +552,9 @@ def run_desensitize(
     frame_dtype = getattr(strategy, "frame_dtype", "float32")
     frame_bytes = info["width"] * info["height"] * 3 * (1 if frame_dtype == "uint8" else 4)
     chunk = max(8, min(480, int(budget // 8 // max(frame_bytes, 1))))
+    # pHash/多哈希对抗在批级持有大量 float32 中间量，收窄分块避免长片 OOM。
+    if phash_attack or multi_hash_attack:
+        chunk = min(chunk, 60)
 
     # 音轨独立准备（整段重混后统一 mux）。
     audio_signal = None

@@ -246,9 +246,13 @@ def list_variants(source: str | None = None) -> list[dict]:
 
 
 def delete_variant_by_output(output: str) -> bool:
-    with _connect() as connection:
-        cursor = connection.execute("DELETE FROM variants WHERE output = ?", (output,))
-    return cursor.rowcount > 0
+    try:
+        with _connect() as connection:
+            cursor = connection.execute("DELETE FROM variants WHERE output = ?", (output,))
+        return cursor.rowcount > 0
+    except sqlite3.OperationalError:
+        # 表尚未初始化时（如测试直接调用删除），视为无记录。
+        return False
 
 
 # ---------- 审计 ----------

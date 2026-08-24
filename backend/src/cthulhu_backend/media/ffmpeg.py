@@ -417,7 +417,16 @@ class StreamingEncoder:
             payload = np.ascontiguousarray(frames).tobytes()
         else:
             payload = (np.clip(frames, 0, 1) * 255).round().astype(np.uint8).tobytes()
-        self._proc.stdin.write(payload)
+        try:
+            self._proc.stdin.write(payload)
+        except BrokenPipeError as exc:
+            # ffmpeg 提前退出时把真实 stderr 带上，避免只看到无意义的 Broken pipe。
+            self._proc.wait()
+            stderr = ""
+            if self._proc.stderr is not None:
+                stderr = self._proc.stderr.read().decode(errors="ignore").strip()
+            detail = stderr[-500:] if stderr else "编码进程意外退出"
+            raise RuntimeError(f"编码进程意外退出：{detail}") from exc
 
     def finish(self) -> None:
         if self._stop and self._stop():
