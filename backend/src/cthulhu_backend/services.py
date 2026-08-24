@@ -383,6 +383,7 @@ def run_desensitize(
     """内容脱敏：分析遍 + 分块流式处理遍，内存与视频总长度解耦。"""
     path = _require_file(path)
     output = os.path.expanduser(output)
+    os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
 
     def check_cancelled() -> None:
         if should_stop and should_stop():
@@ -776,6 +777,8 @@ def run_repair(
 ) -> dict:
     """可见水印区域修复（FFmpeg delogo）。"""
     path = _require_file(path)
+    output = os.path.expanduser(output)
+    os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
     ffmpeg.repair_delogo(path, output, regions, crf, progress_cb=progress_cb, stop=stop, pause=pause)
     if stop and stop():
         raise InterruptedError("任务已取消")
