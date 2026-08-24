@@ -12,8 +12,6 @@ def test_variant_roundtrip_and_filters():
         "/out/demo_cleaned_1.mp4",
         {"speed": 0.955, "seed": 7, "denoise": True},
         seed=7,
-        batch="A组",
-        label="标准档",
         metrics={"duplicate_risk": 0.3},
     )
     rows = db.list_variants(source="/src/demo.mp4")
@@ -21,8 +19,6 @@ def test_variant_roundtrip_and_filters():
     assert rows[0]["id"] == record["id"]
     assert rows[0]["options"]["seed"] == 7
     assert rows[0]["metrics"]["duplicate_risk"] == 0.3
-    assert db.list_variants(batch="A组")[0]["label"] == "标准档"
-    assert db.list_variants(batch="不存在") == []
     db.delete_variant_by_output("/out/demo_cleaned_1.mp4")
 
 
@@ -35,8 +31,6 @@ def test_delete_output_removes_variant(tmp_path):
         str(output),
         {"speed": 1.0},
         seed=0,
-        batch="B组",
-        label="手动",
     )
     assert services.delete_output(str(output)) is True
     assert db.list_variants(source="/src/demo.mp4") == []

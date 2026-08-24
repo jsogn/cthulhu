@@ -61,6 +61,7 @@ import {
   frameUrl,
   generateCandidates,
   getSettings,
+  listVariants,
   listTemplates,
   mediaUrl,
   thumbUrl,
@@ -71,6 +72,7 @@ import {
   type JobInfo,
   type OutputInfo,
   type TemplateInfo,
+  type VariantInfo,
 } from "@/lib/backend";
 import { payloadOf, type TemplatePayload } from "@/lib/templates";
 import { cn } from "@/lib/utils";
@@ -1185,6 +1187,7 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   } | null>(null);
   const [candidates, setCandidates] = useState<CandidateInfo[] | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
+  const [variantDetail, setVariantDetail] = useState<VariantInfo | null>(null);
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
   const [playerPath, setPlayerPath] = useState<string | null>(null);
   const [candidatesBusy, setCandidatesBusy] = useState(false);
@@ -1461,6 +1464,20 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
     } finally {
       setCandidatesBusy(false);
     }
+  };
+
+  const showVariant = (outputPath: string) => {
+    if (!material?.path) return;
+    void listVariants(material.path)
+      .then((list) => {
+        const found = list.find((item) => item.output === outputPath);
+        if (found) {
+          setVariantDetail(found);
+        } else {
+          toast("该产物没有参数记录", "旧版本产物可能没有记录");
+        }
+      })
+      .catch(() => toast("读取产物记录失败"));
   };
 
   const runComparePair = (a: string, b: string, leftLabel: string, rightLabel: string) => {
@@ -2279,6 +2296,14 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="flex-1"
+                            onClick={() => showVariant(output.path)}
+                          >
+                            参数
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="flex-1 text-destructive"
                             onClick={() => setPendingDelete(output)}
                           >
@@ -2295,6 +2320,51 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
         </TabsContent>
 
       </Tabs>
+
+      <Dialog open={!!variantDetail} onOpenChange={(open) => !open && setVariantDetail(null)}>
+        <DialogContent className="max-w-[min(92vw,520px)]">
+          <DialogHeader>
+            <DialogTitle>产物参数</DialogTitle>
+            <DialogDescription>{variantDetail?.output}</DialogDescription>
+          </DialogHeader>
+          {variantDetail && (
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="kv-row">
+                <span>源素材</span>
+                <b className="mono truncate">{variantDetail.source}</b>
+              </div>
+              <div className="kv-row">
+                <span>随机种子</span>
+                <b className="mono">{variantDetail.seed}</b>
+              </div>
+              <div className="kv-row">
+                <span>创建时间</span>
+                <b className="mono">
+                  {new Date(variantDetail.created_at * 1000).toLocaleString()}
+                </b>
+              </div>
+              {variantDetail.metrics.duplicate_risk != null && (
+                <div className="kv-row">
+                  <span>判重风险</span>
+                  <b>
+                    {((variantDetail.metrics.duplicate_risk as number) * 100).toFixed(0)}%
+                  </b>
+                </div>
+              )}
+              {variantDetail.metrics.ssim != null && (
+                <div className="kv-row">
+                  <span>SSIM</span>
+                  <b>{String(variantDetail.metrics.ssim)}</b>
+                </div>
+              )}
+              <div className="section-title">完整参数</div>
+              <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-2 text-xs leading-5">
+                {JSON.stringify(variantDetail.options, null, 2)}
+              </pre>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!playerPath} onOpenChange={(open) => !open && setPlayerPath(null)}>
         <DialogContent className="max-w-[min(90vw,720px)]">

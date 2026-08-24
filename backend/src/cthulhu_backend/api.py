@@ -665,10 +665,9 @@ def remove_template(template_id: str) -> dict:
 @router.get("/variants")
 def list_variants(
     source: str | None = Query(None),
-    batch: str | None = Query(None),
 ) -> list[dict]:
-    """产物记录清单：按源文件/批次过滤，返回完整参数与指标快照。"""
-    return db.list_variants(source=source, batch=batch)
+    """产物记录清单：按源文件过滤，返回完整参数与指标快照。"""
+    return db.list_variants(source=source)
 
 
 @router.get("/audit")

@@ -33,10 +33,8 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
     params = {
         key: value
         for key, value in options.items()
-        if key not in {"output", "transform_strategy", "preset", "batch", "label"}
+        if key not in {"output", "transform_strategy", "preset"}
     }
-    batch = options.get("batch") or "单条清洗"
-    label = options.get("label") or "手动"
     # 编码加速策略：设置里的 GPU 选项控制 H.265 是否走 VideoToolbox 硬编；
     # 实测 H.264 硬编更慢且更大，因此始终软件编码。
     gpu_setting = db.load_settings().get("gpu", "仅 CPU")
@@ -90,8 +88,6 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
             options["output"],
             snapshot,
             seed=params.get("seed", 0),
-            batch=batch,
-            label=label,
             metrics=metrics,
         )
     except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
@@ -119,8 +115,6 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
                 "_app_version": APP_VERSION,
             },
             seed=0,
-            batch="修复",
-            label="明水印修复",
         )
     except Exception:  # noqa: BLE001 - 记录失败不影响任务结果
         pass

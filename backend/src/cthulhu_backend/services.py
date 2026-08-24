@@ -902,15 +902,11 @@ def record_variant(
     output: str,
     options: dict,
     seed: int,
-    batch: str,
-    label: str,
     template_id: str | None = None,
     metrics: dict | None = None,
 ) -> dict:
     """把产物参数与指标写入 variants 数据表，A/B 追溯用。"""
     return db.create_variant(
-        batch=batch,
-        label=label,
         source=source,
         output=output,
         options=options,
@@ -956,8 +952,6 @@ def generate_candidates(
         for key, value in (options or {}).items()
         if key not in {"batch", "label", "output", "preset", "transform_strategy"}
     }
-    batch = (options or {}).get("batch") or "候选"
-    label_base = (options or {}).get("label") or ""
     preset_name = (
         (options or {}).get("preset")
         or db.load_settings().get("preset")
@@ -995,14 +989,11 @@ def generate_candidates(
             snapshot["_preset"] = preset_name
             snapshot["_transform_strategy"] = strategy_name
             snapshot["_app_version"] = APP_VERSION
-            label = f"{label_base}-候选{index + 1}" if label_base else f"候选{index + 1}"
             record_variant(
                 path,
                 output,
                 snapshot,
                 seed=seed,
-                batch=batch,
-                label=label,
                 metrics={"duplicate_risk": dedup_risk},
             )
         except Exception:  # noqa: BLE001 - 记录失败不阻断候选生成

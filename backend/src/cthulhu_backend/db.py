@@ -56,8 +56,6 @@ CREATE TABLE IF NOT EXISTS library (
 );
 CREATE TABLE IF NOT EXISTS variants (
     id TEXT PRIMARY KEY,
-    batch TEXT NOT NULL,
-    label TEXT NOT NULL,
     source TEXT NOT NULL,
     output TEXT NOT NULL,
     options TEXT NOT NULL,
@@ -66,7 +64,6 @@ CREATE TABLE IF NOT EXISTS variants (
     metrics TEXT NOT NULL DEFAULT '{}',
     created_at REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_variants_batch ON variants (batch, created_at);
 CREATE INDEX IF NOT EXISTS idx_variants_output ON variants (output);
 """
 
@@ -80,6 +77,20 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     with _connect() as connection:
         connection.executescript(SCHEMA)
+        # 早期实验版 variants 表含 batch/label 列，精简版移除；老库自动迁移。
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(variants)").fetchall()
+        }
+        indexes = {
+            row["name"]
+            for row in connection.execute("PRAGMA index_list(variants)").fetchall()
+        }
+        if "idx_variants_batch" in indexes:
+            connection.execute("DROP INDEX idx_variants_batch")
+        for legacy in ("batch", "label"):
+            if legacy in columns:
+                connection.execute(f"ALTER TABLE variants DROP COLUMN {legacy}")
         # 演示素材默认关闭；清理旧版本写入的演示库残留，避免用户素材库里
         # 出现无法删除的合成演示视频。
         if os.environ.get("CTHULHU_DEMO_LIBRARY") != "1":
@@ -170,8 +181,6 @@ def delete_template(template_id: str) -> bool:
 
 # ---------- 产物记录（变体） ----------
 def create_variant(
-    batch: str,
-    label: str,
     source: str,
     output: str,
     options: dict,
@@ -184,12 +193,10 @@ def create_variant(
     variant_id = uuid.uuid4().hex[:12]
     with _connect() as connection:
         connection.execute(
-            "INSERT INTO variants (id, batch, label, source, output, options, seed, template_id, metrics, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO variants (id, source, output, options, seed, template_id, metrics, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 variant_id,
-                batch,
-                label,
                 source,
                 output,
                 json.dumps(options, ensure_ascii=False),
@@ -201,8 +208,6 @@ def create_variant(
         )
     return {
         "id": variant_id,
-        "batch": batch,
-        "label": label,
         "source": source,
         "output": output,
         "options": options,
@@ -213,16 +218,13 @@ def create_variant(
     }
 
 
-def list_variants(source: str | None = None, batch: str | None = None) -> list[dict]:
+def list_variants(source: str | None = None) -> list[dict]:
     query = "SELECT * FROM variants"
     conditions: list[str] = []
     params: list[Any] = []
     if source:
         conditions.append("source = ?")
         params.append(source)
-    if batch:
-        conditions.append("batch = ?")
-        params.append(batch)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY created_at DESC"
@@ -231,8 +233,6 @@ def list_variants(source: str | None = None, batch: str | None = None) -> list[d
     return [
         {
             "id": row["id"],
-            "batch": row["batch"],
-            "label": row["label"],
             "source": row["source"],
             "output": row["output"],
             "options": json.loads(row["options"]),

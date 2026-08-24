@@ -649,8 +649,6 @@ export async function deleteTemplate(templateId: string): Promise<void> {
 
 export interface VariantInfo {
   id: string;
-  batch: string;
-  label: string;
   source: string;
   output: string;
   options: Record<string, unknown>;
@@ -660,14 +658,12 @@ export interface VariantInfo {
   created_at: number;
 }
 
-/** 产物记录清单：按源文件 / 批次过滤。 */
+/** 产物记录清单：按源文件过滤。 */
 export async function listVariants(
   source?: string,
-  batch?: string,
 ): Promise<VariantInfo[]> {
   const params = new URLSearchParams();
   if (source) params.set("source", source);
-  if (batch) params.set("batch", batch);
   const res = await apiFetch(`/api/variants?${params.toString()}`);
   if (!res.ok) throw new Error(`读取产物记录失败（${res.status}）`);
   return res.json();
