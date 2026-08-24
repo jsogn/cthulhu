@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import queue
@@ -808,18 +807,6 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
         destination = export_root / product.name
         shutil.copy2(product, destination)
         exported.append({"source": product.name, "dest": str(destination)})
-    if exported:
-        exported_names = {Path(item["source"]).name for item in exported}
-        manifest = [
-            record
-            for record in db.list_variants()
-            if Path(record["output"]).name in exported_names
-        ]
-        manifest_path = export_root / "manifest.json"
-        manifest_path.write_text(
-            json.dumps({"exported": exported, "variants": manifest}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
     return {"exported": exported, "missing": missing}
 
 
@@ -936,12 +923,8 @@ def generate_candidates(
     count: int = 3,
     options: dict | None = None,
     progress_cb=None,
-    base_seed: int | None = None,
 ) -> dict:
-    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。
-
-    base_seed 提供时使用 base_seed+index 作为确定性种子，A/B 可复现。
-    """
+    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。"""
     path = _require_file(path)
     target = Path(os.path.expanduser(output_dir))
     target.mkdir(parents=True, exist_ok=True)
@@ -963,11 +946,7 @@ def generate_candidates(
         or "fast"
     )
     for index in range(max(1, count)):
-        seed = (
-            int(base_seed) + index
-            if base_seed is not None
-            else int.from_bytes(os.urandom(4), "big")
-        )
+        seed = int.from_bytes(os.urandom(4), "big")
         output = str(target / f"{stem}_候选{index + 1}.mp4")
         if progress_cb:
             progress_cb(index, count, "生成候选")

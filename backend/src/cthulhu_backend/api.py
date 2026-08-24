@@ -112,7 +112,6 @@ class CandidatesRequest(BaseModel):
     output_dir: str
     count: int = Field(3, ge=1, le=10)
     options: dict = {}
-    base_seed: int | None = None
 
 
 class ScanRequest(BaseModel):
@@ -496,7 +495,6 @@ async def candidates(request: CandidatesRequest) -> dict:
             request.output_dir,
             request.count,
             request.options,
-            base_seed=request.base_seed,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
