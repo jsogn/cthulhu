@@ -180,9 +180,10 @@ def _fast_color_restore_u8(
     del ref_std
 
     def restore(sub: np.ndarray) -> np.ndarray:
-        means = sub.astype(np.float32).mean(axis=(1, 2), keepdims=True)
-        delta = ref_mean8 - means
-        return np.clip(sub + delta, 0, 255).astype(np.uint8)
+        # 用整型统计与 int16 校正，避免整块 float32 往返，速度更快、峰值内存减半。
+        means = sub.mean(axis=(1, 2), dtype=np.float32, keepdims=True)
+        delta = np.round(ref_mean8 - means).astype(np.int16)
+        return np.clip(sub.astype(np.int16) + delta, 0, 255).astype(np.uint8)
 
     return map_chunks(frames, restore, workers=4)
 

@@ -80,6 +80,30 @@ import { openInFolder, toast } from "@/stores/toasts";
 const TAB_KEYS = ["清洗去重", "检测参考", "处理产物", "水印区域"] as const;
 const FRAME_MAX = 540;
 
+const HANDLED_TASKS_KEY = "cthulhu-handled-task-ids";
+
+function loadHandledTaskIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HANDLED_TASKS_KEY) ?? "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+const handledTaskIds = loadHandledTaskIds();
+
+function rememberHandledTask(id: string): void {
+  handledTaskIds.add(id);
+  try {
+    localStorage.setItem(
+      HANDLED_TASKS_KEY,
+      JSON.stringify([...handledTaskIds].slice(-50)),
+    );
+  } catch {
+    // 本地存储不可用时仅在会话内去重
+  }
+}
+
 /** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
 function pendingDetectPaths(jobs: JobInfo[]): Set<string> {
   return new Set(
@@ -1400,6 +1424,8 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
           item.id !== lastHandledTaskRef.current,
       );
     if (!task) return;
+    if (handledTaskIds.has(task.id)) return;
+    rememberHandledTask(task.id);
     lastHandledTaskRef.current = task.id;
     const result = task.result as DesensitizeJobResult | null;
     if (!result?.output) return;

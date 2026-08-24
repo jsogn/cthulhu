@@ -219,7 +219,7 @@ def _prefetch_batches(
     生产者把解码结果放入有界队列（最多 2 块在途），主线程边变换边消费，
     使解码与变换/编码重叠；块序与逐块同步读取完全一致。
     """
-    batch_queue: queue.Queue = queue.Queue(maxsize=2)
+    batch_queue: queue.Queue = queue.Queue(maxsize=1)
 
     def producer() -> None:
         try:
@@ -579,9 +579,6 @@ def run_desensitize(
                 )
             else:
                 signal = audio_transform.remix(signal, sample_rate, audio_rng, speed_factor=0.97)
-            target_len = round(total_out / output_fps * sample_rate)
-            if target_len != len(signal):
-                signal = resample_poly(signal, target_len, len(signal))
             audio_signal = signal
 
     # ---------- 处理遍：逐块解码 → 变换 → 流式编码 ----------
@@ -641,7 +638,7 @@ def run_desensitize(
                         )
                         frames = apply_attacks(frames, output_ids)
                         encoder.write(frames)
-                        out_index += len(batch)
+                        out_index += len(frames)
                         if progress_cb and total_out:
                             progress_cb(
                                 8 + int(out_index / total_out * 82),
@@ -683,7 +680,7 @@ def run_desensitize(
                             )
                             frames = apply_attacks(frames, output_ids)
                             encoder.write(frames)
-                            out_index += len(output_ids)
+                            out_index += len(frames)
                             if progress_cb and total_out:
                                 progress_cb(
                                     8 + int(out_index / total_out * 82),
@@ -693,6 +690,10 @@ def run_desensitize(
                     decoder.close()
         encoder.finish()
         if audio_signal is not None:
+            # 以实际写出的帧数对齐音轨时长，避免抽帧类攻击造成的音画错位。
+            target_len = round(out_index / output_fps * sample_rate)
+            if target_len != len(audio_signal):
+                audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
             audio_payload = (
                 (np.clip(audio_signal, -1, 1) * 32767).round().astype(np.int16).tobytes()
             )
@@ -803,13 +804,11 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
     missing: list[str] = []
     for source in paths:
         source_path = Path(source)
-        # 命名规则带时间戳后不再覆盖，按通配符匹配全部清洗/修复产物，
-        # 取最新修改的一份导出。
+        # 产物可能在源目录或导出目录，统一走记录汇总；取最新一份导出。
         existing = [
             candidate
-            for pattern in (f"{source_path.stem}_cleaned*.mp4", f"{source_path.stem}_repaired*.mp4")
-            for candidate in source_path.parent.glob(pattern)
-            if candidate.is_file()
+            for candidate in _product_candidates(source)
+            if _product_kind(candidate) in {"cleaned", "repaired"}
         ]
         if not existing:
             missing.append(source_path.name)
@@ -841,29 +840,47 @@ def _export_health(path: str) -> dict:
         return {}
 
 
-def list_outputs(source: str) -> dict:
-    """按源素材匹配全部清洗/修复/候选产物，最新在前。"""
-    source = _require_file(source)
-    source_path = Path(source)
-    patterns = {
-        "cleaned": f"{source_path.stem}_cleaned*.mp4",
-        "repaired": f"{source_path.stem}_repaired*.mp4",
-        "candidate": f"{source_path.stem}_候选*.mp4",
+def _product_candidates(source: str) -> list[Path]:
+    """汇总某源素材的全部产物路径：优先 variants 记录，兼容源目录旧产物。"""
+    paths = {
+        Path(record["output"])
+        for record in db.list_variants(source=source)
+        if record.get("output") and Path(record["output"]).is_file()
     }
-    outputs: list[dict] = []
-    for kind, pattern in patterns.items():
+    source_path = Path(source)
+    for pattern in (
+        f"{source_path.stem}_cleaned*.mp4",
+        f"{source_path.stem}_repaired*.mp4",
+        f"{source_path.stem}_候选*.mp4",
+    ):
         for candidate in source_path.parent.glob(pattern):
-            if not candidate.is_file():
-                continue
-            outputs.append(
-                {
-                    "kind": kind,
-                    "path": str(candidate),
-                    "name": candidate.name,
-                    "size": candidate.stat().st_size,
-                    "mtime": candidate.stat().st_mtime,
-                }
-            )
+            if candidate.is_file():
+                paths.add(candidate)
+    return list(paths)
+
+
+def _product_kind(path: Path) -> str:
+    name = path.name
+    if "_repaired" in name:
+        return "repaired"
+    if "_候选" in name:
+        return "candidate"
+    return "cleaned"
+
+
+def list_outputs(source: str) -> dict:
+    """按源素材匹配全部清洗/修复/候选产物（含导出目录），最新在前。"""
+    source = _require_file(source)
+    outputs = [
+        {
+            "kind": _product_kind(candidate),
+            "path": str(candidate),
+            "name": candidate.name,
+            "size": candidate.stat().st_size,
+            "mtime": candidate.stat().st_mtime,
+        }
+        for candidate in _product_candidates(source)
+    ]
     outputs.sort(key=lambda item: item["mtime"], reverse=True)
     return {"source": source, "outputs": outputs}
 
@@ -872,13 +889,7 @@ def library_output_counts() -> dict[str, int]:
     """素材库每个源素材的产物数量（清洗/修复/候选三类合计）。"""
     counts: dict[str, int] = {}
     for item in db.list_library():
-        path = Path(item["path"])
-        patterns = (
-            f"{path.stem}_cleaned*.mp4",
-            f"{path.stem}_repaired*.mp4",
-            f"{path.stem}_候选*.mp4",
-        )
-        counts[item["path"]] = sum(len(list(path.parent.glob(pattern))) for pattern in patterns)
+        counts[item["path"]] = len(_product_candidates(item["path"]))
     return counts
 
 
