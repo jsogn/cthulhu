@@ -22,8 +22,7 @@ from cthulhu_backend import db
 from cthulhu_backend.api import router as api_router
 from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
-
-APP_VERSION = "0.1.0"
+from cthulhu_backend.version import APP_VERSION
 
 
 def _host_info() -> dict:

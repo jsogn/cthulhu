@@ -219,6 +219,8 @@ export interface DesensitizeOptions {
   shotRetimeMax?: number;
   cutJitter?: number;
   audioStrong?: boolean;
+  batch?: string;
+  label?: string;
 }
 
 export interface AudioAnalysis {
@@ -487,11 +489,18 @@ export async function generateCandidates(
   outputDir: string,
   count: number,
   options: DesensitizeOptions,
+  baseSeed?: number,
 ): Promise<CandidatesReport> {
   const res = await apiFetch("/api/candidates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, output_dir: outputDir, count, options }),
+    body: JSON.stringify({
+      path,
+      output_dir: outputDir,
+      count,
+      options,
+      ...(baseSeed != null ? { base_seed: baseSeed } : {}),
+    }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

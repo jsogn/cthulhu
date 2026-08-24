@@ -12,6 +12,7 @@ from cthulhu_backend import db, services
 from cthulhu_backend.events import broker
 from cthulhu_backend.evaluate import dedup_harness
 from cthulhu_backend.transform import strategies
+from cthulhu_backend.version import APP_VERSION
 
 
 def _run_detect(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
@@ -40,6 +41,12 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
     # 实测 H.264 硬编更慢且更大，因此始终软件编码。
     gpu_setting = db.load_settings().get("gpu", "仅 CPU")
     hardware = not gpu_setting.startswith("仅 CPU") and params.get("codec") == "libx265"
+    snapshot = dict(params)
+    snapshot["_preset"] = preset_name
+    snapshot["_transform_strategy"] = strategy_name
+    snapshot["_gpu"] = gpu_setting
+    snapshot["_hardware"] = hardware
+    snapshot["_app_version"] = APP_VERSION
     result = services.run_desensitize(
         path,
         options["output"],
@@ -81,7 +88,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         services.record_variant(
             path,
             options["output"],
-            params,
+            snapshot,
             seed=params.get("seed", 0),
             batch=batch,
             label=label,
@@ -106,7 +113,11 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
         services.record_variant(
             path,
             options["output"],
-            {"regions": options.get("regions", []), "crf": options.get("crf", 23)},
+            {
+                "regions": options.get("regions", []),
+                "crf": options.get("crf", 23),
+                "_app_version": APP_VERSION,
+            },
             seed=0,
             batch="修复",
             label="明水印修复",

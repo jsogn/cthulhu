@@ -32,6 +32,7 @@ from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import extra_attacks, shots, strategies
 from cthulhu_backend.watermark import common as watermark_common
 from cthulhu_backend.watermark import detect
+from cthulhu_backend.version import APP_VERSION
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".ts", ".webm", ".m4v"}
 MAX_WORKING_BYTES = 2 * 1024**3
@@ -939,8 +940,12 @@ def generate_candidates(
     count: int = 3,
     options: dict | None = None,
     progress_cb=None,
+    base_seed: int | None = None,
 ) -> dict:
-    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。"""
+    """同一素材生成多个差异化候选（不同 seed），按低损优选评分排序。
+
+    base_seed 提供时使用 base_seed+index 作为确定性种子，A/B 可复现。
+    """
     path = _require_file(path)
     target = Path(os.path.expanduser(output_dir))
     target.mkdir(parents=True, exist_ok=True)
@@ -949,27 +954,55 @@ def generate_candidates(
     opts = {
         key: value
         for key, value in (options or {}).items()
-        if key not in {"batch", "label", "output"}
+        if key not in {"batch", "label", "output", "preset", "transform_strategy"}
     }
+    batch = (options or {}).get("batch") or "候选"
+    label_base = (options or {}).get("label") or ""
+    preset_name = (
+        (options or {}).get("preset")
+        or db.load_settings().get("preset")
+        or "veryfast"
+    )
+    strategy_name = (
+        (options or {}).get("transform_strategy")
+        or db.load_settings().get("transform_strategy")
+        or "fast"
+    )
     for index in range(max(1, count)):
-        seed = int.from_bytes(os.urandom(4), "big")
+        seed = (
+            int(base_seed) + index
+            if base_seed is not None
+            else int.from_bytes(os.urandom(4), "big")
+        )
         output = str(target / f"{stem}_候选{index + 1}.mp4")
         if progress_cb:
             progress_cb(index, count, "生成候选")
-        result = run_desensitize(path, output, seed=seed, **opts)
+        result = run_desensitize(
+            path,
+            output,
+            seed=seed,
+            preset=preset_name,
+            transform_strategy=strategy_name,
+            **opts,
+        )
         dedup_risk = None
         try:
             dedup_risk = dedup_harness.compare(path, output)["duplicate_risk"]
         except Exception:  # noqa: BLE001 - 判重打分失败不阻断候选生成
             dedup_risk = None
         try:
+            snapshot = dict(opts)
+            snapshot["_preset"] = preset_name
+            snapshot["_transform_strategy"] = strategy_name
+            snapshot["_app_version"] = APP_VERSION
+            label = f"{label_base}-候选{index + 1}" if label_base else f"候选{index + 1}"
             record_variant(
                 path,
                 output,
-                opts,
+                snapshot,
                 seed=seed,
-                batch="候选",
-                label=f"候选{index + 1}",
+                batch=batch,
+                label=label,
                 metrics={"duplicate_risk": dedup_risk},
             )
         except Exception:  # noqa: BLE001 - 记录失败不阻断候选生成

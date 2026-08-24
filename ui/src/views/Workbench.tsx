@@ -137,6 +137,8 @@ const SNAKE_OPTION_KEYS: Record<string, string> = {
   shotRetime: "shot_retime",
   cutJitter: "cut_jitter",
   audioStrong: "audio_strong",
+  batch: "batch",
+  label: "label",
 };
 
 function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
@@ -1164,6 +1166,9 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
   const [bitrate, setBitrate] = useState("");
   const [gop, setGop] = useState("");
   const [fpsOut, setFpsOut] = useState("");
+  const [batch, setBatch] = useState("");
+  const [label, setLabel] = useState("");
+  const [seedInput, setSeedInput] = useState("");
   const [settingsExportDir, setSettingsExportDir] = useState("");
   const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
   const [templateList, setTemplateList] = useState<TemplateInfo[]>([]);
@@ -1368,7 +1373,9 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
         denoise: aiDenoise,
         antiReembed,
         detailProtect: detailProtectOn ? 0.5 : 0,
-        seed: Math.floor(Math.random() * 1_000_000),
+        seed: seedInput.trim() ? Number(seedInput) : Math.floor(Math.random() * 1_000_000),
+        ...(batch.trim() ? { batch: batch.trim() } : {}),
+        ...(label.trim() ? { label: label.trim() } : {}),
         codec: codec === "H.265" ? "libx265" : "libx264",
         lossless,
         spoof,
@@ -1452,7 +1459,13 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
     setCandidatesBusy(true);
     try {
       const dir = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_候选`;
-      const report = await generateCandidates(target.path, dir, 3, cleanOptionsRef.current);
+      const report = await generateCandidates(
+        target.path,
+        dir,
+        3,
+        cleanOptionsRef.current,
+        seedInput.trim() ? Number(seedInput) : undefined,
+      );
       setCandidates(report.candidates);
       void useMaterialsStore.getState().refreshOutputCounts();
       toast(`已生成 ${report.candidates.length} 个候选，按低损优选排序`);
@@ -2222,6 +2235,38 @@ function ContextPanel({ tab, setTab, onStartCompare, cleanOptionsRef }: ContextP
                   <div className="switch-desc">极致保留画质，文件体积相应增大</div>
                 </div>
                 <Switch checked={lossless} onCheckedChange={setLossless} />
+              </div>
+
+              <div className="section-title">实验标注（可选）</div>
+              <div className="field-row">
+                <div className="field">
+                  <span className="field-label">实验批次</span>
+                  <Input
+                    className="h-9"
+                    value={batch}
+                    onChange={(e) => setBatch(e.target.value)}
+                    placeholder="如：A组-0608"
+                  />
+                </div>
+                <div className="field">
+                  <span className="field-label">变体标签</span>
+                  <Input
+                    className="h-9"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="如：标准档-B"
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <span className="field-label">随机种子（留空随机）</span>
+                <Input
+                  className="h-9"
+                  type="number"
+                  value={seedInput}
+                  onChange={(e) => setSeedInput(e.target.value)}
+                  placeholder="固定后同参数可复现"
+                />
               </div>
 
               <Button variant="secondary" className="w-full" disabled={cleaning} onClick={runClean}>
