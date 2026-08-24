@@ -22,7 +22,6 @@ export default function TopBar() {
         </span>
         <div>
           <div className="brand-name">Cthulhu</div>
-          <div className="brand-sub">推广素材处理 · 去重 · 暗水印 · 多版本</div>
         </div>
       </div>
 

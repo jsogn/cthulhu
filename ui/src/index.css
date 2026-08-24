@@ -261,16 +261,6 @@ body {
   line-height: 1.2;
 }
 
-.brand-sub {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 320px;
-}
-
 .topbar-actions {
   display: flex;
   align-items: center;
