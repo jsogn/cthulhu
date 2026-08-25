@@ -65,6 +65,7 @@ async function startBackend() {
       // 数据写入用户目录，避免向只读的 .app 包内写库与演示素材。
       CTHULHU_DB: path.join(userData, "cthulhu.db"),
       CTHULHU_THUMB_CACHE: path.join(userData, "thumb-cache"),
+      CTHULHU_LIBRARY_DIR: path.join(userData, "library"),
       CTHULHU_DEEP_MODEL: deepModel,
       CTHULHU_AUTH_TOKEN: authToken,
       CTHULHU_PORT: String(port),

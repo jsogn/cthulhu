@@ -310,15 +310,14 @@ def library_add(request: PathRequest) -> dict:
 
 @router.delete("/library")
 def library_remove(path: str = Query(...)) -> dict:
-    """从素材库移除记录；网页上传的库内副本同时删除，桌面源文件不受影响。"""
+    """从素材库移除记录与对应产物；源视频文件一律保留，由用户手动管理。"""
     removed = db.remove_library(path)
-    try:
-        target = Path(path).resolve()
-        target.relative_to(_LIBRARY_DIR.resolve())
-        if target.is_file():
-            target.unlink()
-    except ValueError:
-        pass
+    for product in services._product_candidates(path):
+        try:
+            product.unlink()
+        except OSError:
+            pass
+        db.delete_variant_by_output(str(product))
     return {"removed": 1 if removed else 0}
 
 
@@ -326,7 +325,7 @@ def library_remove(path: str = Query(...)) -> dict:
 def library_clear() -> dict:
     """清空素材库：移除全部素材记录并删除对应产物文件与记录。
 
-    桌面端源视频绝不受影响；仅应用自身生成/上传到库目录的副本会被清理。
+    源视频文件一律保留（无论位于何处），由用户手动管理。
     """
     materials = db.list_library()
     removed_products = 0
@@ -345,13 +344,6 @@ def library_clear() -> dict:
                 pass
             db.delete_variant_by_output(str(product))
         db.remove_library(source)
-        try:
-            target = Path(source).resolve()
-            target.relative_to(_LIBRARY_DIR.resolve())
-            if target.is_file():
-                target.unlink()
-        except ValueError:
-            pass
     return {
         "removed_materials": len(materials),
         "removed_products": removed_products,
