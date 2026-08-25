@@ -160,8 +160,9 @@ def _fast_regrade_u8(
 
     def apply_one(pair: tuple[np.ndarray, np.ndarray, float]) -> np.ndarray:
         table, frame, delta = pair
-        out = np.take(table, frame, mode="clip") + delta * 255.0
-        return np.clip(out, 0.0, 255.0).astype(np.uint8)
+        # gamma 与亮度增量合并成一张 uint8 LUT，一次查表完成，免 float32 中间量。
+        fused = np.clip(table + delta * 255.0, 0.0, 255.0).astype(np.uint8)
+        return np.take(fused, frame, mode="clip")
 
     from cthulhu_backend.transform.parallel import map_frames
 
@@ -234,10 +235,14 @@ def rotate_de_sync(
     frames: np.ndarray,
     output_ids: list[int],
     max_angle: float,
+    period_frames: int = 200,
 ) -> np.ndarray:
-    """逐帧微旋转去同步：角度按黄金角摆动，确定性且并行安全。
+    """逐帧微旋转去同步：低频正弦轨迹，角度随时间平滑变化。
 
-    每帧角度 = max_angle * sin(index * 2.399963)，旋转后中心裁剪回原尺寸。
+    每帧角度 = max_angle * sin(2π * index / period_frames)，旋转后中心裁剪
+    回原尺寸。周期约 8 秒（25fps 下 period_frames=200），相邻帧角度差约为
+    max_angle × 2π/period，远低于人眼可感知的帧间运动阈值——避免黄金角逐帧
+    高频摆动造成的可见抖动，同时仍逐帧破坏与源片的空间对齐。
     几何去同步对 pHash 类指纹的破坏效率远高于同预算的像素扰动。
     """
     from cthulhu_backend.transform.parallel import map_frames
@@ -246,7 +251,7 @@ def rotate_de_sync(
 
     def rotate_one(pair: tuple[int, np.ndarray]) -> np.ndarray:
         index, frame = pair
-        angle = max_angle * math.sin(index * 2.399963)
+        angle = max_angle * math.sin(2 * math.pi * index / period_frames)
         h, w = frame.shape[:2]
         mode = "RGB" if frame.ndim == 3 else "L"
         if is_u8:

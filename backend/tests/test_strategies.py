@@ -113,15 +113,24 @@ def test_fast_regrade_close_to_thorough():
     assert float(diff.mean()) < 0.02
 
 
-def test_rotate_de_sync_deterministic_and_shape_preserving():
-    frames = (samples.make_video_frames(4, 96, 64, seed=7) * 255).round().astype(np.uint8)
-    ids = [0, 1, 2, 3]
-    first = strategies.rotate_de_sync(frames.copy(), ids, 1.5)
-    second = strategies.rotate_de_sync(frames.copy(), ids, 1.5)
+def test_rotate_de_sync_smooth_deterministic_and_shape_preserving():
+    """旋转去同步应为低频平滑轨迹：相邻帧变化远小于单帧幅度，避免可见抖动。"""
+    yy, xx = np.mgrid[0:64, 0:96].astype(np.float32)
+    static = np.clip(0.3 + yy / 64 * 0.4 + np.sin(xx / 12) * 0.1, 0, 1)
+    frames = np.repeat(static[None, ...], 16, axis=0)
+    frames = (frames * 255).round().astype(np.uint8)
+    ids = list(range(16))
+    first = strategies.rotate_de_sync(frames.copy(), ids, 1.0)
+    second = strategies.rotate_de_sync(frames.copy(), ids, 1.0)
     assert first.shape == frames.shape
     assert first.dtype == np.uint8
     np.testing.assert_array_equal(first, second)
-    assert float(np.mean(np.abs(first.astype(float) - frames.astype(float)))) > 0.1
+    # 低频平滑：相邻帧平均差异应远小于 1 个灰阶（黄金角逐帧摆动则远高于此）。
+    adjacent = float(np.abs(first[1:].astype(np.float32) - first[:-1].astype(np.float32)).mean())
+    assert adjacent < 1.0
+    # 幅度足够时仍会改变像素，保留几何去同步的对抗有效性。
+    strong = strategies.rotate_de_sync(frames.copy(), ids, 8.0)
+    assert float(np.abs(strong.astype(np.float32) - frames.astype(np.float32)).mean()) > 1.0
 
 
 def test_baseline_compare_roundtrip(tmp_path):

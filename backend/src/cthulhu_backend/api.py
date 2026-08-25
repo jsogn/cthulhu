@@ -154,6 +154,9 @@ class DesensitizeRequest(BaseModel):
     subtract_beta: float = Field(0.0, ge=0, le=4)
     transcode_chain: bool = False
     saliency: int = Field(0, ge=0, le=4)
+    echo_defeat: bool = False
+    skip_vmaf: bool = False
+    filter_scale: int = Field(0, ge=0, le=1080)
 
 
 class TaskSpec(BaseModel):
@@ -432,6 +435,9 @@ async def desensitize(request: DesensitizeRequest) -> dict:
             subtract_beta=request.subtract_beta,
             transcode_chain=request.transcode_chain,
             saliency=request.saliency,
+            echo_defeat=request.echo_defeat,
+            skip_vmaf=request.skip_vmaf,
+            filter_scale=request.filter_scale,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
@@ -520,10 +526,11 @@ def ffmpeg_install_status() -> dict:
 @router.post("/jobs", status_code=202)
 async def create_job(request: JobRequest) -> dict:
     settings = db.load_settings()
+    adaptive = min(4, max(2, os.cpu_count() or 2))
     try:
-        default_parallelism = int(settings.get("parallelism", 2))
+        default_parallelism = int(settings.get("parallelism", adaptive))
     except (TypeError, ValueError):
-        default_parallelism = 2
+        default_parallelism = adaptive
     job = job_queue.create_job(
         request.name,
         [task.model_dump() for task in request.tasks],

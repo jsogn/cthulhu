@@ -8,7 +8,7 @@ import {
 } from "@/lib/backend";
 import { fmtSize } from "@/lib/format";
 
-export type RiskLevel = "有疑似特征" | "未检出异常" | "待检测";
+export type RiskLevel = "有疑似特征" | "未发现异常" | "待检测";
 
 export interface Material {
   id: string;
@@ -51,7 +51,7 @@ interface MaterialsState {
 
 function reportRisk(report?: { bitstream: { flags: string[] } } | null): RiskLevel {
   if (!report) return "待检测";
-  return report.bitstream.flags.length > 0 ? "有疑似特征" : "未检出异常";
+  return report.bitstream.flags.length > 0 ? "有疑似特征" : "未发现异常";
 }
 
 function fmtDur(seconds: number): string {

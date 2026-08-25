@@ -125,6 +125,7 @@ def attack_frames(
     frames: np.ndarray,
     epsilon: float = 0.08,
     iterations: int = 120,
+    workers: int | None = None,
 ) -> np.ndarray:
     """对帧数组逐帧并行施加 pHash 对抗扰动，保持原 dtype。"""
     from cthulhu_backend.transform.parallel import map_frames
@@ -137,6 +138,7 @@ def attack_frames(
         attacked = map_frames(
             lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
             luma.astype(np.float32),
+            workers=workers,
         )
         # 亮度均值回填：扰动整体亮度，只保留结构扰动，避免画面变暗。
         attacked = attacked - (
@@ -145,6 +147,14 @@ def attack_frames(
         ratio = np.divide(
             attacked, luma, out=np.ones_like(luma, dtype=np.float32), where=luma > 1e-6
         )
+        # 近黑保护：luma→0 时 attacked/luma 发散，会在黑色背景上把通道间的
+        # 微小差异放大成蓝紫色斑块。暗区按 luma/floor 平滑衰减扰动，明区
+        # （luma≥floor）保持原语义不变。
+        dark_floor = 0.05
+        dark = luma < dark_floor
+        if dark.any():
+            ramp = (luma / dark_floor).astype(np.float32)
+            ratio = np.where(dark, 1.0 + (ratio - 1.0) * ramp, ratio)
         result = np.clip(work * ratio[..., None], 0.0, 1.0)
         if original_dtype == np.uint8:
             return (result * 255.0).round().astype(np.uint8)
@@ -155,11 +165,13 @@ def attack_frames(
         attacked = map_frames(
             lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
             work,
+            workers=workers,
         )
         return (np.clip(attacked, 0.0, 1.0) * 255.0).round().astype(np.uint8)
     return map_frames(
         lambda frame: attack_phash(frame, epsilon=epsilon, iterations=iterations)[0],
         np.asarray(frames, dtype=np.float32),
+        workers=workers,
     )
 
 

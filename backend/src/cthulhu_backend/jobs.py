@@ -132,7 +132,9 @@ RUNNERS = {
 class JobQueue:
     """进程内任务队列：单消费者分发 + 每任务信号量控制并行。"""
 
-    def __init__(self, default_parallelism: int = 2) -> None:
+    def __init__(self, default_parallelism: int | None = None) -> None:
+        if default_parallelism is None:
+            default_parallelism = min(4, max(2, os.cpu_count() or 2))
         self.default_parallelism = default_parallelism
         self._jobs: dict[str, dict[str, Any]] = {}
         self._inbox: asyncio.PriorityQueue = asyncio.PriorityQueue()

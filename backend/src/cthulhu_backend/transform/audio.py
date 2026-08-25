@@ -1,4 +1,8 @@
-"""音频重混：EQ 倾斜、响度归一与微变速，配合画面脱敏。"""
+"""音频重混：EQ 倾斜、响度归一与可选微变速，配合画面脱敏。
+
+生产管线只使用等长重混（EQ/变调/噪声），不改变音轨长度与内容时间轴，
+保证音画同步；研究 harness 可显式传入 speed_factor/tempo 做变速实验。
+"""
 
 from __future__ import annotations
 
@@ -32,15 +36,20 @@ def remix(
     signal: np.ndarray,
     sample_rate: int,
     rng: np.random.Generator,
-    speed_factor: float = 0.99,
+    speed_factor: float | None = None,
 ) -> np.ndarray:
-    """重混链：EQ 倾斜 → 微变速 → 响度归一 → 微量噪声。"""
+    """等长重混链：EQ 倾斜 → 响度归一 → 微量噪声。
+
+    speed_factor 仅在研究 harness 显式传入时做微变速；该操作会截断/补零
+    改变内容时间线，可能造成音画漂移，生产管线不传。
+    """
     out = eq_tilt(signal, sample_rate, rng)
-    stretched = resample_poly(out, 1000, round(1000 * speed_factor))
-    n = len(signal)
-    out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
+    if speed_factor is not None:
+        stretched = resample_poly(out, 1000, max(1, round(1000 * speed_factor)))
+        n = len(signal)
+        out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
     out = normalize_loudness(out)
-    return out + 0.002 * rng.standard_normal(n)
+    return out + 0.002 * rng.standard_normal(len(signal))
 
 
 def pitch_shift(signal: np.ndarray, ratio: float) -> np.ndarray:
@@ -54,19 +63,22 @@ def remix_strong(
     signal: np.ndarray,
     sample_rate: int,
     rng: np.random.Generator,
-    tempo: float = 1.05,
+    tempo: float | None = None,
     pitch_ratio: float = 0.98,
     eq_db: float = 6.0,
     noise_floor: float = 0.004,
 ) -> np.ndarray:
-    """强音频重混：变速 + 变调 + 强 EQ 倾斜 + 底噪，破坏 chromaprint/梅尔谱指纹。
+    """强音频重混：变调 + 强 EQ 倾斜 + 底噪，破坏 chromaprint/梅尔谱指纹。
 
     与 remix 的轻量频谱处理不同，本链针对音频指纹的时间-频率对齐做双重扰动。
+    变调采用「先拉伸再拉回原长」的等长实现，不改变内容时间轴；
+    tempo 仅在研究 harness 显式传入时做变速（会破坏音画同步，生产不传）。
     """
     out = eq_tilt(signal, sample_rate, rng, gain_db=eq_db)
     out = pitch_shift(out, pitch_ratio)
-    n = len(signal)
-    stretched = resample_poly(out, 1000, max(1, round(1000 * tempo)))
-    out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
+    if tempo is not None:
+        stretched = resample_poly(out, 1000, max(1, round(1000 * tempo)))
+        n = len(signal)
+        out = stretched[:n] if len(stretched) >= n else np.pad(stretched, (0, n - len(stretched)))
     out = normalize_loudness(out)
-    return out + noise_floor * rng.standard_normal(n)
+    return out + noise_floor * rng.standard_normal(len(signal))

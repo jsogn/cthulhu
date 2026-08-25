@@ -21,7 +21,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -39,10 +38,8 @@ import {
 } from "@/lib/backend";
 import {
   DEFAULT_TEMPLATE,
-  LEVEL_PRESETS,
   payloadOf,
   type AntiLevel,
-  type CleanLevel,
   type Codec,
   type TemplatePayload,
 } from "@/lib/templates";
@@ -76,7 +73,7 @@ export default function TemplatesView() {
 
   const save = async () => {
     try {
-      const finalName = name.trim() || `${form.level}档模板`;
+      const finalName = name.trim() || "去重模板";
       if (editing) {
         await updateTemplate(editing.id, finalName, { ...form });
       } else {
@@ -138,6 +135,7 @@ export default function TemplatesView() {
   type SwitchKey = keyof Pick<
     TemplatePayload,
     | "audioRemix"
+    | "echoDefeat"
     | "antiReembed"
     | "recropOn"
     | "detailProtectOn"
@@ -176,11 +174,6 @@ export default function TemplatesView() {
               <Card key={template.id} className="flex flex-col gap-3 p-4">
                 <div className="tpl-name">{template.name}</div>
                 <div className="tpl-rows">
-                  <div className="tpl-row"><span>清除档位</span><b>{payload.level}</b></div>
-                  <div className="tpl-row">
-                    <span>变速 / 微扰</span>
-                    <b>{payload.retime}% / {payload.perturb}%</b>
-                  </div>
                   <div className="tpl-row"><span>指纹对抗</span><b>{payload.anti}</b></div>
                   <div className="tpl-row">
                     <span>空间降噪 / 音频重混</span>
@@ -235,44 +228,10 @@ export default function TemplatesView() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              <div className="field">
-                <Label>清除档位</Label>
-                <Select
-                  value={form.level}
-                  onValueChange={(value) => {
-                    const next = value as CleanLevel;
-                    setForm((current) => ({
-                      ...current,
-                      level: next,
-                      retime: LEVEL_PRESETS[next].retime,
-                      perturb: LEVEL_PRESETS[next].perturb,
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="轻度">轻度（画质优先）</SelectItem>
-                    <SelectItem value="平衡">平衡（推荐）</SelectItem>
-                    <SelectItem value="深度">深度（最强清除）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="field">
-                <span className="field-label">
-                  变速幅度 <span className="field-value">{form.retime}%</span>
-                </span>
-                <Slider value={[form.retime]} min={0} max={100} onValueChange={([v]) => setField("retime", v)} />
-              </div>
-              <div className="field">
-                <span className="field-label">
-                  画质微扰强度 <span className="field-value">{form.perturb}%</span>
-                </span>
-                <Slider value={[form.perturb]} min={0} max={100} onValueChange={([v]) => setField("perturb", v)} />
-              </div>
-
-              {switchRow("同步处理音频指纹", "对音轨做频谱轻微处理", "audioRemix")}
+              {switchRow("同步处理音频指纹", "对音轨做等长频谱轻处理，不影响音画同步", "audioRemix")}
+              {switchRow("音频回声扰动", "同步放慢约 3% 并保音调，平台效果需实测", "echoDefeat")}
               {switchRow("抗二次检测增强", "扰动中频 DCT 系数，破坏二次嵌入", "antiReembed")}
-              {switchRow("重新构图（裁剪回缩）", "对抗内容指纹，画质损失较大", "recropOn")}
+              {switchRow("重新构图（裁剪回缩）", "对抗内容指纹，静态缩放微模糊", "recropOn")}
               {switchRow("细节保护（人脸/字幕/纹理）", "保护区域回退原帧，保留部分水印特征", "detailProtectOn")}
 
               <div className="field">
@@ -280,11 +239,11 @@ export default function TemplatesView() {
                 <Select value={form.anti} onValueChange={(value) => setField("anti", value as AntiLevel)}>
                   <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
-                    <SelectItem value="轻度">轻度 · 几乎无损，日常推荐</SelectItem>
-                    <SelectItem value="标准">标准 · 轻微损失，正常观看</SelectItem>
-                    <SelectItem value="强力">强力 · 可见轻微加工，建议预览</SelectItem>
-                    <SelectItem value="全兵器">全兵器 · 仅研究测试，不保证观感</SelectItem>
+                    <SelectItem value="关闭">关闭 · 仅基础清洗，判重风险高</SelectItem>
+                    <SelectItem value="轻度">轻度 · 低成本近无损，适合已二创素材</SelectItem>
+                    <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
+                    <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
+                    <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

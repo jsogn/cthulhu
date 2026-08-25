@@ -219,6 +219,9 @@ export interface DesensitizeOptions {
   shotRetimeMax?: number;
   cutJitter?: number;
   audioStrong?: boolean;
+  echoDefeat?: boolean;
+  skipVmaf?: boolean;
+  filterScale?: number;
 }
 
 export interface AudioAnalysis {
@@ -397,7 +400,7 @@ export function connectEvents(onMessage: (msg: BackendEvent) => void): () => voi
 }
 
 export interface OutputInfo {
-  kind: "cleaned" | "repaired" | "candidate";
+  kind: "cleaned" | "repaired";
   path: string;
   name: string;
   size: number;
@@ -418,7 +421,7 @@ export async function fetchOutputCounts(): Promise<Record<string, number>> {
   return res.json();
 }
 
-/** 删除指定处理产物（仅限清洗/修复/候选产物）。 */
+/** 删除指定处理产物（仅限清洗/修复产物）。 */
 export async function deleteOutput(path: string): Promise<{ removed: number }> {
   const res = await apiFetch(`/api/outputs?path=${encodeURIComponent(path)}`, {
     method: "DELETE",

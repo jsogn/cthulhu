@@ -17,7 +17,7 @@ import { useQueueStore } from "@/stores/queue";
 import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<string, string> = {
-  detect: "暗水印检测",
+  detect: "检测参考",
   desensitize: "清洗去重",
   repair: "可见水印修复",
 };
@@ -30,6 +30,22 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "失败",
   canceled: "已取消",
 };
+
+function formatElapsed(seconds: number | null): string | null {
+  if (seconds == null) return null;
+  if (seconds < 60) return `${Math.round(seconds)} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return `${minutes} 分 ${rest} 秒`;
+}
+
+/** 终态任务才显示最终耗时；进行中任务已由进度条表达。 */
+function finalElapsed(task: { status: string; elapsed: number | null }): string | null {
+  if (task.status === "done" || task.status === "failed" || task.status === "canceled") {
+    return formatElapsed(task.elapsed);
+  }
+  return null;
+}
 
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -244,6 +260,9 @@ function JobCard({
       </div>
       <div className="text-xs text-muted-foreground">
         {formatTime(job.created_at)}
+        {job.tasks.length === 1 && finalElapsed(job.tasks[0]) != null
+          ? ` · 耗时 ${finalElapsed(job.tasks[0])}`
+          : null}
       </div>
 
       {job.tasks.length === 1 ? (
@@ -258,6 +277,11 @@ function JobCard({
                 <span className={`job-status ${STATUS_LABEL[task.status]}`}>
                   {STATUS_LABEL[task.status]}
                 </span>
+                {finalElapsed(task) != null && (
+                  <span className="shrink-0 text-muted-foreground">
+                    耗时 {finalElapsed(task)}
+                  </span>
+                )}
               </div>
               {renderTaskDetail(task)}
             </div>

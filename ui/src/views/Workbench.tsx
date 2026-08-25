@@ -43,7 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,7 +68,7 @@ import {
   type TemplateInfo,
   type VariantInfo,
 } from "@/lib/backend";
-import { payloadOf, type TemplatePayload } from "@/lib/templates";
+import { payloadOf, type AntiLevel, type TemplatePayload } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
 import { useMaterialsStore, type Material, type RiskLevel } from "@/stores/materials";
@@ -151,6 +150,9 @@ const SNAKE_OPTION_KEYS: Record<string, string> = {
   shotRetime: "shot_retime",
   cutJitter: "cut_jitter",
   audioStrong: "audio_strong",
+  echoDefeat: "echo_defeat",
+  skipVmaf: "skip_vmaf",
+  filterScale: "filter_scale",
 };
 
 function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
@@ -161,29 +163,16 @@ function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
   );
 }
 
-const CLEAN_LEVELS = ["轻度", "平衡", "深度"] as const;
-type CleanLevel = (typeof CLEAN_LEVELS)[number];
-
-const LEVEL_PRESETS: Record<CleanLevel, { retime: number; perturb: number }> = {
-  轻度: { retime: 25, perturb: 15 },
-  平衡: { retime: 30, perturb: 20 },
-  深度: { retime: 40, perturb: 30 },
-};
-
-/** 三档清洗的真实行为映射（与后端参数一一对应，不展示虚假指标）。 */
-const levelDisplay = (level: CleanLevel, recropOn: boolean) => {
-  const { retime, perturb } = LEVEL_PRESETS[level];
-  const speed = Math.max(0.85, 1 - 0.15 * (retime / 100));
-  const gamma = 0.03 + 0.2 * (perturb / 100);
-  const brightness = 0.02 + 0.06 * (perturb / 100);
-  const crop = recropOn ? 0.015 + 0.075 * (perturb / 100) : 0;
-  return { speed, gamma, brightness, crop, retime };
-};
+// 基础微扰与裁剪为固定保守值：微扰实测收益接近噪声，裁剪幅度在 3%~4% 附近
+// 到达收益拐点且非单调，因此不做连续调节，只保留「重新构图」开关。
+const FIXED_PERTURB = 0.15;
+const FIXED_GAMMA = 0.03 + 0.2 * FIXED_PERTURB;
+const FIXED_BRIGHTNESS = 0.02 + 0.06 * FIXED_PERTURB;
+const FIXED_CROP = 0.02;
 
 const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   cleaned: "清洗",
   repaired: "修复",
-  candidate: "候选",
 };
 
 function outputTimeLabel(mtime: number): string {
@@ -194,10 +183,12 @@ function outputTimeLabel(mtime: number): string {
   )}:${pad(date.getMinutes())}`;
 }
 
-// 指纹对抗档：几何去同步 + pHash 签名扰动 + 底层载荷攻击原语组合。
+// 指纹对抗档：静态几何去同步（低频微旋转）+ 签名域扰动 + 静态频域/色度原语。
+// 硬约束：不含可见运动（逐帧抖动/透视/局部扭曲/抽帧复制）与时间域攻击
+// （逐镜头变速/切点删帧/音频变速），保证观感与音画同步。
 type AntiPreset = {
   rotate: number;
-  epsilon: number;
+  epsilon?: number;
   median?: number;
   noise?: number;
   requant?: number;
@@ -221,56 +212,33 @@ type AntiPreset = {
 
 const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
   关闭: undefined,
-  轻度: { rotate: 1.0, epsilon: 0.03 },
+  轻度: { rotate: 0.15 },
   标准: {
-    rotate: 1.4,
-    epsilon: 0.03,
-    dctStep: 4,
+    rotate: 0.2,
     requant: 96,
-    chromaLevels: 128,
-    dropEvery: 13,
-    noise: 0.006,
-    jitter: 0.006,
+    noise: 0.003,
     nativeFilters: true,
-    shotRetime: true,
-    cutJitter: 2,
     audioStrong: true,
   },
   强力: {
-    rotate: 1.8,
-    epsilon: 0.04,
-    dctStep: 6,
+    rotate: 0.25,
+    epsilon: 0.045,
     requant: 64,
-    chromaLevels: 96,
-    dropEvery: 9,
-    noise: 0.01,
-    jitter: 0.01,
-    perspective: 0.004,
-    saliency: 1,
-    jointAttack: true,
+    noise: 0.004,
     nativeFilters: true,
-    shotRetime: true,
-    cutJitter: 3,
     audioStrong: true,
   },
   全兵器: {
-    rotate: 2.2,
+    rotate: 0.3,
     epsilon: 0.05,
     dctStep: 12,
     requant: 32,
     chromaLevels: 32,
-    dropEvery: 7,
-    noise: 0.02,
-    jitter: 0.01,
-    perspective: 0.005,
-    warp: 0.003,
+    noise: 0.008,
     subtractBeta: 1.2,
     transcodeChain: true,
     jointAttack: true,
-    saliency: 3,
     nativeFilters: true,
-    shotRetime: true,
-    cutJitter: 4,
     audioStrong: true,
   },
 };
@@ -1074,16 +1042,14 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const redo = useRegionsStore((state) => state.redo);
   const jobs = useQueueStore((state) => state.jobs);
 
-  const [level, setLevel] = useState<CleanLevel>("平衡");
-  const [retime, setRetime] = useState(30);
-  const [perturb, setPerturb] = useState(20);
   const [audioClean, setAudioClean] = useState(true);
+  const [echoDefeat, setEchoDefeat] = useState(false);
   const [antiReembed, setAntiReembed] = useState(false);
-  const [antiLevel, setAntiLevel] = useState("关闭");
-  const [recropOn, setRecropOn] = useState(false);
+  const [antiLevel, setAntiLevel] = useState("轻度");
+  const [recropOn, setRecropOn] = useState(true);
   const [detailProtectOn, setDetailProtectOn] = useState(false);
   const [sharpness, setSharpness] = useState(true);
-  const [colorFix, setColorFix] = useState(true);
+  const [colorFix, setColorFix] = useState(false);
   const [aiDenoise, setAiDenoise] = useState(true);
   const [spoof, setSpoof] = useState(false);
   const [codec, setCodec] = useState("H.264");
@@ -1094,6 +1060,8 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const [fpsOut, setFpsOut] = useState("");
   const [settingsExportDir, setSettingsExportDir] = useState("");
   const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
+  const [settingsMetricsMode, setSettingsMetricsMode] = useState("full");
+  const [settingsFilterScale, setSettingsFilterScale] = useState("720");
   const [templateList, setTemplateList] = useState<TemplateInfo[]>([]);
   const [templateValue, setTemplateValue] = useState("manual");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
@@ -1158,15 +1126,15 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       .then((settings) => {
         setSettingsExportDir((settings.export_dir as string) ?? "");
         setSettingsNaming((settings.naming as string) ?? "原文件名 + 时间戳");
+        setSettingsMetricsMode((settings.metrics_mode as string) ?? "full");
+        setSettingsFilterScale((settings.filter_scale as string) ?? "720");
       })
       .catch(() => undefined);
   }, []);
 
   const applyTemplatePayload = (payload: TemplatePayload) => {
-    setLevel(payload.level);
-    setRetime(payload.retime);
-    setPerturb(payload.perturb);
     setAudioClean(payload.audioRemix);
+    setEchoDefeat(payload.echoDefeat);
     setAntiReembed(payload.antiReembed);
     setAntiLevel(payload.anti);
     setRecropOn(payload.recropOn);
@@ -1285,11 +1253,14 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     try {
       const cleanOptions: DesensitizeOptions = {
         reorder: false,
-        speed: Math.max(0.85, 1 - 0.15 * (retime / 100)),
-        recrop: recropOn ? 0.015 + 0.075 * (perturb / 100) : 0,
-        perturb: perturb / 100,
+        speed: 1.0,
+        recrop: recropOn ? FIXED_CROP : 0,
+        perturb: FIXED_PERTURB,
         regrade: true,
         audioRemix: audioClean,
+        echoDefeat,
+        skipVmaf: settingsMetricsMode === "fast",
+        filterScale: Number(settingsFilterScale) || 0,
         sharpness,
         colorRestore: colorFix,
         denoise: aiDenoise,
@@ -1306,7 +1277,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         ...(anti
           ? {
               rotate: anti.rotate,
-              phashAttack: !anti.jointAttack,
+              phashAttack: !anti.jointAttack && anti.epsilon != null,
               phashEpsilon: anti.epsilon,
               ...(anti.median ? { median: anti.median } : {}),
               ...(anti.noise ? { noise: anti.noise } : {}),
@@ -1556,7 +1527,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                     </div>
                   </Card>
 
-                  <div className="section-title">检测信息（真实引擎）</div>
+                  <div className="section-title">文件信息</div>
                   <div className="kv-card">
                     <div className="kv-row">
                       <span>编码 / 分辨率</span>
@@ -1584,7 +1555,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                     </div>
                   </div>
 
-                  <div className="section-title">命中项</div>
+                  <div className="section-title">疑似命中项</div>
                   {report.bitstream.flags.length > 0 ? (
                     <ul className="suggest">
                       {report.bitstream.flags.map((flag) => (
@@ -1615,7 +1586,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                         )}
                       </div>
                       <p className="note">
-                        0~1 置信度，单项分数仅供参考，需干净同源基准做差分判定。
+                        0~1 置信度，研究口径；单样本分数不能证明水印存在，判定需干净同源差分与平台实测。
                       </p>
                     </>
                   )}
@@ -1650,9 +1621,12 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                               ? `${(dedupRisk.duplicate_risk * 100).toFixed(0)}% · ${dedupRisk.risk_level}`
                               : "—"}
                           </div>
-                          <div className="metric-label">判重风险（相对原片）</div>
+                          <div className="metric-label">源片相似度（判重代理）</div>
                         </div>
                       </div>
+                      <p className="note">
+                        判重维度为本地代理口径，衡量产物与源片的相似程度，不代表平台实际判定。
+                      </p>
                       {lastOutput && (
                         <div className="kv-row mt-2">
                           <span className="mono truncate text-xs text-muted-foreground">
@@ -1682,7 +1656,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                     </>
                   ) : (
                     <p className="note">
-                      清洗后展示 PSNR / SSIM / VMAF 与清除复核结果。
+                      清洗后展示 PSNR / SSIM / VMAF 与源片相似度。
                     </p>
                   )}
 
@@ -1726,36 +1700,56 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                   <div className="section-title">清洗建议</div>
                   <ul className="suggest">
                     {(() => {
-                      const suggestions: string[] = [];
+                      const suggestions: { text: string; action?: { label: string; level: AntiLevel } }[] = [];
                       if (report.bitstream.flags.length > 0) {
                         suggestions.push(
-                          `码流层命中 ${report.bitstream.flags.length} 项疑似特征，建议开启清洗并人工复核`,
+                          { text: `码流层命中 ${report.bitstream.flags.length} 项疑似特征，建议开启清洗并人工复核` },
                         );
                       }
                       if (report.blind) {
                         if (report.blind.ss > 0.5 || report.blind.qim > 0.6) {
                           suggestions.push(
-                            `空域/频域疑似度偏高（ss ${report.blind.ss.toFixed(2)}、qim ${report.blind.qim.toFixed(2)}），建议开启空间降噪与 DCT 重量化`,
+                            { text: `空域/频域疑似度偏高（ss ${report.blind.ss.toFixed(2)}、qim ${report.blind.qim.toFixed(2)}），建议开启空间降噪与 DCT 重量化` },
                           );
                         }
                         if ((report.blind.echo ?? 0) > 0.6) {
                           suggestions.push(
-                            `音频回声置信度 ${(report.blind.echo ?? 0).toFixed(2)}，建议同步音频重混`,
+                            { text: `音频回声置信度 ${(report.blind.echo ?? 0).toFixed(2)}，建议同步音频重混` },
                           );
                         }
                       }
                       if (score >= 60) {
-                        suggestions.push(`判重风险评分 ${score}，建议至少开启标准指纹对抗档`);
+                        suggestions.push({
+                          text: `与源片相似度 ${score}，建议至少开启标准指纹对抗档`,
+                          action: { label: "应用标准档", level: "标准" },
+                        });
                       }
                       if (score >= 40 && antiLevel === "关闭") {
-                        suggestions.push("当前指纹对抗关闭，建议至少开启轻度档");
+                        suggestions.push({
+                          text: "当前指纹对抗关闭，建议至少开启轻度档",
+                          action: { label: "应用轻度档", level: "轻度" },
+                        });
                       }
                       if (suggestions.length === 0) {
                         suggestions.push(
-                          "未命中明显异常，保持基础清洗即可",
+                          { text: "未命中明显异常，保持基础清洗即可" },
                         );
                       }
-                      return suggestions.map((text) => <li key={text}>{text}</li>);
+                      return suggestions.map((item) => (
+                        <li key={item.text}>
+                          {item.text}
+                          {item.action ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="ml-2"
+                              onClick={() => setAntiLevel(item.action!.level)}
+                            >
+                              {item.action.label}
+                            </Button>
+                          ) : null}
+                        </li>
+                      ));
                     })()}
                   </ul>
                 </>
@@ -1911,67 +1905,51 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
               <p className="note">
                 针对空域、DCT-QIM、小波、LSB 与音频回声五类常见水印；未知方案建议加强对抗档。
               </p>
-              <div className="section-title">清除档位</div>
-              <Tabs
-                value={level}
-                onValueChange={(value) => {
-                  const next = value as CleanLevel;
-                  setLevel(next);
-                  setRetime(LEVEL_PRESETS[next].retime);
-                  setPerturb(LEVEL_PRESETS[next].perturb);
-                }}
-              >
-                <TabsList className="grid w-full grid-cols-3">
-                  {CLEAN_LEVELS.map((l) => (
-                    <TabsTrigger key={l} value={l} className="px-1">
-                      {l}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
               <div className="param-table">
                 <div className="param-row">
-                  <span>变速倍率</span>
-                  <b>{levelDisplay(level, recropOn).speed.toFixed(3)}×</b>
-                </div>
-                <div className="param-row">
                   <span>调光微扰</span>
-                  <b>
-                    γ±{levelDisplay(level, recropOn).gamma.toFixed(2)} · 亮度±
-                    {levelDisplay(level, recropOn).brightness.toFixed(2)}
-                  </b>
+                  <b>γ±{FIXED_GAMMA.toFixed(2)} · 亮度±{FIXED_BRIGHTNESS.toFixed(3)}</b>
                 </div>
                 <div className="param-row">
                   <span>重新构图</span>
                   <b>
                     {recropOn
-                      ? `四周裁 ${(levelDisplay(level, recropOn).crop * 100).toFixed(1)}%`
+                      ? `四周裁 ${(FIXED_CROP * 100).toFixed(1)}%`
                       : "关闭（见下方开关）"}
                   </b>
                 </div>
               </div>
-              <p className="note">
-                三档只控制变速与微扰强度，指纹对抗与编码在下方独立设置。
-              </p>
-
               <div className="field">
-                <span className="field-label">
-                  变速幅度 <span className="field-value">{retime}%</span>
-                </span>
-                <Slider value={[retime]} min={0} max={100} onValueChange={([v]) => setRetime(v)} />
-              </div>
-              <div className="field">
-                <span className="field-label">
-                  画质微扰强度 <span className="field-value">{perturb}%</span>
-                </span>
-                <Slider value={[perturb]} min={0} max={100} onValueChange={([v]) => setPerturb(v)} />
+                <span className="field-label">指纹对抗强度</span>
+                <Select value={antiLevel} onValueChange={setAntiLevel}>
+                  <SelectTrigger className="form-input h-9 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="关闭">关闭 · 仅基础清洗，判重风险高</SelectItem>
+                    <SelectItem value="轻度">轻度 · 低成本近无损，适合已二创素材</SelectItem>
+                    <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
+                    <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
+                    <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="form-help">
+                  档位越高对经典哈希破坏越充分，耗时与模糊逐档上升；语义级指纹各档提升有限。本地代理口径，仅供参考。
+                </div>
               </div>
               <div className="switch">
                 <div>
                   <div className="switch-label">同步处理音频指纹</div>
-                  <div className="switch-desc">对音轨做频谱轻微处理</div>
+                  <div className="switch-desc">对音轨做等长频谱轻处理，不影响音画同步</div>
                 </div>
                 <Switch checked={audioClean} onCheckedChange={setAudioClean} />
+              </div>
+              <div className="switch">
+                <div>
+                  <div className="switch-label">音频回声扰动</div>
+                  <div className="switch-desc">同步放慢约 3% 并保音调，平台效果需实测</div>
+                </div>
+                <Switch checked={echoDefeat} onCheckedChange={setEchoDefeat} />
               </div>
               <div className="switch">
                 <div>
@@ -1983,7 +1961,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
               <div className="switch">
                 <div>
                   <div className="switch-label">重新构图（裁剪回缩）</div>
-                  <div className="switch-desc">对抗内容指纹，画质损失较大</div>
+                  <div className="switch-desc">对抗内容指纹，静态缩放微模糊，默认开启</div>
                 </div>
                 <Switch checked={recropOn} onCheckedChange={setRecropOn} />
               </div>
@@ -1993,24 +1971,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                   <div className="switch-desc">保护区域回退原帧，保留部分水印特征</div>
                 </div>
                 <Switch checked={detailProtectOn} onCheckedChange={setDetailProtectOn} />
-              </div>
-              <div className="field">
-                <span className="field-label">指纹对抗强度</span>
-                <Select value={antiLevel} onValueChange={setAntiLevel}>
-                  <SelectTrigger className="form-input h-9 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="关闭">关闭（仅基础清洗）</SelectItem>
-                    <SelectItem value="轻度">轻度 · 几乎无损，日常推荐</SelectItem>
-                    <SelectItem value="标准">标准 · 逐镜头变速 + 强音频，轻微损失</SelectItem>
-                    <SelectItem value="强力">强力 · 幅度更大，可见轻微加工</SelectItem>
-                    <SelectItem value="全兵器">极限 · 仅研究测试，不保证观感</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="form-help">
-                  轻度/标准日常可用；强力可见轻微加工；极限仅供研究。语义级指纹提升有限，建议配合多版本分发
-                </div>
               </div>
 
               <div className="section-title">画质优化</div>
@@ -2214,7 +2174,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
               </div>
               {variantDetail.metrics.duplicate_risk != null && (
                 <div className="kv-row">
-                  <span>判重风险</span>
+                  <span>源片相似度</span>
                   <b>
                     {((variantDetail.metrics.duplicate_risk as number) * 100).toFixed(0)}%
                   </b>

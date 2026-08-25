@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import platform
 import queue
@@ -12,6 +13,7 @@ import threading
 import urllib.error
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import pairwise
 from pathlib import Path
 
@@ -245,6 +247,107 @@ def _prefetch_batches(
         yield item
 
 
+def _requant_yuv(yuv: np.ndarray, levels: int) -> np.ndarray:
+    """YUV420p 紧凑平面上的像素重量化（与 RGB 重量化同口径量化步长）。"""
+    if levels <= 1:
+        return yuv
+    step = 255.0 / (levels - 1)
+    return (np.round(yuv.astype(np.float32) / step) * step).round().astype(np.uint8)
+
+
+def _process_segment_yuv(
+    path: str,
+    start_frame: int,
+    count: int,
+    output_path: str,
+    width: int,
+    height: int,
+    fps: float,
+    *,
+    chunk: int,
+    requant_eff: int,
+    phash_attack: bool,
+    phash_epsilon: float,
+    phash_iters: int,
+    attack_workers: int | None,
+    filters: list[str] | None,
+    codec: str,
+    hardware: bool,
+    crf: int,
+    preset: str,
+    gop: int | None,
+    threads: int | None,
+    progress=None,
+    stop=None,
+) -> int:
+    """单段 YUV420p 快路径：解码→重量化/签名攻击→编码到独立文件。"""
+    y_plane = height * width
+    decoder = ffmpeg.StreamingDecoder(path, start_frame, count, pix_fmt="yuv420p")
+    encoder = ffmpeg.StreamingEncoder(
+        output_path,
+        width,
+        height,
+        fps,
+        codec=codec,
+        hardware=hardware,
+        crf=crf,
+        preset=preset,
+        gop=gop,
+        color=True,
+        filters=filters,
+        input_pix_fmt="yuv420p",
+        threads=threads,
+        stop=stop,
+    )
+    out_count = 0
+    try:
+        for _, batch in _prefetch_batches(decoder, count, chunk, "uint8"):
+            if stop and stop():
+                raise InterruptedError("任务已取消")
+            if requant_eff > 0:
+                batch = _requant_yuv(batch, requant_eff)
+            if phash_attack:
+                if not batch.flags.writeable:
+                    batch = np.array(batch, dtype=np.uint8, copy=True)
+                y = batch[:, :y_plane].reshape(len(batch), height, width)
+                attacked = adversarial.attack_frames(
+                    y, epsilon=phash_epsilon, iterations=phash_iters, workers=attack_workers
+                )
+                batch[:, :y_plane] = attacked.reshape(len(batch), -1)
+            encoder.write(batch)
+            out_count += len(batch)
+            if progress:
+                progress(len(batch))
+    finally:
+        decoder.close()
+        encoder.finish()
+    return out_count
+
+
+def _concat_video_segments(segments: list[str], output: str) -> None:
+    """把同参数字视频段用 concat demuxer 无损拼接（-c copy）。"""
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
+        for segment in segments:
+            escaped = segment.replace("'", "'\\''")
+            handle.write(f"file '{escaped}'\n")
+        list_path = handle.name
+    try:
+        subprocess.run(
+            [
+                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                "-f", "concat", "-safe", "0", "-i", list_path,
+                "-c", "copy", "-an", output,
+            ],
+            capture_output=True,
+            check=True,
+        )
+    finally:
+        try:
+            os.unlink(list_path)
+        except OSError:
+            pass
+
+
 def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
     """编码域组合拳：跨 codec 二次转码，破坏量化/GOP 域的脆弱相关。
 
@@ -361,6 +464,9 @@ def run_desensitize(
     shot_retime_max: float = 1.04,
     cut_jitter: int = 0,
     audio_strong: bool = False,
+    echo_defeat: bool = False,
+    skip_vmaf: bool = False,
+    filter_scale: int = 0,
     rotate: float = 0.0,
     transcode_chain: bool = False,
     median: int = 0,
@@ -398,11 +504,26 @@ def run_desensitize(
     total_in = max(1, round(info["duration"] * fps_in))
     check_cancelled()
 
+    # 回声水印清除：音画按同一 factor 同步放慢，音频用 atempo 保调拉伸，
+    # 移动回声时延以破坏检测，同时保持音画内容对齐。
+    if echo_defeat:
+        speed = speed * 0.97
+        if speed < 0.5:
+            raise ValueError("echo_defeat 需要有效变速 factor ≥ 0.5")
+        audio_tempo = speed
+    else:
+        audio_tempo = None
+
     # ---------- 分析遍：抽样镜头边界 + 预生成逐帧随机参数 ----------
     if progress_cb:
         progress_cb(8, "扫描镜头结构")
-    sampled, _, sampled_starts = ffmpeg.decode_sampled(path, cap=400, return_starts=True)
     need_shots = reorder or shot_retime or cut_jitter > 0
+    # 分析抽样只为镜头检测与色彩还原服务；两者都关闭时跳过整段抽样解码。
+    if need_shots or color_restore:
+        sampled, _, sampled_starts = ffmpeg.decode_sampled(path, cap=400, return_starts=True)
+    else:
+        sampled = np.empty((0,), dtype=np.float32)
+        sampled_starts = [0]
     if need_shots and len(sampled) > 2 and sampled_starts:
         # 抽样按窗口返回；逐窗口检测切点再映射回全局帧号，避免窗口拼接处的假切点。
         per_window = max(1, len(sampled) // len(sampled_starts))
@@ -460,9 +581,26 @@ def run_desensitize(
     if regrade:
         gamma_strength = 0.03 + 0.2 * perturb
         brightness = 0.02 + 0.06 * perturb
-        for index in range(total_out):
-            gammas[index] = rng.uniform(1.0 - gamma_strength, 1.0 + gamma_strength)
-            deltas[index] = rng.uniform(-brightness, brightness)
+        # 时间平滑：调光参数沿低频轨迹变化，避免逐帧独立随机造成的暗部闪烁。
+        # 幅度与旧实现一致（gamma ±gamma_strength、亮度 ±brightness），对抗
+        # 语义不变，只是相邻帧连续过渡。
+        t = np.arange(total_out, dtype=np.float32)
+        period_a = float(rng.uniform(80.0, 180.0))
+        period_b = float(rng.uniform(80.0, 180.0))
+        period_c = float(rng.uniform(80.0, 180.0))
+        period_d = float(rng.uniform(80.0, 180.0))
+        phase_a = float(rng.uniform(0.0, 2.0 * np.pi))
+        phase_b = float(rng.uniform(0.0, 2.0 * np.pi))
+        phase_c = float(rng.uniform(0.0, 2.0 * np.pi))
+        phase_d = float(rng.uniform(0.0, 2.0 * np.pi))
+        gammas = 1.0 + gamma_strength * (
+            0.6 * np.sin(2.0 * np.pi * t / period_a + phase_a)
+            + 0.4 * np.sin(2.0 * np.pi * t / period_b + phase_b)
+        ).astype(np.float32)
+        deltas = brightness * (
+            0.6 * np.sin(2.0 * np.pi * t / period_c + phase_c)
+            + 0.4 * np.sin(2.0 * np.pi * t / period_d + phase_d)
+        ).astype(np.float32)
 
     mid_rng = np.random.default_rng(seed)
     spoof_bits = None
@@ -477,18 +615,75 @@ def run_desensitize(
     noise_eff = noise
     requant_eff = requant
     denoise_eff = denoise
+    # 几何/调光下沉到编码器滤镜链：仅在无重排、无变速的快路径上启用，
+    # 避免输出帧号与原帧号不一致时表达式错位；其余路径保持 numpy 实现。
+    use_native_geometry = (
+        not reorder and speed == 1.0 and not shot_retime and cut_jitter == 0
+    )
+    recrop_eff = recrop
+    regrade_eff = regrade
+    rotate_eff = rotate
+    if use_native_geometry:
+        if recrop > 0 and ffmpeg.has_filter("crop") and ffmpeg.has_filter("scale"):
+            recrop_eff = 0.0
+        if regrade and ffmpeg.has_filter("eq"):
+            regrade_eff = False
+        if rotate > 0 and ffmpeg.has_filter("rotate"):
+            rotate_eff = 0.0
+
+    def geometry_chain(offset: int) -> list[str]:
+        """几何/调光原生滤镜链；offset 用于分段并行时保持全局帧号连续。"""
+        chain: list[str] = []
+        if not use_native_geometry:
+            return chain
+        frame_var = f"(n+{offset})"
+        if recrop > 0 and ffmpeg.has_filter("crop") and ffmpeg.has_filter("scale"):
+            frame_w, frame_h = info["width"], info["height"]
+            crop_x = int(frame_w * recrop)
+            crop_y = int(frame_h * recrop)
+            crop_w = max(2, frame_w - 2 * crop_x)
+            crop_h = max(2, frame_h - 2 * crop_y)
+            chain.append(
+                f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},scale={frame_w}:{frame_h}:flags=bilinear"
+            )
+        if filter_scale > 0:
+            frame_w, frame_h = info["width"], info["height"]
+            scale_h = max(2, round(frame_h * filter_scale / frame_w))
+            chain.append(f"scale={filter_scale}:{scale_h}:flags=bicubic")
+        if regrade and ffmpeg.has_filter("eq"):
+            gamma_expr = (
+                f"1+{gamma_strength:.5f}*(0.6*sin(2*PI*{frame_var}/{period_a:.1f}+{phase_a:.4f})"
+                f"+0.4*sin(2*PI*{frame_var}/{period_b:.1f}+{phase_b:.4f}))"
+            )
+            brightness_expr = (
+                f"{brightness:.5f}*(0.6*sin(2*PI*{frame_var}/{period_c:.1f}+{phase_c:.4f})"
+                f"+0.4*sin(2*PI*{frame_var}/{period_d:.1f}+{phase_d:.4f}))"
+            )
+            chain.append(f"eq=gamma='{gamma_expr}':brightness='{brightness_expr}'")
+        if rotate > 0 and ffmpeg.has_filter("rotate"):
+            # numpy 侧为 max_angle(度) * sin(2π n / 200)；ffmpeg rotate 用弧度。
+            angle_rad = rotate * np.pi / 180.0
+            chain.append(
+                f"rotate=a='{angle_rad:.6f}*sin(2*PI*{frame_var}/200)':c=black:bilinear=1"
+            )
+        return chain
+
+    base_filters: list[str] = []
     if sharpness and ffmpeg.has_filter("unsharp"):
-        native_chain.append("unsharp=5:5:0.25:3:3:0.0")
+        base_filters.append("unsharp=5:5:0.25:3:3:0.0")
         sharpness_eff = False
     if denoise and ffmpeg.has_filter("removegrain"):
-        native_chain.append("removegrain=4")
+        base_filters.append("removegrain=4")
         denoise_eff = False
     if noise > 0 and ffmpeg.has_filter("noise"):
-        native_chain.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
+        base_filters.append(f"noise=alls={max(1, round(noise * 255))}:allf=t")
         noise_eff = 0.0
     if requant > 0 and ffmpeg.has_filter("posterize"):
-        native_chain.append(f"posterize={requant}")
+        base_filters.append(f"posterize={requant}")
         requant_eff = 0
+    if filter_scale > 0 and use_native_geometry:
+        base_filters.append(f"scale={info['width']}:{info['height']}:flags=bicubic")
+    native_chain = geometry_chain(0) + base_filters
     assault_params = extra_attacks.AssaultParams(
         mirror=mirror,
         jitter=jitter,
@@ -516,8 +711,8 @@ def run_desensitize(
     # 变换策略：与分块无关的选项与上下文一次性组装，分块内只调用 apply。
     strategy = strategies.get_strategy(transform_strategy)
     transform_options = strategies.TransformOptions(
-        recrop=recrop,
-        regrade=regrade,
+        recrop=recrop_eff,
+        regrade=regrade_eff,
         anti_reembed=anti_reembed,
         color_restore=color_restore,
         sharpness=sharpness_eff,
@@ -550,10 +745,11 @@ def run_desensitize(
 
     # 分块大小：按内存预算自适应（float32 每帧 4 字节，预留 8 倍中间量余量）。
     budget = _memory_budget_bytes()
+    adaptive_parallelism = min(4, max(2, os.cpu_count() or 2))
     try:
-        concurrency = max(1, int(db.load_settings().get("parallelism", 2)))
+        concurrency = max(1, int(db.load_settings().get("parallelism", adaptive_parallelism)))
     except (TypeError, ValueError):
-        concurrency = 2
+        concurrency = adaptive_parallelism
     # 预算按并行任务数均分，保证并行度再高也不会叠加超内存。
     budget //= concurrency
     frame_dtype = getattr(strategy, "frame_dtype", "float32")
@@ -575,37 +771,65 @@ def run_desensitize(
             if audio_strong:
                 signal = audio_transform.remix_strong(
                     signal, sample_rate, audio_rng,
-                    tempo=1.04, pitch_ratio=0.985, eq_db=4.0, noise_floor=0.003,
+                    pitch_ratio=0.985, eq_db=4.0, noise_floor=0.003,
                 )
             else:
-                signal = audio_transform.remix(signal, sample_rate, audio_rng, speed_factor=0.97)
+                # 等长重混：不改内容时间线，音画同步只由末尾按实际帧数对齐兜底。
+                signal = audio_transform.remix(signal, sample_rate, audio_rng)
             audio_signal = signal
 
     # ---------- 处理遍：逐块解码 → 变换 → 流式编码 ----------
     temp_video = output + ".video.mp4"
-    encoder = ffmpeg.StreamingEncoder(
-        temp_video,
-        info["width"],
-        info["height"],
-        output_fps,
-        codec=codec,
-        hardware=hardware,
-        crf=crf,
-        preset=preset,
-        gop=gop,
-        bitrate_kbps=bitrate_kbps,
-        out_size=out_size,
-        color=True,
-        filters=native_chain or None,
-        stop=should_stop,
+    # YUV420p 快路径：仅当所有像素变换都已下沉原生、且无任何 RGB 专属
+    # 选项时启用，原始帧体积减半、省去 RGB↔YUV 转换。
+    use_yuv_path = (
+        use_native_geometry
+        and getattr(strategy, "name", "") == "fast"
+        and not color_restore
+        and not banner
+        and not anti_reembed
+        and not spoof
+        and detail_protect <= 0
+        and saliency == 0
+        and not mirror
+        and jitter <= 0
+        and perspective <= 0
+        and warp <= 0
+        and median <= 0
+        and subtract_beta <= 0
+        and dct_step <= 0
+        and chroma_levels <= 0
+        and drop_every <= 0
+        and not multi_hash_attack
+    )
+    # YUV 快路径自建分段/单段编码器写视频轨；RGB 路径用共享编码器。
+    encoder = (
+        None
+        if use_yuv_path
+        else ffmpeg.StreamingEncoder(
+            temp_video,
+            info["width"],
+            info["height"],
+            output_fps,
+            codec=codec,
+            hardware=hardware,
+            crf=crf,
+            preset=preset,
+            gop=gop,
+            bitrate_kbps=bitrate_kbps,
+            out_size=out_size,
+            color=True,
+            filters=native_chain or None,
+            stop=should_stop,
+        )
     )
     out_index = 0
 
     def apply_attacks(frames, output_ids):
         """pHash 攻击、几何去同步与细节保护等与分块无关的后置变换。"""
         protected = frames.copy() if detail_protect > 0 else None
-        if rotate > 0:
-            frames = strategies.rotate_de_sync(frames, output_ids, rotate)
+        if rotate_eff > 0:
+            frames = strategies.rotate_de_sync(frames, output_ids, rotate_eff)
         if assault_params.enabled:
             frames = extra_attacks.apply(frames, assault_params, assault_rng)
         if phash_attack:
@@ -623,7 +847,101 @@ def run_desensitize(
         return frames
 
     try:
-        if speed == 1.0 and not shot_retime and cut_jitter == 0:
+        if use_yuv_path:
+            # YUV420p 快路径：解码/写回体积减半，静态变换全在编码器滤镜链，
+            # numpy 侧只剩像素重量化与 Y 平面签名攻击。长片按 CPU 核数分
+            # 2~3 段并发编码（滤镜链单线程是瓶颈），段间用帧号偏移保持
+            # eq/rotate 轨迹连续，任一段失败回退串行。
+            frame_h, frame_w = info["height"], info["width"]
+            cpu = os.cpu_count() or 1
+            max_k = 3 if cpu >= 12 else (2 if cpu >= 8 else 1)
+            k = max(1, min(max_k, total_out // 800))
+            if total_out < 2400:
+                k = 1
+            override_k = os.environ.get("CTHULHU_SEGMENT_K")
+            if override_k:
+                try:
+                    k = max(1, min(int(override_k), max_k, total_out))
+                except ValueError:
+                    pass
+            if k <= 1:
+                out_index = _process_segment_yuv(
+                    path, 0, total_out, temp_video,
+                    frame_w, frame_h, output_fps,
+                    chunk=chunk, requant_eff=requant_eff, phash_attack=phash_attack,
+                    phash_epsilon=phash_epsilon, phash_iters=phash_iters,
+                    attack_workers=None, filters=native_chain, codec=codec, hardware=hardware,
+                    crf=crf, preset=preset, gop=gop, threads=None,
+                    stop=should_stop,
+                )
+            else:
+                seg_paths = [f"{temp_video}.seg{index}.mp4" for index in range(k)]
+                seg_len = math.ceil(total_out / k)
+                seg_threads = max(2, cpu // k)
+                done = [0]
+                progress_lock = threading.Lock()
+
+                def seg_progress(delta: int) -> None:
+                    with progress_lock:
+                        done[0] += delta
+                        current = done[0]
+                    if progress_cb and total_out:
+                        progress_cb(
+                            8 + int(current / total_out * 82),
+                            f"处理中 {current}/{total_out} 帧",
+                        )
+
+                try:
+                    with ThreadPoolExecutor(max_workers=k) as pool:
+                        futures = []
+                        for index in range(k):
+                            start = index * seg_len
+                            count = min(seg_len, total_out - start)
+                            filters = geometry_chain(start) + base_filters
+                            futures.append(
+                                pool.submit(
+                                    _process_segment_yuv,
+                                    path, start, count, seg_paths[index],
+                                    frame_w, frame_h, output_fps,
+                                    chunk=chunk, requant_eff=requant_eff,
+                                    phash_attack=phash_attack,
+                                    phash_epsilon=phash_epsilon,
+                                    phash_iters=phash_iters, attack_workers=2,
+                                    filters=filters,
+                                    codec=codec, hardware=hardware, crf=crf,
+                                    preset=preset, gop=gop, threads=seg_threads,
+                                    progress=seg_progress if progress_cb else None,
+                                    stop=should_stop,
+                                )
+                            )
+                        for future in as_completed(futures):
+                            out_index += future.result()
+                    _concat_video_segments(seg_paths, temp_video)
+                except InterruptedError:
+                    raise
+                except BaseException:  # noqa: BLE001 - 段级失败统一回退串行
+                    # 任一段失败回退串行，保证任务可用；清理半成品段文件。
+                    for seg_path in seg_paths:
+                        try:
+                            os.unlink(seg_path)
+                        except OSError:
+                            pass
+                    out_index = _process_segment_yuv(
+                        path, 0, total_out, temp_video,
+                        frame_w, frame_h, output_fps,
+                        chunk=chunk, requant_eff=requant_eff, phash_attack=phash_attack,
+                        phash_epsilon=phash_epsilon, phash_iters=phash_iters,
+                        attack_workers=None, filters=native_chain, codec=codec, hardware=hardware,
+                        crf=crf, preset=preset, gop=gop, threads=None,
+                        stop=should_stop,
+                    )
+                else:
+                    for seg_path in seg_paths:
+                        try:
+                            os.unlink(seg_path)
+                        except OSError:
+                            pass
+        elif speed == 1.0 and not shot_retime and cut_jitter == 0:
             # 默认快路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
             for seg_start, orig_start, seg_len in segments:
@@ -688,22 +1006,30 @@ def run_desensitize(
                                 )
                 finally:
                     decoder.close()
-        encoder.finish()
+        if encoder is not None:
+            encoder.finish()
         if audio_signal is not None:
-            # 以实际写出的帧数对齐音轨时长，避免抽帧类攻击造成的音画错位。
-            target_len = round(out_index / output_fps * sample_rate)
-            if target_len != len(audio_signal):
-                audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
+            # 以实际写出的帧数对齐音轨时长：等长重混下仅当视频做统一变速
+            # 时才需要拉伸，且拉伸比例与视频统一变速因子一致，保持内容对齐。
+            if not echo_defeat:
+                target_len = round(out_index / output_fps * sample_rate)
+                if target_len != len(audio_signal):
+                    audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
             audio_payload = (
                 (np.clip(audio_signal, -1, 1) * 32767).round().astype(np.int16).tobytes()
             )
+            mux_cmd = [
+                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                "-i", temp_video,
+                "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
+            ]
+            if echo_defeat:
+                # atempo 保调拉伸放在 mux 滤镜里完成，与视频 factor 一致，
+                # Python 侧不重采样，避免二次变速造成漂移。
+                mux_cmd += ["-af", f"atempo={audio_tempo:.5f}"]
+            mux_cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", output]
             subprocess.run(
-                [
-                    ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                    "-i", temp_video,
-                    "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", output,
-                ],
+                mux_cmd,
                 input=audio_payload,
                 capture_output=True,
                 check=True,
@@ -717,7 +1043,8 @@ def run_desensitize(
         if transcode_chain:
             _transcode_chain(output, codec, check_cancelled)
     except BaseException:
-        encoder.abort()
+        if encoder is not None:
+            encoder.abort()
         try:
             os.unlink(temp_video)
         except OSError:
@@ -758,7 +1085,7 @@ def run_desensitize(
         "vmaf": None,
         "vmaf_aligned": (
             None
-            if quality_na
+            if (quality_na or skip_vmaf)
             else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=output_fps)
         ),
         "quality_metrics_na": quality_na,
@@ -869,7 +1196,10 @@ def _product_kind(path: Path) -> str:
 
 
 def list_outputs(source: str) -> dict:
-    """按源素材匹配全部清洗/修复/候选产物（含导出目录），最新在前。"""
+    """按源素材匹配清洗/修复产物（含导出目录），最新在前。
+
+    候选产物属未来规划能力，当前不在界面展示。
+    """
     source = _require_file(source)
     outputs = [
         {
@@ -880,16 +1210,21 @@ def list_outputs(source: str) -> dict:
             "mtime": candidate.stat().st_mtime,
         }
         for candidate in _product_candidates(source)
+        if _product_kind(candidate) != "candidate"
     ]
     outputs.sort(key=lambda item: item["mtime"], reverse=True)
     return {"source": source, "outputs": outputs}
 
 
 def library_output_counts() -> dict[str, int]:
-    """素材库每个源素材的产物数量（清洗/修复/候选三类合计）。"""
+    """素材库每个源素材的产物数量（清洗/修复两类合计）。"""
     counts: dict[str, int] = {}
     for item in db.list_library():
-        counts[item["path"]] = len(_product_candidates(item["path"]))
+        counts[item["path"]] = sum(
+            1
+            for candidate in _product_candidates(item["path"])
+            if _product_kind(candidate) != "candidate"
+        )
     return counts
 
 

@@ -1,15 +1,12 @@
 import type { TemplateInfo } from "@/lib/backend";
 
-export type CleanLevel = "轻度" | "平衡" | "深度";
 export type AntiLevel = "关闭" | "轻度" | "标准" | "强力" | "全兵器";
 export type Codec = "H.264" | "H.265";
 
 /** 与右侧「清洗去重」面板参数一一对应，模板保存完整配置。 */
 export interface TemplatePayload {
-  level: CleanLevel;
-  retime: number;
-  perturb: number;
   audioRemix: boolean;
+  echoDefeat: boolean;
   antiReembed: boolean;
   anti: AntiLevel;
   recropOn: boolean;
@@ -26,20 +23,12 @@ export interface TemplatePayload {
   fpsOut: number | null;
 }
 
-export const LEVEL_PRESETS: Record<CleanLevel, { retime: number; perturb: number }> = {
-  轻度: { retime: 25, perturb: 15 },
-  平衡: { retime: 30, perturb: 20 },
-  深度: { retime: 40, perturb: 30 },
-};
-
 export const DEFAULT_TEMPLATE: TemplatePayload = {
-  level: "平衡",
-  retime: 30,
-  perturb: 20,
   audioRemix: true,
+  echoDefeat: false,
   antiReembed: false,
-  anti: "关闭",
-  recropOn: false,
+  anti: "轻度",
+  recropOn: true,
   detailProtectOn: false,
   sharpness: true,
   colorRestore: true,
@@ -57,12 +46,10 @@ export const DEFAULT_TEMPLATE: TemplatePayload = {
 export function payloadOf(template: TemplateInfo): TemplatePayload {
   const raw = (template.payload ?? {}) as Record<string, unknown>;
   return {
-    level: (raw.level as CleanLevel) ?? "平衡",
-    retime: (raw.retime as number) ?? (raw.restruct as number) ?? 30,
-    perturb: (raw.perturb as number) ?? 20,
     audioRemix: (raw.audioRemix as boolean) ?? (raw.audio as boolean) ?? true,
+    echoDefeat: (raw.echoDefeat as boolean) ?? false,
     antiReembed: (raw.antiReembed as boolean) ?? false,
-    anti: (raw.anti as AntiLevel) ?? "关闭",
+    anti: (raw.anti as AntiLevel) ?? "轻度",
     recropOn: (raw.recropOn as boolean) ?? false,
     detailProtectOn: (raw.detailProtectOn as boolean) ?? false,
     sharpness: (raw.sharpness as boolean) ?? true,

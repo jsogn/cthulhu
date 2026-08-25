@@ -26,7 +26,9 @@ import { toast } from "@/stores/toasts";
 const DEFAULTS: Record<string, string> = {
   export_dir: "~/导出/Cthulhu",
   naming: "原文件名 + 时间戳",
-  parallelism: "2",
+  parallelism: "4",
+  metrics_mode: "full",
+  filter_scale: "720",
   gpu: "仅 CPU（软件编码）",
   transform_strategy: "fast",
   preset: "veryfast",
@@ -217,6 +219,36 @@ export default function SettingsView() {
             </Select>
             <div className="form-help">
               数值越高处理越快但占用资源越多；内存预算会按并行度自动均分
+            </div>
+          </div>
+          <div className="form-field">
+            <Label>画质指标</Label>
+            <Select value={form.metrics_mode} onValueChange={(v) => setValue("metrics_mode", v)}>
+              <SelectTrigger className="form-input h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full">完整（含 VMAF，每任务约多 5 秒）</SelectItem>
+                <SelectItem value="fast">快速（跳过 VMAF，批量推荐）</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="form-help">
+              跳过 VMAF 后处理校验仍展示 PSNR/SSIM 与源片相似度
+            </div>
+          </div>
+          <div className="form-field">
+            <Label>滤镜内部精度</Label>
+            <Select value={form.filter_scale} onValueChange={(v) => setValue("filter_scale", v)}>
+              <SelectTrigger className="form-input h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1080">原画质（1080p 滤镜，较慢）</SelectItem>
+                <SelectItem value="720">均衡（720p 滤镜 · 推荐）</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="form-help">
+              低精度滤镜先降采样再放大，去噪/几何类操作明显提速，画面仅有轻微软化
             </div>
           </div>
           <div className="form-field">

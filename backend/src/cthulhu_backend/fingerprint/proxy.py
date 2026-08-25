@@ -199,7 +199,7 @@ def gate_report(
     ref: str,
     old: str,
     new: str,
-    cap: int = 40,
+    cap: int = 80,
     tolerance: float = 0.03,
 ) -> dict:
     """性能优化回归门：同一原片下比较新旧实现的对抗指标，不得劣化。"""
@@ -253,7 +253,7 @@ def _main(argv: list[str] | None = None) -> None:
     gate.add_argument("--ref", required=True)
     gate.add_argument("--old", required=True)
     gate.add_argument("--new", required=True)
-    gate.add_argument("--cap", type=int, default=40)
+    gate.add_argument("--cap", type=int, default=80)
     gate.add_argument("--tolerance", type=float, default=0.03)
 
     args = parser.parse_args(argv)

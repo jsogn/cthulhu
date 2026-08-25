@@ -67,6 +67,23 @@ def test_audio_remix_preserves_shape_and_peak():
     assert abs(float(np.max(np.abs(out))) - 0.25) < 0.05
 
 
+def test_audio_remix_keeps_content_timeline_aligned():
+    """等长重混不应使内容提前或滞后：互相关峰值应停留在零延迟附近。"""
+    from scipy.signal import correlate
+
+    signal = samples.make_audio(2.0, seed=53)
+    sample_rate = 16000
+    rng = np.random.default_rng(1)
+    outputs = (
+        audio_transform.remix(signal, sample_rate, rng),
+        audio_transform.remix_strong(signal, sample_rate, rng),
+    )
+    for out in outputs:
+        corr = correlate(signal, out, mode="full", method="fft")
+        lag_samples = len(signal) - 1 - int(np.argmax(corr))
+        assert abs(lag_samples / sample_rate) < 0.01
+
+
 def test_sharpen_increases_gradient_energy():
     frame = samples.make_video_frames(1, 128, 128, seed=41)[0]
     blurred = gaussian_filter(frame, sigma=1.5)
