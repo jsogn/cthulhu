@@ -22,6 +22,7 @@ import {
 import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { deleteProducts, listAllProducts, type ProductInfo } from "@/lib/backend";
+import { useMaterialsStore } from "@/stores/materials";
 import { useQueueStore } from "@/stores/queue";
 import { openInFolder, toast } from "@/stores/toasts";
 
@@ -57,6 +58,7 @@ export default function ProductsView() {
       const data = await listAllProducts();
       setProducts(data.products);
       setSummary({ count: data.count, total_size: data.total_size });
+      void useMaterialsStore.getState().refreshOutputCounts();
       setSelected((prev) => {
         const next = new Set([...prev].filter((p) => data.products.some((x) => x.path === p)));
         return next;

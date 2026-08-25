@@ -1251,6 +1251,8 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     void fetchOutputs(material.path)
       .then((result) => {
         setOutputs(result.outputs);
+        // 外部手动删除产物文件后记录会被剪除，同步刷新数量标签避免残留。
+        void useMaterialsStore.getState().refreshOutputCounts();
       })
       .catch(() => setOutputs([]));
   }, [material?.path]);
