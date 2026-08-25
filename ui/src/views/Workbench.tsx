@@ -1164,7 +1164,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         ? "var(--warn)"
         : "var(--ok)";
   const scoreSub = !report
-    ? "尚未扫描暗水印，点击素材库右上角「批量扫描」开始检测"
+    ? "尚未检测，切换到「检测参考」点击「检测此素材」"
     : report.bitstream.flags.length > 0
       ? `码流评分 ${score} · 命中 ${report.bitstream.flags.length} 项疑似特征 · 建议差分复核`
       : `码流评分 ${score} · 未命中明显码流异常 · 建议差分复核`;
