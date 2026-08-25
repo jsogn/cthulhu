@@ -1234,10 +1234,9 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       settingsNaming === "时间戳 + 原文件名"
         ? `${ts}_${srcName}_清洗.mp4`
         : `${srcName}_清洗_${ts}.mp4`;
-    const baseDir = settingsExportDir;
-    const output = baseDir
-      ? `${baseDir.replace(/\/+$/, "")}/${fileName}`
-      : `${srcStem}_清洗_${ts}.mp4`;
+    // 产物始终写入导出目录（默认 ~/Documents/Cthulhu），绝不与源视频同目录。
+    const baseDir = settingsExportDir || "~/Documents/Cthulhu";
+    const output = `${baseDir.replace(/\/+$/, "")}/${fileName}`;
     const anti = ANTI_PRESETS[antiLevel];
     try {
       const cleanOptions: DesensitizeOptions = {
