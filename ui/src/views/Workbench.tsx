@@ -387,11 +387,6 @@ function MaterialPane() {
               <p>正在启动处理引擎…</p>
               <p className="mat-empty-hint">首次启动需要一点时间，请稍候</p>
             </div>
-          ) : material?.missing ? (
-            <div className="mat-empty">
-              <p>文件不存在或已被移动</p>
-              <p className="mat-empty-hint">素材记录仍保留；文件放回原路径后会自动恢复，或在素材库中移除记录</p>
-            </div>
           ) : (
             <div className="mat-empty">
               <p>素材库还是空的</p>
@@ -941,6 +936,11 @@ function PreviewPane({
                 onEnded={() => setPlaying(false)}
               />
             )
+          ) : material?.missing ? (
+            <div className="mat-empty">
+              <p>文件不存在或已被移动</p>
+              <p className="mat-empty-hint">素材记录仍保留；文件放回原路径后会自动恢复，或在素材库中移除记录</p>
+            </div>
           ) : (
             <div
               className="compare"
