@@ -57,17 +57,18 @@ async function startBackend() {
     const staticDir = path.join(process.resourcesPath, "backend", "ui-dist");
     const ffmpegDir = path.join(process.resourcesPath, "ffmpeg");
     const ffmpegBinary = path.join(ffmpegDir, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+    const deepModel = path.join(process.resourcesPath, "backend", "models", "clip-vit-b32-vision-fp16.onnx");
     const userData = app.getPath("userData");
     const env = {
       ...process.env,
       CTHULHU_STATIC_DIR: staticDir,
       // 数据写入用户目录，避免向只读的 .app 包内写库与演示素材。
       CTHULHU_DB: path.join(userData, "cthulhu.db"),
-      CTHULHU_DEMO_LIBRARY: path.join(userData, "demo-library"),
+      CTHULHU_THUMB_CACHE: path.join(userData, "thumb-cache"),
+      CTHULHU_DEEP_MODEL: deepModel,
       CTHULHU_AUTH_TOKEN: authToken,
       CTHULHU_PORT: String(port),
       CTHULHU_FFMPEG_INSTALL_DIR: path.join(userData, "ffmpeg"),
-      CTHULHU_SKIP_DEMO: "1",
     };
     if (fs.existsSync(ffmpegBinary)) {
       env.CTHULHU_FFMPEG_DIR = ffmpegDir;

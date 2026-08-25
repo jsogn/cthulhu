@@ -1405,7 +1405,12 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       toast("请先添加水印区域");
       return;
     }
-    const output = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_repaired.mp4`;
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+      now.getHours(),
+    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const output = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_修复_${ts}.mp4`;
     try {
       await enqueueJob(`${target.name} · 修复`, [
         {
