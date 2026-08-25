@@ -256,11 +256,22 @@ def list_variants(source: str | None = None) -> list[dict]:
 
 
 def delete_variant_by_output(output: str) -> bool:
+    """按输出路径删除产物记录，兼容 ~ 与绝对路径两种写法。"""
     try:
+        target = os.path.realpath(os.path.expanduser(output))
         with _connect() as connection:
+            rows = connection.execute("SELECT output FROM variants").fetchall()
+            matched = [
+                row["output"]
+                for row in rows
+                if os.path.realpath(os.path.expanduser(row["output"])) == target
+            ]
+            if not matched:
+                return False
+            placeholders = ", ".join("?" for _ in matched)
             cursor = connection.execute(
-                "DELETE FROM variants WHERE output IN (?, ?)",
-                (output, os.path.expanduser(output)),
+                f"DELETE FROM variants WHERE output IN ({placeholders})",
+                matched,
             )
         return cursor.rowcount > 0
     except sqlite3.OperationalError:

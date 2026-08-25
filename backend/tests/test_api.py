@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -279,6 +280,25 @@ def test_products_delete_rejects_non_product(tmp_path):
     response = client.post("/api/products/delete", json={"paths": [str(source)]})
     assert response.status_code == 400
     assert source.exists()
+
+
+def test_products_delete_matches_tilde_record(tmp_path, monkeypatch):
+    """历史记录以 ~ 路径存储时，按展开后的绝对路径删除同样生效。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    output_tilde = "~/x_清洗_y.mp4"
+    db.create_variant(
+        source=str(tmp_path / "src.mp4"),
+        output=output_tilde,
+        options={},
+        seed=1,
+    )
+    expanded = os.path.expanduser(output_tilde)
+    response = client.post("/api/products/delete", json={"paths": [expanded]})
+    assert response.status_code == 200
+    assert response.json()["removed"] == 1
+    assert client.get("/api/products").json()["count"] == 0
 
 
 @needs_ffmpeg

@@ -23,6 +23,7 @@ import {
 import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { deleteProducts, listAllProducts, type ProductInfo } from "@/lib/backend";
+import { useQueueStore } from "@/stores/queue";
 import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<ProductInfo["kind"], string> = {
@@ -48,6 +49,8 @@ export default function ProductsView() {
   const [sort, setSort] = useState<SortKey>("time");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmPaths, setConfirmPaths] = useState<string[] | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const jobs = useQueueStore((state) => state.jobs);
 
   const load = async () => {
     setLoading(true);
@@ -66,9 +69,17 @@ export default function ProductsView() {
     }
   };
 
+  // 任务数变化时自动刷新：清洗/修复任务结束会新增产物，无需手动点刷新。
+  const activeTasks = jobs.reduce(
+    (sum, job) =>
+      sum +
+      job.tasks.filter((t) => t.status === "running" || t.status === "queued").length,
+    0,
+  );
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTasks]);
 
   const sorted = useMemo(() => {
     const arr = [...products];
@@ -106,6 +117,19 @@ export default function ProductsView() {
     }
   };
 
+  const confirmClearAll = async () => {
+    try {
+      const result = await deleteProducts(products.map((p) => p.path));
+      toast(`已清空 ${result.removed} 个产物`, "源视频不受影响");
+      setSelected(new Set());
+      await load();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "清空失败");
+    } finally {
+      setConfirmClear(false);
+    }
+  };
+
   return (
     <>
       <div className="view-head">
@@ -121,6 +145,14 @@ export default function ProductsView() {
           >
             <Trash2 />
             删除所选
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-destructive"
+            disabled={products.length === 0}
+            onClick={() => setConfirmClear(true)}
+          >
+            清空
           </Button>
           <Button variant="ghost" disabled={loading} onClick={() => void load()}>
             <RefreshCw />
@@ -246,6 +278,23 @@ export default function ProductsView() {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={() => void confirmDelete()}>确认删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认清空全部产物</AlertDialogTitle>
+            <AlertDialogDescription>
+              将删除全部 {products.length} 个产物文件及记录，文件会从磁盘移除，此操作不可恢复；源视频不受影响。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmClearAll()}>
+              确认清空
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
