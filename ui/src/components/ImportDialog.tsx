@@ -83,14 +83,18 @@ export default function ImportDialog() {
     if (!files.length) return;
     setPending((prev) => [
       ...prev,
-      ...files.map((file) => ({
-        file,
-        name: file.name,
-        size: fmtSize(file.size),
-        path: window.appEnv?.getPathForFile?.(file) ?? null,
-        dup: materials.some((m) => m.name === file.name) || prev.some((p) => p.name === file.name),
-        invalid: !/\.(mp4|mov|mkv|avi|webm|flv|ts)$/i.test(file.name),
-      })),
+      ...files.map((file) => {
+        const path = window.appEnv?.getPathForFile?.(file) ?? null;
+        return {
+          file,
+          name: file.name,
+          size: fmtSize(file.size),
+          path,
+          // 仅按真实路径预判重复；同名不同内容的文件交由后端内容哈希判定。
+          dup: !!path && (materials.some((m) => m.path === path) || prev.some((p) => p.path === path)),
+          invalid: !/\.(mp4|mov|mkv|avi|webm|flv|ts)$/i.test(file.name),
+        };
+      }),
     ]);
   };
 
