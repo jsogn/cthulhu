@@ -89,6 +89,19 @@ def init_db() -> None:
         if os.environ.get("CTHULHU_DEMO_LIBRARY") != "1":
             _ensure_library_table(connection)
             connection.execute("DELETE FROM library WHERE path LIKE '%demo-library%'")
+            # 按真实路径归并历史重复导入（保留最近一次），修复旧版本重复记录。
+            seen: dict[str, str] = {}
+            for row in connection.execute(
+                "SELECT path FROM library ORDER BY added_at DESC"
+            ).fetchall():
+                try:
+                    key = os.path.realpath(row["path"])
+                except OSError:
+                    key = row["path"]
+                if key in seen:
+                    connection.execute("DELETE FROM library WHERE path = ?", (row["path"],))
+                else:
+                    seen[key] = row["path"]
         # 平台命名的种子模板从未实现平台专属处理，属误导性残留，统一清除；
         # 模板改为完全由用户创建与管理。
         for legacy_name in ("抖音投流", "快手分发", "跨平台通用"):
@@ -321,15 +334,35 @@ def _ensure_library_table(connection: sqlite3.Connection) -> None:
 
 
 def add_library(path: str, name: str, size: int, meta: dict | None = None) -> None:
-    """登记素材到持久化素材库；重复导入会刷新时间，排到最前。"""
+    """登记素材到持久化素材库；重复导入（含符号链接/大小写别名）会刷新时间，排到最前。"""
     import time
+
+    real = os.path.realpath(path)
 
     with _connect() as connection:
         _ensure_library_table(connection)
+        # 同一文件可能以不同路径字符串出现（/tmp 与 /private/tmp、iCloud
+        # 别名、大小写变体），按解析后的真实路径归并，复用原登记路径。
+        for row in connection.execute("SELECT path FROM library").fetchall():
+            try:
+                if os.path.realpath(row["path"]) == real:
+                    path = row["path"]
+                    break
+            except OSError:
+                continue
         connection.execute(
             "INSERT OR REPLACE INTO library (path, name, size, meta, added_at) VALUES (?, ?, ?, ?, ?)",
             (path, name, size, json.dumps(meta or {}, ensure_ascii=False), time.time()),
         )
+        # 清除同一文件的历史别名记录（符号链接/大小写变体造成的重复行）。
+        for row in connection.execute("SELECT path FROM library").fetchall():
+            if row["path"] == path:
+                continue
+            try:
+                if os.path.realpath(row["path"]) == real:
+                    connection.execute("DELETE FROM library WHERE path = ?", (row["path"],))
+            except OSError:
+                continue
 
 
 def list_library() -> list[dict]:
