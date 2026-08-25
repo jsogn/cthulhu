@@ -106,7 +106,7 @@ export default function ProductsView() {
     if (!confirmPaths) return;
     try {
       const result = await deleteProducts(confirmPaths);
-      toast(`已删除 ${result.removed} 个产物`, "源视频不受影响");
+      toast(`已删除 ${result.removed} 个产物`);
       setSelected(new Set());
       await load();
     } catch (error) {
@@ -119,7 +119,7 @@ export default function ProductsView() {
   const confirmClearAll = async () => {
     try {
       const result = await deleteProducts(products.map((p) => p.path));
-      toast(`已清空 ${result.removed} 个产物`, "源视频不受影响");
+      toast(`已清空 ${result.removed} 个产物`);
       setSelected(new Set());
       await load();
     } catch (error) {
@@ -269,7 +269,7 @@ export default function ProductsView() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除产物</AlertDialogTitle>
             <AlertDialogDescription>
-              将删除 {confirmPaths?.length ?? 0} 个产物文件及记录，文件会从磁盘移除，此操作不可恢复；源视频不受影响。
+              将删除 {confirmPaths?.length ?? 0} 个产物文件及记录，文件会从磁盘移除，此操作不可恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -284,7 +284,7 @@ export default function ProductsView() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认清空全部产物</AlertDialogTitle>
             <AlertDialogDescription>
-              将删除全部 {products.length} 个产物文件及记录，文件会从磁盘移除，此操作不可恢复；源视频不受影响。
+              将删除全部 {products.length} 个产物文件及记录，文件会从磁盘移除，此操作不可恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
