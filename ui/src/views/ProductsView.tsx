@@ -200,7 +200,14 @@ export default function ProductsView() {
                     来源：{basename(p.source) || "未知"}
                   </div>
                 </div>
-                <div className="w-20 shrink-0 text-right text-sm">{fmtSize(p.size)}</div>
+                <div
+                  className={cn(
+                    "w-20 shrink-0 text-right text-sm",
+                    !p.exists && "text-muted-foreground",
+                  )}
+                >
+                  {fmtSize(p.size)}
+                </div>
                 <div className="w-40 shrink-0 text-right text-xs text-muted-foreground">
                   {formatTime(p.mtime)}
                 </div>
