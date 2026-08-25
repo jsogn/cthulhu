@@ -211,6 +211,42 @@ def test_import_stores_file_and_returns_path(tmp_path, monkeypatch):
 
 
 @needs_ffmpeg
+def test_import_deduplicates_content_and_reuses_cached_hash(tmp_path, monkeypatch):
+    """相同内容不重复落盘；第二次导入复用库中缓存的哈希，不再整文件重算。"""
+    from cthulhu_backend import api as api_module
+
+    source = _video(tmp_path, "dup.mp4", seed=95)
+    library = tmp_path / "library"
+    monkeypatch.setattr(api_module, "_LIBRARY_DIR", library)
+
+    def import_named(name: str) -> dict:
+        with source.open("rb") as handle:
+            response = client.post(
+                "/api/import",
+                files={"file": (name, handle, "video/mp4")},
+            )
+        assert response.status_code == 200
+        return response.json()
+
+    first = import_named("dup.mp4")
+    assert first["duplicate"] is False
+
+    hash_calls: list[str] = []
+    original_hash = api_module._content_hash
+
+    def counting_hash(path: str) -> str:
+        hash_calls.append(path)
+        return original_hash(path)
+
+    monkeypatch.setattr(api_module, "_content_hash", counting_hash)
+    second = import_named("dup_copy.mp4")
+    assert second["duplicate"] is True
+    assert Path(second["path"]).name == "dup.mp4"
+    assert not (library / "dup_copy.mp4").exists()
+    assert hash_calls == []
+
+
+@needs_ffmpeg
 def test_detect_reports_stage_progress(tmp_path):
     """检测任务按阶段汇报单调递增的进度。"""
     source = _video(tmp_path, "p.mp4", seed=96)

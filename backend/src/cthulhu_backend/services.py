@@ -393,6 +393,22 @@ def run_similarity(a: str, b: str) -> dict:
     return embedding.similarity_report(frames_a, frames_b)
 
 
+def _scan_entry(entry: Path) -> dict:
+    """探测单个导入文件；失败仅记录错误，不中断整批。"""
+    item: dict = {
+        "path": str(entry),
+        "name": entry.name,
+        "size": entry.stat().st_size,
+        "video": None,
+        "error": None,
+    }
+    try:
+        item["video"] = ffmpeg.video_info(str(entry))
+    except Exception as exc:  # noqa: BLE001 - 单个文件失败不影响整批
+        item["error"] = str(exc)
+    return item
+
+
 def scan_import_path(path: str) -> dict:
     """递归扫描导入目标（文件或目录），返回视频文件清单与有效性统计。"""
     target = Path(path)
@@ -404,20 +420,10 @@ def scan_import_path(path: str) -> dict:
         entries = sorted(
             p for p in target.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
         )
-    files = []
-    for entry in entries:
-        item: dict = {
-            "path": str(entry),
-            "name": entry.name,
-            "size": entry.stat().st_size,
-            "video": None,
-            "error": None,
-        }
-        try:
-            item["video"] = ffmpeg.video_info(str(entry))
-        except Exception as exc:  # noqa: BLE001 - 单个文件失败不影响整批
-            item["error"] = str(exc)
-        files.append(item)
+    # ffprobe 各自启动独立进程，线程池并行探测可缩短大批量文件夹导入的耗时。
+    workers = min(max(1, len(entries)), 8, os.cpu_count() or 1)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        files = list(pool.map(_scan_entry, entries))
     return {
         "directory": target.is_dir(),
         "files": files,

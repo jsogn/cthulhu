@@ -111,13 +111,22 @@ export default function ImportDialog() {
     }
     setImporting({ current: 0, total: fresh.length, percent: 0 });
 
-    let firstId: string | null = null;
+    // 批量导入按固定并发数跑，避免大目录逐个串行等待。
+    const CONCURRENCY = 3;
+    const percentByIndex: Record<number, number> = {};
+    let done = 0;
     let success = 0;
     let failed = 0;
     let duplicateSkipped = 0;
-    for (let i = 0; i < fresh.length; i++) {
-      const item = fresh[i];
-      setImporting({ current: i, total: fresh.length, percent: 0 });
+    const materials: { material: Material; index: number }[] = [];
+
+    const refreshProgress = () => {
+      const inflight = Object.values(percentByIndex).reduce((sum, p) => sum + p, 0);
+      setImporting({ current: done, total: fresh.length, percent: inflight });
+    };
+
+    const importOneItem = async (index: number) => {
+      const item = fresh[index];
       try {
         // 桌面端拖入可直接登记本地路径；网页端先把文件导入到引擎素材库。
         // 两个入口都会读取真实 fps/时长/分辨率，保证预览与清洗参数准确。
@@ -128,12 +137,13 @@ export default function ImportDialog() {
           path = record.path;
           video = record.video;
         } else {
-          const imported = await importFile(item.file, (percent) =>
-            setImporting({ current: i, total: fresh.length, percent }),
-          );
+          const imported = await importFile(item.file, (percent) => {
+            percentByIndex[index] = percent;
+            refreshProgress();
+          });
           if (imported.duplicate) {
             duplicateSkipped++;
-            continue;
+            return;
           }
           path = imported.path;
           video = imported.video;
@@ -152,27 +162,49 @@ export default function ImportDialog() {
           dur = meta.dur;
           res = meta.res;
         }
-        const material: Material = {
-          id: `imp${Date.now()}_${i}`,
-          name: item.name,
-          dur,
-          res,
-          fps,
-          size: item.size,
-          risk: "待检测",
-          score: 0,
-          tags: ["本地"],
-          frame: thumbUrl(path, 320),
-          path,
-          duration,
-        };
-        importOne(material);
+        materials.push({
+          material: {
+            id: `imp${Date.now()}_${index}`,
+            name: item.name,
+            dur,
+            res,
+            fps,
+            size: item.size,
+            risk: "待检测",
+            score: 0,
+            tags: ["本地"],
+            frame: thumbUrl(path, 320),
+            path,
+            duration,
+          },
+          index,
+        });
         success++;
-        if (!firstId) firstId = material.id;
       } catch {
         failed++;
+      } finally {
+        delete percentByIndex[index];
+        done += 1;
+        refreshProgress();
       }
+    };
+
+    let cursor = 0;
+    const runner = async () => {
+      while (cursor < fresh.length) {
+        const index = cursor++;
+        await importOneItem(index);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, fresh.length) }, () => runner()),
+    );
+
+    materials.sort((a, b) => a.index - b.index);
+    for (const { material } of materials) {
+      importOne(material);
     }
+    const firstId = materials.length ? materials[0].material.id : null;
     setImporting(null);
     setOpen(false);
     setPending([]);
@@ -373,10 +405,14 @@ export default function ImportDialog() {
               className="h-1.5"
             />
             <span className="text-xs text-muted-foreground">
-              正在导入 {importing.current + 1} / {importing.total}
+              已导入 {importing.current} / {importing.total}
               {importing.percent > 0
-                ? ` · 导入 ${importing.percent}%`
-                : " · 解析视频信息…"}
+                ? ` · ${Math.round(
+                    ((importing.current + importing.percent / 100) /
+                      Math.max(1, importing.total)) *
+                      100,
+                  )}%`
+                : ""}
             </span>
           </div>
         )}

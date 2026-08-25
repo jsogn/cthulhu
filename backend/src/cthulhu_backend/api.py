@@ -443,20 +443,25 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
     # 清理文件名，防止路径穿越与特殊字符。
     stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(filename).stem)
     stem = stem.strip("._") or "素材"
-    # 先写入系统临时文件，便于与库中同大小文件做内容级比较。
+    # 边落盘边计算内容哈希：一次遍历完成写入与去重指纹，避免大文件二次读盘。
     tmp_fd, tmp_path = tempfile.mkstemp(prefix="cthulhu-import-", suffix=ext)
+    digest = hashlib.md5()
     size = 0
     with os.fdopen(tmp_fd, "wb") as out:
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
+            digest.update(chunk)
             out.write(chunk)
     if size == 0:
         os.unlink(tmp_path)
         raise HTTPException(status_code=422, detail="导入的文件为空")
-    # 内容去重：仅对同大小的既有文件计算哈希。
+    content_hash = digest.hexdigest()
+    # 内容去重：仅与同大小的既有文件比较，并优先复用库中缓存的哈希。
+    records = db.list_library()
+    record_by_path = {record["path"]: record for record in records}
     candidates = [
         Path(record["path"])
-        for record in db.list_library()
+        for record in records
         if (record.get("size") or 0) == size and os.path.isfile(record["path"])
     ]
     _LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
@@ -465,11 +470,19 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
         for existing in _LIBRARY_DIR.glob(f"*{ext}")
         if existing.is_file() and existing.stat().st_size == size and existing not in candidates
     ]
-    content_hash = _content_hash(tmp_path)
     for existing in candidates:
-        if _content_hash(str(existing)) == content_hash:
+        record = record_by_path.get(str(existing))
+        existing_hash = (record.get("meta") or {}).get("content_hash") if record else None
+        if not existing_hash:
+            existing_hash = _content_hash(str(existing))
+            if record is not None:
+                cached_meta = record.get("meta") or {}
+                cached_meta["content_hash"] = existing_hash
+                db.update_library_meta(record["path"], cached_meta)
+        if existing_hash == content_hash:
             os.unlink(tmp_path)
             meta = _probe_video(str(existing)) or {}
+            meta["content_hash"] = existing_hash
             db.add_library(str(existing), existing.name, size, meta)
             return {
                 "path": str(existing),
@@ -485,6 +498,7 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
         counter += 1
     os.replace(tmp_path, target)
     meta = _probe_video(str(target)) or {}
+    meta["content_hash"] = content_hash
     db.add_library(str(target), target.name, size, meta)
     return {
         "path": str(target),
