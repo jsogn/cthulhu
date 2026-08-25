@@ -555,9 +555,7 @@ function BatchPopup() {
         <Button variant="secondary" size="sm" onClick={() => void batchExport()}>
           导出产物
         </Button>
-      ) : (
-        <span className="text-xs text-muted-foreground">导出请使用桌面版</span>
-      )}
+      ) : null}
       <Button variant="ghost" size="sm" className="text-destructive" onClick={remove}>
         移除
       </Button>
