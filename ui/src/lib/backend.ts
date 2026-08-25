@@ -634,3 +634,14 @@ export async function unregisterLibrary(path: string): Promise<void> {
   });
   if (!res.ok) throw new Error(`移除素材失败（${res.status}）`);
 }
+
+/** 清空素材库：移除全部素材记录并删除对应产物（源视频不受影响）。 */
+export async function clearLibrary(): Promise<{
+  removed_materials: number;
+  removed_products: number;
+  removed_bytes: number;
+}> {
+  const res = await apiFetch("/api/library/all", { method: "DELETE" });
+  if (!res.ok) throw new Error(`清空素材库失败（${res.status}）`);
+  return res.json();
+}

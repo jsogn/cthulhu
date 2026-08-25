@@ -49,6 +49,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtFrames, fmtSize } from "@/lib/format";
 import {
   analyzeAudio,
+  clearLibrary,
   deleteOutput,
   enqueueJob,
   exportOutputs,
@@ -314,6 +315,8 @@ function MaterialPane() {
   const search = useMaterialsStore((state) => state.search);
   const select = useMaterialsStore((state) => state.select);
   const toggleSelected = useMaterialsStore((state) => state.toggleSelected);
+  const refreshLibrary = useMaterialsStore((state) => state.refreshLibrary);
+  const [clearOpen, setClearOpen] = useState(false);
   const setSearch = useMaterialsStore((state) => state.setSearch);
   const toggleSelectAll = useMaterialsStore((state) => state.toggleSelectAll);
   const setImportOpen = useAppStore((state) => state.setImportOpen);
@@ -345,6 +348,15 @@ function MaterialPane() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => toggleSelectAll(visible.map((m) => m.id))}>
             {allSelected ? "取消全选" : "全选"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            disabled={materials.length === 0}
+            onClick={() => setClearOpen(true)}
+          >
+            清空
           </Button>
         </div>
 
@@ -434,6 +446,37 @@ function MaterialPane() {
           </ScrollArea>
         )}
       </div>
+
+      <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认清空素材库</AlertDialogTitle>
+            <AlertDialogDescription>
+              将删除全部 {materials.length} 条素材记录及其对应的产物文件（含产物记录）。
+              源视频文件不会删除，此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                void clearLibrary()
+                  .then((result) => {
+                    toast(
+                      `已清空：${result.removed_materials} 条素材、${result.removed_products} 个产物`,
+                    );
+                    void refreshLibrary();
+                  })
+                  .catch(() => toast("清空素材库失败"));
+                setClearOpen(false);
+              }}
+            >
+              确认清空
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }
@@ -2183,6 +2226,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </aside>
   );
 }

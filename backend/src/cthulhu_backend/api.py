@@ -322,6 +322,43 @@ def library_remove(path: str = Query(...)) -> dict:
     return {"removed": 1 if removed else 0}
 
 
+@router.delete("/library/all")
+def library_clear() -> dict:
+    """清空素材库：移除全部素材记录并删除对应产物文件与记录。
+
+    桌面端源视频绝不受影响；仅应用自身生成/上传到库目录的副本会被清理。
+    """
+    materials = db.list_library()
+    removed_products = 0
+    removed_bytes = 0
+    for item in materials:
+        source = item["path"]
+        for product in services._product_candidates(source):
+            try:
+                removed_bytes += product.stat().st_size
+            except OSError:
+                pass
+            try:
+                product.unlink()
+                removed_products += 1
+            except OSError:
+                pass
+            db.delete_variant_by_output(str(product))
+        db.remove_library(source)
+        try:
+            target = Path(source).resolve()
+            target.relative_to(_LIBRARY_DIR.resolve())
+            if target.is_file():
+                target.unlink()
+        except ValueError:
+            pass
+    return {
+        "removed_materials": len(materials),
+        "removed_products": removed_products,
+        "removed_bytes": removed_bytes,
+    }
+
+
 @router.get("/media")
 def media(path: str = Query(...)) -> FileResponse:
     """流式返回视频文件，支持 HTTP Range，播放器可随时拖动定位。"""
