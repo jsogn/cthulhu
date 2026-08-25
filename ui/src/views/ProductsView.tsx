@@ -176,7 +176,7 @@ export default function ProductsView() {
                 key={p.path}
                 className={cn(
                   "flex items-center gap-3 rounded-md border border-border bg-card p-3",
-                  !p.exists && "opacity-60",
+                  !p.exists && "bg-muted/40",
                 )}
               >
                 <Checkbox
@@ -205,9 +205,11 @@ export default function ProductsView() {
                   {formatTime(p.mtime)}
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => openInFolder(p.path)}>
-                    打开
-                  </Button>
+                  {p.exists && (
+                    <Button variant="ghost" size="sm" onClick={() => openInFolder(p.path)}>
+                      打开
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
