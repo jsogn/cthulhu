@@ -36,7 +36,7 @@ export interface UploadedVideo {
   video?: LibraryVideoInfo | null;
 }
 
-/** 把浏览器拖入的 File 上传到本地引擎素材库，返回可供播放/检测的路径。 */
+/** 把浏览器拖入的 File 导入本地引擎素材库，返回可供播放/检测的路径。 */
 export function uploadFile(
   file: File,
   onProgress?: (percent: number) => void,
@@ -55,11 +55,11 @@ export function uploadFile(
         try {
           resolve(JSON.parse(xhr.responseText) as UploadedVideo);
         } catch {
-          reject(new Error("上传结果解析失败"));
+          reject(new Error("导入结果解析失败"));
         }
         return;
       }
-      let detail = "上传失败";
+      let detail = "导入失败";
       try {
         const data = JSON.parse(xhr.responseText) as { detail?: string };
         if (data.detail) detail = data.detail;
@@ -68,7 +68,7 @@ export function uploadFile(
       }
       reject(new Error(`${detail}（${xhr.status}）`));
     };
-    xhr.onerror = () => reject(new Error("上传失败，请检查引擎连接"));
+    xhr.onerror = () => reject(new Error("导入失败，请检查引擎连接"));
     const form = new FormData();
     form.append("file", file);
     xhr.send(form);
@@ -629,7 +629,7 @@ export async function registerLibrary(path: string): Promise<LibraryFile> {
   return res.json();
 }
 
-/** 从素材库移除记录；网页上传的库内副本会删除，桌面源文件不受影响。 */
+/** 从素材库移除记录；源视频文件不受影响，由用户手动管理。 */
 export async function unregisterLibrary(path: string): Promise<void> {
   const res = await apiFetch(`/api/library?path=${encodeURIComponent(path)}`, {
     method: "DELETE",

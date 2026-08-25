@@ -107,7 +107,7 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
             : state.activeId,
       };
     });
-    // 同步移除持久化记录：网页上传副本会删除文件，桌面源文件仅解除登记。
+    // 同步移除持久化记录；源视频文件一律保留，仅解除登记。
     removed.forEach((material) => {
       if (material.path) {
         unregisterLibrary(material.path).catch(() => {

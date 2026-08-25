@@ -26,7 +26,7 @@ from cthulhu_backend.watermark import detect as watermark_detect
 router = APIRouter(prefix="/api")
 
 # 网页端导入素材的落地目录：浏览器拖入的 File 没有本机路径，
-# 上传到此后即可与桌面端一样走「本地路径 → 播放/检测/清洗」的完整链路。
+# 导入到此后即可与桌面端一样走「本地路径 → 播放/检测/清洗」的完整链路。
 _LIBRARY_DIR = Path(
     os.environ.get(
         "CTHULHU_LIBRARY_DIR",
@@ -452,7 +452,7 @@ async def upload_video(file: Annotated[UploadFile, File()]) -> dict:
             out.write(chunk)
     if size == 0:
         os.unlink(tmp_path)
-        raise HTTPException(status_code=422, detail="上传的文件为空")
+        raise HTTPException(status_code=422, detail="导入的文件为空")
     # 内容去重：仅对同大小的既有文件计算哈希。
     candidates = [
         Path(record["path"])

@@ -119,7 +119,7 @@ export default function ImportDialog() {
       const item = fresh[i];
       setImporting({ current: i, total: fresh.length, percent: 0 });
       try {
-        // 桌面端拖入可直接登记本地路径；网页端先把文件上传到引擎素材库。
+        // 桌面端拖入可直接登记本地路径；网页端先把文件导入到引擎素材库。
         // 两个入口都会读取真实 fps/时长/分辨率，保证预览与清洗参数准确。
         let path: string;
         let video: LibraryVideoInfo | null | undefined;
@@ -303,7 +303,7 @@ export default function ImportDialog() {
         >
           拖入视频文件，或点击选择文件
           <span className="text-xs text-muted-foreground">
-            支持 MP4 / MOV / MKV / AVI / FLV / TS；网页端会自动上传到本地素材库
+            支持 MP4 / MOV / MKV / AVI / FLV / TS；网页端会自动导入到本地素材库
           </span>
         </div>
 
@@ -375,7 +375,7 @@ export default function ImportDialog() {
             <span className="text-xs text-muted-foreground">
               正在导入 {importing.current + 1} / {importing.total}
               {importing.percent > 0
-                ? ` · 上传 ${importing.percent}%`
+                ? ` · 导入 ${importing.percent}%`
                 : " · 解析视频信息…"}
             </span>
           </div>
