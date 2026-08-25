@@ -240,7 +240,7 @@ export default function TemplatesView() {
                   <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="关闭">关闭 · 仅基础清洗，判重风险高</SelectItem>
-                    <SelectItem value="轻度">轻度 · 低成本近无损，适合已二创素材</SelectItem>
+                    <SelectItem value="轻度">轻度 · 低成本近无损</SelectItem>
                     <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
                     <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
                     <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
