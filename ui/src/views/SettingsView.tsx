@@ -24,7 +24,7 @@ import { resolveTheme, useAppStore } from "@/stores/app";
 import { toast } from "@/stores/toasts";
 
 const DEFAULTS: Record<string, string> = {
-  export_dir: "~/导出/Cthulhu",
+  export_dir: "~/Documents/Cthulhu",
   naming: "原文件名 + 时间戳",
   parallelism: "4",
   metrics_mode: "full",

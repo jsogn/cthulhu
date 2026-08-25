@@ -1127,7 +1127,7 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
     产物按清洗优先、修复其次的规则匹配，同一素材存在多个产物时取最新修改的。
     源视频尚未处理时归入 missing，由前端提示用户先执行清洗或修复。
     """
-    export_root = Path(os.path.expanduser(export_dir or "~/导出/暗水印清洗"))
+    export_root = Path(os.path.expanduser(export_dir or "~/Documents/Cthulhu"))
     export_root.mkdir(parents=True, exist_ok=True)
     exported: list[dict] = []
     missing: list[str] = []

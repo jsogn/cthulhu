@@ -464,7 +464,7 @@ function BatchPopup() {
       toast("所选素材缺少本地路径，无法导出");
       return;
     }
-    let destDir = exportDir || "~/导出/Cthulhu";
+    let destDir = exportDir || "~/Documents/Cthulhu";
     const picker = window.appEnv?.chooseFolder;
     if (picker) {
       const chosen = await picker();

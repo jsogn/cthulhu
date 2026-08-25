@@ -471,7 +471,7 @@ async def repair(request: RepairRequest) -> dict:
 def export_videos(request: ExportRequest) -> dict:
     """把已处理素材的产物复制到设置中的导出目录。"""
     settings = db.load_settings()
-    export_dir = request.export_dir or settings.get("export_dir") or "~/导出/暗水印清洗"
+    export_dir = request.export_dir or settings.get("export_dir") or "~/Documents/Cthulhu"
     return services.export_outputs(request.paths, str(export_dir))
 
 
