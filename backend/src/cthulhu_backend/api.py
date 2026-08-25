@@ -433,8 +433,8 @@ def media(path: str = Query(...)) -> FileResponse:
     )
 
 
-@router.post("/upload")
-async def upload_video(file: Annotated[UploadFile, File()]) -> dict:
+@router.post("/import")
+async def import_video(file: Annotated[UploadFile, File()]) -> dict:
     """接收网页端导入的视频，内容去重后写入本地素材库，返回可播放路径。"""
     filename = Path(file.filename or "").name
     ext = Path(filename).suffix.lower()
@@ -444,7 +444,7 @@ async def upload_video(file: Annotated[UploadFile, File()]) -> dict:
     stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(filename).stem)
     stem = stem.strip("._") or "素材"
     # 先写入系统临时文件，便于与库中同大小文件做内容级比较。
-    tmp_fd, tmp_path = tempfile.mkstemp(prefix="cthulhu-upload-", suffix=ext)
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="cthulhu-import-", suffix=ext)
     size = 0
     with os.fdopen(tmp_fd, "wb") as out:
         while chunk := await file.read(1024 * 1024):

@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import {
   Code2,
   GitCompareArrows,
+  Import,
   MoreVertical,
   Pause,
   Play,
@@ -12,7 +13,6 @@ import {
   SkipForward,
   Trash2,
   Undo2,
-  Upload,
   X,
 } from "lucide-react";
 import {
@@ -344,7 +344,7 @@ function MaterialPane() {
       <div className="pane-body">
         <div className="toolbar-row">
           <Button variant="default" size="sm" onClick={() => setImportOpen(true)}>
-            <Upload />
+            <Import />
             导入
           </Button>
           <Button variant="ghost" size="sm" onClick={() => toggleSelectAll(visible.map((m) => m.id))}>

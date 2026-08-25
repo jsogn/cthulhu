@@ -183,25 +183,25 @@ def test_media_streaming_supports_range(tmp_path):
     assert len(ranged.content) == min(100, size)
 
 
-def test_upload_rejects_unsupported_extension():
-    """上传接口仅接受视频扩展名。"""
+def test_import_rejects_unsupported_extension():
+    """导入接口仅接受视频扩展名。"""
     response = client.post(
-        "/api/upload",
+        "/api/import",
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
     assert response.status_code == 422
 
 
 @needs_ffmpeg
-def test_upload_stores_file_and_returns_path(tmp_path, monkeypatch):
-    """上传接口把视频落盘到素材库目录，供播放与检测复用。"""
+def test_import_stores_file_and_returns_path(tmp_path, monkeypatch):
+    """导入接口把视频落盘到素材库目录，供播放与检测复用。"""
     source = _video(tmp_path, "up.mp4", seed=94)
     library = tmp_path / "library"
     monkeypatch.setattr("cthulhu_backend.api._LIBRARY_DIR", library)
     with source.open("rb") as handle:
         response = client.post(
-            "/api/upload",
-            files={"file": ("上传/测试 素材.mp4", handle, "video/mp4")},
+            "/api/import",
+            files={"file": ("导入/测试 素材.mp4", handle, "video/mp4")},
         )
     assert response.status_code == 200
     payload = response.json()

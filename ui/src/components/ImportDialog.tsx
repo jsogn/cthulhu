@@ -15,7 +15,7 @@ import {
   registerLibrary,
   scanImportPath,
   thumbUrl,
-  uploadFile,
+  importFile,
   type LibraryVideoInfo,
 } from "@/lib/backend";
 import { useAppStore } from "@/stores/app";
@@ -128,15 +128,15 @@ export default function ImportDialog() {
           path = record.path;
           video = record.video;
         } else {
-          const uploaded = await uploadFile(item.file, (percent) =>
+          const imported = await importFile(item.file, (percent) =>
             setImporting({ current: i, total: fresh.length, percent }),
           );
-          if (uploaded.duplicate) {
+          if (imported.duplicate) {
             duplicateSkipped++;
             continue;
           }
-          path = uploaded.path;
-          video = uploaded.video;
+          path = imported.path;
+          video = imported.video;
         }
         let dur = "00:00";
         let res = "—";

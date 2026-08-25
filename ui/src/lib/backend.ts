@@ -28,7 +28,7 @@ export const mediaUrl = (path: string) =>
 export const thumbUrl = (path: string, width = 320) =>
   `${backendUrl}/api/thumb?path=${encodeURIComponent(path)}&width=${width}&token=${encodeURIComponent(authToken)}`;
 
-export interface UploadedVideo {
+export interface ImportedVideo {
   path: string;
   name: string;
   size: number;
@@ -37,13 +37,13 @@ export interface UploadedVideo {
 }
 
 /** 把浏览器拖入的 File 导入本地引擎素材库，返回可供播放/检测的路径。 */
-export function uploadFile(
+export function importFile(
   file: File,
   onProgress?: (percent: number) => void,
-): Promise<UploadedVideo> {
+): Promise<ImportedVideo> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${backendUrl}/api/upload`);
+    xhr.open("POST", `${backendUrl}/api/import`);
     xhr.setRequestHeader("X-CTHULHU-Token", authToken);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -53,7 +53,7 @@ export function uploadFile(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          resolve(JSON.parse(xhr.responseText) as UploadedVideo);
+          resolve(JSON.parse(xhr.responseText) as ImportedVideo);
         } catch {
           reject(new Error("导入结果解析失败"));
         }
