@@ -145,7 +145,7 @@ export default function ProductsView() {
           </Card>
         </div>
 
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="products-toolbar flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <Checkbox
               checked={allSelected}

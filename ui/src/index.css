@@ -1239,6 +1239,11 @@ body {
   color: var(--muted-foreground);
 }
 
+/* ============ 产物管理 ============ */
+.products-toolbar {
+  margin-bottom: 16px;
+}
+
 .stat.s-队列中 .stat-num {
   color: var(--muted-foreground);
 }
