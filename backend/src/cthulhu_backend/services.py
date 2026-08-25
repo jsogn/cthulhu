@@ -354,8 +354,9 @@ def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
     第一遍换 codec（H.264→H.265，不可用则同 codec）高 CRF 粗量化，
     第二遍转回目标 codec。音轨直接复制。产物替换回原路径。
     """
-    mid = path + ".chain.mp4"
-    final = path + ".final.mp4"
+    chain_temp = tempfile.mkdtemp(prefix="cthulhu-chain-")
+    mid = os.path.join(chain_temp, "mid.mp4")
+    final = os.path.join(chain_temp, "final.mp4")
     mid_codec = (
         "libx265" if final_codec != "libx265" and ffmpeg.has_encoder("libx265") else final_codec
     )
@@ -380,13 +381,9 @@ def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
             check=True,
         )
         check_cancelled()
-        os.replace(final, path)
+        shutil.move(final, path)
     finally:
-        for leftover in (mid, final):
-            try:
-                os.unlink(leftover)
-            except OSError:
-                pass
+        shutil.rmtree(chain_temp, ignore_errors=True)
 
 
 def run_similarity(a: str, b: str) -> dict:
@@ -785,7 +782,10 @@ def run_desensitize(
             audio_signal = signal
 
     # ---------- 处理遍：逐块解码 → 变换 → 流式编码 ----------
-    temp_video = output + ".video.mp4"
+    # 中间文件放系统临时目录（每任务独立子目录），避免污染输出/素材目录；
+    # 完成后整目录清理，跨卷移动由 shutil.move 兜底。
+    task_temp = tempfile.mkdtemp(prefix="cthulhu-task-")
+    temp_video = os.path.join(task_temp, "video.mp4")
     # YUV420p 快路径：仅当所有像素变换都已下沉原生、且无任何 RGB 专属
     # 选项时启用，原始帧体积减半、省去 RGB↔YUV 转换。
     use_yuv_path = (
@@ -1036,9 +1036,9 @@ def run_desensitize(
                 capture_output=True,
                 check=True,
             )
-            os.unlink(temp_video)
         else:
-            os.replace(temp_video, output)
+            shutil.move(temp_video, output)
+        shutil.rmtree(task_temp, ignore_errors=True)
         if progress_cb:
             progress_cb(95, "编码完成")
         check_cancelled()
@@ -1047,10 +1047,7 @@ def run_desensitize(
     except BaseException:
         if encoder is not None:
             encoder.abort()
-        try:
-            os.unlink(temp_video)
-        except OSError:
-            pass
+        shutil.rmtree(task_temp, ignore_errors=True)
         raise
 
     # ---------- 指标遍：抽样重解码后计算，避免整片驻留 ----------
