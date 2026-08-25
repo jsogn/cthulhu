@@ -60,6 +60,7 @@ import {
   listTemplates,
   mediaUrl,
   thumbUrl,
+  unregisterLibrary,
   type AudioAnalysis,
   type DesensitizeJobResult,
   type DetectReport,
@@ -406,11 +407,11 @@ function MaterialPane() {
                   role="button"
                   tabIndex={0}
                   aria-label={`选择素材 ${m.name}`}
-                  onClick={() => select(m.id)}
+                  onClick={() => !m.missing && select(m.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      select(m.id);
+                      if (!m.missing) select(m.id);
                     }
                   }}
                 >
@@ -423,14 +424,21 @@ function MaterialPane() {
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="mat-thumb">
-                    <img
-                      src={m.path ? thumbUrl(m.path) : m.frame}
-                      loading="lazy"
-                      alt=""
-                    />
+                    {m.missing ? (
+                      <span className="mat-missing-icon">丢失</span>
+                    ) : (
+                      <img
+                        src={m.path ? thumbUrl(m.path) : m.frame}
+                        loading="lazy"
+                        alt=""
+                      />
+                    )}
                   </span>
                   <span className="mat-info">
-                    <span className="mat-name">{m.name}</span>
+                    <span className="mat-name">
+                      {m.name}
+                      {m.missing && <span className="tag tag-warn">文件已丢失</span>}
+                    </span>
                     <span className="mat-meta mono">
                       {m.dur} · {m.res} · {m.fps} · {m.size}
                     </span>
@@ -438,6 +446,23 @@ function MaterialPane() {
                       <span className="mat-tags">
                         <span className="tag tag-out">产物 {m.outputCount}</span>
                       </span>
+                    )}
+                    {m.missing && (
+                      <button
+                        type="button"
+                        className="text-xs text-destructive underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void unregisterLibrary(m.path!)
+                            .then(() => {
+                              toast(`已移除记录：${m.name}`);
+                              void refreshLibrary();
+                            })
+                            .catch(() => toast("移除记录失败"));
+                        }}
+                      >
+                        移除记录
+                      </button>
                     )}
                   </span>
                 </div>
@@ -601,7 +626,7 @@ function PreviewPane({
 
   const activeRegion = regions.find((r) => r.id === activeRegionId) ?? null;
   const fps = Number.parseFloat(material?.fps ?? "30") || 30;
-  const hasRealFrame = !!material?.path;
+  const hasRealFrame = !!material?.path && !material.missing;
   const durationSec = mediaDuration ?? material?.duration ?? null;
   const maxFrame = durationSec
     ? Math.max(1, Math.round(durationSec * fps) - 1)

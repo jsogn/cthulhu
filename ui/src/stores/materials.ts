@@ -23,6 +23,7 @@ export interface Material {
   frame: string;
   path?: string;
   duration?: number;
+  missing?: boolean;
   report?: unknown;
   outputCount?: number;
 }
@@ -135,28 +136,28 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
     })),
 
   loadLibrary: (files, outputCounts?) => {
-    const materials: Material[] = files
-      .filter((file) => file.video)
-      .map((file) => {
-        const report = file.report ?? undefined;
-        const score = report?.bitstream.score ?? 0;
-        return {
-          id: file.path,
-          name: file.name,
-          dur: fmtDur(file.video!.duration),
-          res: `${file.video!.width}×${file.video!.height}`,
-          fps: `${file.video!.fps}fps`,
-          size: fmtSize(file.size),
-          risk: reportRisk(report),
-          score,
-          tags: ["本地"],
-          frame: thumbUrl(file.path, 320),
-          path: file.path,
-          duration: file.video!.duration,
-          report,
-          outputCount: outputCounts?.[file.path] ?? 0,
-        };
-      });
+    const materials: Material[] = files.map((file) => {
+      const report = file.report ?? undefined;
+      const score = report?.bitstream.score ?? 0;
+      const missing = file.video == null;
+      return {
+        id: file.path,
+        name: file.name,
+        dur: missing ? "—" : fmtDur(file.video!.duration),
+        res: missing ? "—" : `${file.video!.width}×${file.video!.height}`,
+        fps: missing ? "—" : `${file.video!.fps}fps`,
+        size: fmtSize(file.size),
+        risk: missing ? "待检测" : reportRisk(report),
+        score,
+        tags: ["本地"],
+        frame: missing ? "" : thumbUrl(file.path, 320),
+        path: file.path,
+        duration: file.video?.duration,
+        missing,
+        report,
+        outputCount: outputCounts?.[file.path] ?? 0,
+      };
+    });
     set({ materials, activeId: materials[0]?.id ?? null });
   },
 

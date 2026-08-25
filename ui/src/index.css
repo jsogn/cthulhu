@@ -466,6 +466,25 @@ body {
   object-fit: cover;
 }
 
+.mat-missing-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+.tag-warn {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #b45309;
+  background: #fef3c7;
+}
+
 .mat-info {
   min-width: 0;
   flex: 1;
