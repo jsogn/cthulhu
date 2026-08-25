@@ -18,7 +18,7 @@ def extract_qp_maps(path: str, max_frames: int | None = None) -> list[dict] | No
     """返回每帧 QP 图：{"type": "I/P/B", "rows": [[qp, ...], ...]}；不可用时返回 None。"""
     if not ffmpeg.has_ffmpeg():
         return None
-    cmd = ["ffmpeg", "-v", "debug", "-threads", "1", "-debug", "qp", "-i", path]
+    cmd = [ffmpeg.FFMPEG_BIN, "-v", "debug", "-threads", "1", "-debug", "qp", "-i", path]
     if max_frames:
         cmd += ["-frames:v", str(max_frames)]
     cmd += ["-f", "null", "-"]

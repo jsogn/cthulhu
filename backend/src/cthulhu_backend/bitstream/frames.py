@@ -9,21 +9,25 @@ from itertools import pairwise
 import numpy as np
 
 from cthulhu_backend.bitstream.stats import autocorr_peak
+from cthulhu_backend.media import ffmpeg
 
 
 def frame_allocation(path: str) -> tuple[list[int], list[bool]] | None:
     """返回 (帧大小列表, 关键帧标志列表)；不可用时返回 None。"""
-    result = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "packet=pts_time,size,flags",
-            "-of", "json", path,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg.FFPROBE_BIN, "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "packet=pts_time,size,flags",
+                "-of", "json", path,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
     if result.returncode != 0:
         return None
     try:
