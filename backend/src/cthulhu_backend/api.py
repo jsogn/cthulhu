@@ -7,6 +7,7 @@ import errno
 import hashlib
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -61,6 +62,17 @@ def _probe_video(path: str) -> dict | None:
         return ffmpeg.video_info(path)
     except Exception:  # noqa: BLE001 - 元数据失败不影响素材导入
         return None
+
+
+def _content_hash(path: str) -> str:
+    """分块计算文件 MD5，避免大文件一次性读入内存。"""
+    import hashlib
+
+    digest = hashlib.md5()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _library_file(record: dict) -> dict:
@@ -287,23 +299,78 @@ def thumb(
 
 @router.get("/library")
 def library_list() -> dict:
-    """返回持久化素材库（最新导入在前），应用重启后仍可恢复。"""
-    files = [_library_file(record) for record in db.list_library()]
+    """返回持久化素材库（最新导入在前），并标记内容完全相同的重复副本。"""
+    records = db.list_library()
+    hashes: dict[str, int] = {}
+    for record in records:
+        content_hash = (record.get("meta") or {}).get("content_hash")
+        if content_hash:
+            hashes[content_hash] = hashes.get(content_hash, 0) + 1
+    for record in records:
+        meta = record.get("meta") or {}
+        path = record["path"]
+        if meta.get("content_hash") is None and os.path.isfile(path):
+            # 仅在存在同大小文件时补算哈希，避免列表加载拖慢。
+            same_size = any(
+                other["path"] != path
+                and (other.get("size") or 0) == (record.get("size") or 0)
+                and os.path.isfile(other["path"])
+                for other in records
+            )
+            if same_size:
+                meta["content_hash"] = _content_hash(path)
+                db.update_library_meta(path, meta)
+                hashes[meta["content_hash"]] = hashes.get(meta["content_hash"], 0) + 1
+    files = []
+    for record in records:
+        item = _library_file(record)
+        content_hash = (record.get("meta") or {}).get("content_hash")
+        item["duplicate"] = bool(content_hash and hashes.get(content_hash, 0) > 1)
+        files.append(item)
     return {"files": files, "valid": sum(1 for item in files if item["video"]), "invalid": 0}
 
 
 @router.post("/library")
 def library_add(request: PathRequest) -> dict:
-    """登记一个本地视频到素材库，重启后保持显示。"""
+    """登记一个本地视频到素材库；内容完全相同的文件不重复导入。"""
     path = os.path.abspath(request.path)
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="文件不存在或已被移动")
+    records = db.list_library()
+    real = os.path.realpath(path)
+    # 同一路径（含符号链接别名）重复导入：允许刷新时间，不算重复。
+    if any(os.path.realpath(record["path"]) == real for record in records):
+        content_hash = None
+    else:
+        size = os.path.getsize(path)
+        candidates = [
+            record
+            for record in records
+            if (record.get("size") or 0) == size and os.path.isfile(record["path"])
+        ]
+        if not candidates:
+            content_hash = None
+        else:
+            content_hash = _content_hash(path)
+            for record in candidates:
+                meta = record.get("meta") or {}
+                if meta.get("content_hash") is None:
+                    meta["content_hash"] = _content_hash(record["path"])
+                    db.update_library_meta(record["path"], meta)
+                if meta.get("content_hash") == content_hash:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"已存在相同内容的素材：{record['name']}，未重复导入",
+                    )
     record = {
         "path": path,
         "name": Path(path).name,
         "size": os.path.getsize(path),
-        "meta": _probe_video(path) or {},
     }
+    meta = _probe_video(path) or {}
+    if content_hash:
+        meta["content_hash"] = content_hash
+    record["meta"] = meta
     db.add_library(record["path"], record["name"], record["size"], record["meta"])
     return _library_file(record)
 
@@ -368,31 +435,64 @@ def media(path: str = Query(...)) -> FileResponse:
 
 @router.post("/upload")
 async def upload_video(file: Annotated[UploadFile, File()]) -> dict:
-    """接收网页端导入的视频，写入本地素材库后返回可播放/可处理的路径。"""
+    """接收网页端导入的视频，内容去重后写入本地素材库，返回可播放路径。"""
     filename = Path(file.filename or "").name
     ext = Path(filename).suffix.lower()
     if ext not in _VIDEO_EXTENSIONS:
         raise HTTPException(status_code=422, detail="仅支持 MP4 / MOV / MKV / AVI / WEBM / FLV / TS 视频")
-    # 清理文件名，防止路径穿越与特殊字符，并为同名文件追加序号。
+    # 清理文件名，防止路径穿越与特殊字符。
     stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(filename).stem)
     stem = stem.strip("._") or "素材"
+    # 先写入系统临时文件，便于与库中同大小文件做内容级比较。
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="cthulhu-upload-", suffix=ext)
+    size = 0
+    with os.fdopen(tmp_fd, "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            out.write(chunk)
+    if size == 0:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=422, detail="上传的文件为空")
+    # 内容去重：仅对同大小的既有文件计算哈希。
+    candidates = [
+        Path(record["path"])
+        for record in db.list_library()
+        if (record.get("size") or 0) == size and os.path.isfile(record["path"])
+    ]
     _LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    candidates += [
+        existing
+        for existing in _LIBRARY_DIR.glob(f"*{ext}")
+        if existing.is_file() and existing.stat().st_size == size and existing not in candidates
+    ]
+    content_hash = _content_hash(tmp_path)
+    for existing in candidates:
+        if _content_hash(str(existing)) == content_hash:
+            os.unlink(tmp_path)
+            meta = _probe_video(str(existing)) or {}
+            db.add_library(str(existing), existing.name, size, meta)
+            return {
+                "path": str(existing),
+                "name": existing.name,
+                "size": size,
+                "video": meta or None,
+                "duplicate": True,
+            }
     target = _LIBRARY_DIR / f"{stem}{ext}"
     counter = 1
     while target.exists():
         target = _LIBRARY_DIR / f"{stem}_{counter}{ext}"
         counter += 1
-    size = 0
-    with target.open("wb") as out:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            out.write(chunk)
-    if size == 0:
-        target.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail="上传的文件为空")
+    os.replace(tmp_path, target)
     meta = _probe_video(str(target)) or {}
     db.add_library(str(target), target.name, size, meta)
-    return {"path": str(target), "name": target.name, "size": size, "video": meta or None}
+    return {
+        "path": str(target),
+        "name": target.name,
+        "size": size,
+        "video": meta or None,
+        "duplicate": False,
+    }
 
 
 @router.post("/audio/analyze")

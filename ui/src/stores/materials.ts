@@ -119,7 +119,21 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
 
   // 最新导入排在最前，与后端「新增时间倒序」保持一致。
   importOne: (material) =>
-    set((state) => ({ materials: [material, ...state.materials] })),
+    set((state) => {
+      const duplicate = state.materials.find(
+        (item) => material.path && item.path === material.path,
+      );
+      if (duplicate) {
+        // 同路径已存在：保留原 id（选中态不失效），更新元数据并置顶。
+        return {
+          materials: [
+            { ...material, id: duplicate.id },
+            ...state.materials.filter((item) => item.path !== material.path),
+          ],
+        };
+      }
+      return { materials: [material, ...state.materials] };
+    }),
 
   applyDetectResult: (path, report) =>
     set((state) => ({

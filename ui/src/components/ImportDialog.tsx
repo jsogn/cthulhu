@@ -114,6 +114,7 @@ export default function ImportDialog() {
     let firstId: string | null = null;
     let success = 0;
     let failed = 0;
+    let duplicateSkipped = 0;
     for (let i = 0; i < fresh.length; i++) {
       const item = fresh[i];
       setImporting({ current: i, total: fresh.length, percent: 0 });
@@ -130,6 +131,10 @@ export default function ImportDialog() {
           const uploaded = await uploadFile(item.file, (percent) =>
             setImporting({ current: i, total: fresh.length, percent }),
           );
+          if (uploaded.duplicate) {
+            duplicateSkipped++;
+            continue;
+          }
           path = uploaded.path;
           video = uploaded.video;
         }
@@ -174,7 +179,8 @@ export default function ImportDialog() {
     if (firstId) select(firstId);
     const parts = [`已导入 ${success} 个素材`];
     if (failed) parts.push(`${failed} 个失败`);
-    if (dupCount) parts.push(`跳过 ${dupCount} 个重复`);
+    const skipped = dupCount + duplicateSkipped;
+    if (skipped) parts.push(`跳过 ${skipped} 个重复`);
     if (invalidCount) parts.push(`${invalidCount} 个格式不支持`);
     toast(parts.join("，"));
   };

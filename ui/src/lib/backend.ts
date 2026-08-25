@@ -32,6 +32,7 @@ export interface UploadedVideo {
   path: string;
   name: string;
   size: number;
+  duplicate?: boolean;
   video?: LibraryVideoInfo | null;
 }
 
@@ -354,6 +355,7 @@ export interface LibraryFile {
   size: number;
   video: LibraryVideoInfo | null;
   error: string | null;
+  duplicate?: boolean;
   report?: DetectReport | null;
 }
 
