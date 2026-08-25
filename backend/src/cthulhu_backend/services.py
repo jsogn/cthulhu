@@ -1147,7 +1147,9 @@ def export_outputs(paths: list[str], export_dir: str) -> dict:
             continue
         product = max(existing, key=lambda candidate: candidate.stat().st_mtime)
         destination = export_root / product.name
-        shutil.copy2(product, destination)
+        # 目标目录正是产物所在目录时无需复制自己。
+        if product.resolve() != destination.resolve():
+            shutil.copy2(product, destination)
         exported.append({"source": product.name, "dest": str(destination)})
     return {"exported": exported, "missing": missing}
 
