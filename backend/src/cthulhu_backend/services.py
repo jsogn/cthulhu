@@ -1198,14 +1198,6 @@ def _product_candidates(source: str) -> list[Path]:
     return list(paths)
 
 
-def _prune_missing_variants(source: str) -> None:
-    """清理产物记录中文件已被手动删除（或整个导出目录被删）的条目。"""
-    for record in db.list_variants(source=source):
-        output = record.get("output")
-        if output and not Path(os.path.expanduser(output)).is_file():
-            db.delete_variant_by_output(output)
-
-
 def _product_kind(path: Path) -> str:
     name = path.name
     if "_修复" in name:
@@ -1225,7 +1217,6 @@ def list_outputs(source: str) -> dict:
     候选产物属未来规划能力，当前不在界面展示。
     """
     source = _require_file(source)
-    _prune_missing_variants(source)
     outputs = [
         {
             "kind": _product_kind(candidate),
@@ -1245,7 +1236,6 @@ def library_output_counts() -> dict[str, int]:
     """素材库每个源素材的产物数量（清洗/修复两类合计）。"""
     counts: dict[str, int] = {}
     for item in db.list_library():
-        _prune_missing_variants(item["path"])
         counts[item["path"]] = sum(
             1
             for candidate in _product_candidates(item["path"])

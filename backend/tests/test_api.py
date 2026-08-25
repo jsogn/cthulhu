@@ -322,6 +322,27 @@ def test_products_delete_by_record_without_marker(tmp_path):
 
 
 @needs_ffmpeg
+def test_products_keep_missing_record_for_manual_cleanup(tmp_path):
+    """外部删除产物文件后，产物记录保留并以文件缺失呈现，供产物管理手动清理。"""
+    source = _video(tmp_path, "src.mp4", seed=92)
+    product = tmp_path / "src_清洗_20260101_10_00_00.mp4"
+    db.create_variant(
+        source=str(source),
+        output=str(product),
+        options={},
+        seed=1,
+        kind="cleaned",
+    )
+    db.add_library(str(source), "src.mp4", source.stat().st_size)
+    # 触发一次产物列表与数量统计：旧逻辑会趁机剪除缺失记录，现在应保留。
+    services.list_outputs(str(source))
+    services.library_output_counts()
+    listing = client.get("/api/products").json()
+    assert listing["count"] == 1
+    assert listing["products"][0]["exists"] is False
+
+
+@needs_ffmpeg
 def test_detect_reports_stage_progress(tmp_path):
     """检测任务按阶段汇报单调递增的进度。"""
     source = _video(tmp_path, "p.mp4", seed=96)
