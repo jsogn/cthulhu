@@ -187,7 +187,7 @@ export default function SettingsView() {
                 选择目录
               </Button>
             </div>
-            <div className="form-help">清洗产物默认存放目录；批量导出也复制到这里</div>
+            <div className="form-help">清洗产物默认存放目录；批量导出由用户另行选择目标</div>
           </div>
           <div className="form-field">
             <Label>产物命名规则</Label>

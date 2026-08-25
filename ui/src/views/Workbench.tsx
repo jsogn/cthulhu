@@ -512,14 +512,7 @@ function BatchPopup() {
   const materials = useMaterialsStore((state) => state.materials);
   const deleteSelected = useMaterialsStore((state) => state.deleteSelected);
   const toggleSelectAll = useMaterialsStore((state) => state.toggleSelectAll);
-  const [exportDir, setExportDir] = useState("");
   const ids = Object.keys(selected);
-
-  useEffect(() => {
-    void getSettings()
-      .then((settings) => setExportDir((settings.export_dir as string) ?? ""))
-      .catch(() => undefined);
-  }, []);
 
   if (!ids.length) return null;
 
@@ -532,15 +525,15 @@ function BatchPopup() {
       toast("所选素材缺少本地路径，无法导出");
       return;
     }
-    let destDir = exportDir || "~/Documents/Cthulhu";
     const picker = window.appEnv?.chooseFolder;
-    if (picker) {
-      const chosen = await picker();
-      if (!chosen) return;
-      destDir = chosen;
+    if (!picker) {
+      toast("网页版不支持导出目录，请使用桌面版");
+      return;
     }
+    const chosen = await picker();
+    if (!chosen) return;
     try {
-      const { exported, missing } = await exportOutputs(paths, destDir);
+      const { exported, missing } = await exportOutputs(paths, chosen);
       const parts: string[] = [];
       if (exported.length) parts.push(`已导出 ${exported.length} 个产物`);
       if (missing.length) parts.push(`${missing.length} 个素材尚无产物`);
@@ -558,9 +551,13 @@ function BatchPopup() {
   return (
     <div className="batch-popup" role="dialog" aria-label="批量操作">
       <span className="batch-count">已选 {ids.length} 个</span>
-      <Button variant="secondary" size="sm" onClick={() => void batchExport()}>
-        导出产物
-      </Button>
+      {window.appEnv?.chooseFolder ? (
+        <Button variant="secondary" size="sm" onClick={() => void batchExport()}>
+          导出产物
+        </Button>
+      ) : (
+        <span className="text-xs text-muted-foreground">导出请使用桌面版</span>
+      )}
       <Button variant="ghost" size="sm" className="text-destructive" onClick={remove}>
         移除
       </Button>
