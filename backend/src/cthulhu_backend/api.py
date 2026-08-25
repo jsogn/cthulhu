@@ -119,6 +119,10 @@ class PairRequest(BaseModel):
     b: str
 
 
+class ProductsRequest(BaseModel):
+    paths: list[str]
+
+
 class ScanRequest(BaseModel):
     path: str
 
@@ -643,6 +647,21 @@ def delete_output(path: str = Query(...)) -> dict:
     if not removed:
         raise HTTPException(status_code=404, detail="产物不存在")
     return {"removed": 1}
+
+
+@router.get("/products")
+def products_list() -> dict:
+    """全部处理产物的全局清单，用于产物管理页查看占用与清理。"""
+    return services.list_all_products()
+
+
+@router.post("/products/delete")
+def products_delete(request: ProductsRequest) -> dict:
+    """批量删除产物文件与记录；仅允许清洗/修复/候选命名，绝不触碰源视频。"""
+    try:
+        return services.delete_products(request.paths)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/ffmpeg/select")

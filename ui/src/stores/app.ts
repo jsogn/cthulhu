@@ -7,7 +7,7 @@ export interface PendingTemplate {
   payload: TemplatePayload;
 }
 
-export type ViewKey = "workbench" | "jobs" | "templates" | "settings";
+export type ViewKey = "workbench" | "jobs" | "templates" | "products" | "settings";
 export type ThemePref = "dark" | "light" | "system";
 
 interface AppState {

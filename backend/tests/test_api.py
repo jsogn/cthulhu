@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import samples, services
+from cthulhu_backend import db, samples, services
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
 
@@ -244,6 +244,41 @@ def test_import_deduplicates_content_and_reuses_cached_hash(tmp_path, monkeypatc
     assert Path(second["path"]).name == "dup.mp4"
     assert not (library / "dup_copy.mp4").exists()
     assert hash_calls == []
+
+
+@needs_ffmpeg
+def test_products_list_and_batch_delete(tmp_path):
+    """产物管理：全局清单列出产物，批量删除只清理产物文件与记录。"""
+    product = tmp_path / "src_清洗_20260825_10_00_00.mp4"
+    product.write_bytes(b"fake-product-bytes")
+    db.create_variant(
+        source=str(tmp_path / "src.mp4"),
+        output=str(product),
+        options={"anti": "标准"},
+        seed=1,
+    )
+
+    listing = client.get("/api/products")
+    assert listing.status_code == 200
+    payload = listing.json()
+    assert payload["count"] == 1
+    assert payload["total_size"] == len(b"fake-product-bytes")
+    assert payload["products"][0]["name"] == product.name
+
+    removed = client.post("/api/products/delete", json={"paths": [str(product)]})
+    assert removed.status_code == 200
+    assert removed.json()["removed"] == 1
+    assert not product.exists()
+    assert client.get("/api/products").json()["count"] == 0
+
+
+@needs_ffmpeg
+def test_products_delete_rejects_non_product(tmp_path):
+    """产物删除仅接受产物命名，源视频等普通文件一律拒绝且不受影响。"""
+    source = _video(tmp_path, "keep.mp4", seed=91)
+    response = client.post("/api/products/delete", json={"paths": [str(source)]})
+    assert response.status_code == 400
+    assert source.exists()
 
 
 @needs_ffmpeg

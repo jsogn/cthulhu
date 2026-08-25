@@ -1268,6 +1268,69 @@ def delete_output(path: str) -> bool:
     return removed_file or removed_record
 
 
+def list_all_products() -> dict:
+    """全局产物清单：跨全部源素材汇总清洗/修复产物，供产物管理页查看占用与清理。"""
+    items: dict[str, dict] = {}
+    # 优先汇总 variants 记录，覆盖源素材已从素材库移除但产物仍在的历史记录。
+    for record in db.list_variants():
+        output = record.get("output")
+        if not output:
+            continue
+        path = Path(os.path.expanduser(output))
+        key = str(path)
+        exists = path.is_file()
+        items[key] = {
+            "path": key,
+            "name": path.name,
+            "kind": _product_kind(path),
+            "size": path.stat().st_size if exists else 0,
+            "mtime": path.stat().st_mtime if exists else record.get("created_at") or 0,
+            "source": record.get("source") or "",
+            "exists": exists,
+        }
+    # 补齐素材库内尚未写入记录的历史产物。
+    for item in db.list_library():
+        source = item["path"]
+        for candidate in _product_candidates(source):
+            kind = _product_kind(candidate)
+            if kind == "candidate":
+                continue
+            key = str(candidate)
+            if key in items:
+                continue
+            exists = candidate.is_file()
+            items[key] = {
+                "path": key,
+                "name": candidate.name,
+                "kind": kind,
+                "size": candidate.stat().st_size if exists else 0,
+                "mtime": candidate.stat().st_mtime if exists else 0,
+                "source": source,
+                "exists": exists,
+            }
+    products = sorted(items.values(), key=lambda item: item["mtime"], reverse=True)
+    return {
+        "products": products,
+        "count": len(products),
+        "total_size": sum(item["size"] for item in products),
+    }
+
+
+def delete_products(paths: list[str]) -> dict:
+    """批量删除产物：先校验全部为产物命名，再逐个删除文件与记录。"""
+    targets = [Path(path) for path in paths]
+    for target in targets:
+        if not any(
+            part in target.name for part in ("_清洗", "_cleaned", "_修复", "_repaired", "_候选")
+        ):
+            raise ValueError("仅允许删除清洗/修复/候选产物")
+    removed = 0
+    for target in targets:
+        if delete_output(str(target)):
+            removed += 1
+    return {"removed": removed}
+
+
 def record_variant(
     source: str,
     output: str,

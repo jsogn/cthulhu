@@ -8,6 +8,7 @@ import Workbench from "@/views/Workbench";
 import JobsView from "@/views/JobsView";
 import TemplatesView from "@/views/TemplatesView";
 import SettingsView from "@/views/SettingsView";
+import ProductsView from "@/views/ProductsView";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { connectEvents, getHealth } from "@/lib/backend";
 import { useAppStore } from "@/stores/app";
@@ -111,6 +112,7 @@ export default function App() {
             {view === "workbench" && <Workbench />}
             {view === "jobs" && <JobsView />}
             {view === "templates" && <TemplatesView />}
+            {view === "products" && <ProductsView />}
             {view === "settings" && <SettingsView />}
           </main>
         </div>

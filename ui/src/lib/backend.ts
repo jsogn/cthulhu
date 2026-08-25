@@ -409,6 +409,16 @@ export interface OutputInfo {
   mtime: number;
 }
 
+export interface ProductInfo {
+  path: string;
+  name: string;
+  kind: "cleaned" | "repaired";
+  size: number;
+  mtime: number;
+  source: string;
+  exists: boolean;
+}
+
 /** 列出源素材的全部处理产物，最新在前。 */
 export async function fetchOutputs(path: string): Promise<{ source: string; outputs: OutputInfo[] }> {
   const res = await apiFetch(`/api/outputs?path=${encodeURIComponent(path)}`);
@@ -427,6 +437,31 @@ export async function fetchOutputCounts(): Promise<Record<string, number>> {
 export async function deleteOutput(path: string): Promise<{ removed: number }> {
   const res = await apiFetch(`/api/outputs?path=${encodeURIComponent(path)}`, {
     method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data as { detail?: string } | null)?.detail ?? `删除失败（${res.status}）`);
+  }
+  return res.json();
+}
+
+/** 全局产物清单：跨全部源素材汇总清洗/修复产物，含总数与总占用。 */
+export async function listAllProducts(): Promise<{
+  products: ProductInfo[];
+  count: number;
+  total_size: number;
+}> {
+  const res = await apiFetch("/api/products");
+  if (!res.ok) throw new Error(`读取产物失败（${res.status}）`);
+  return res.json();
+}
+
+/** 批量删除产物文件与记录；仅允许清洗/修复/候选命名，不触碰源视频。 */
+export async function deleteProducts(paths: string[]): Promise<{ removed: number }> {
+  const res = await apiFetch("/api/products/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
