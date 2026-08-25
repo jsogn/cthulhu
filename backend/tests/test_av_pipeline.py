@@ -270,6 +270,8 @@ def test_desensitize_accepts_camel_case_anti_options(tmp_path):
             "chromaLevels": 32,
             "dropEvery": 7,
             "subtractBeta": 1.2,
+            "detailProtect": 0.5,
+            "audioStrong": True,
         },
     )
     assert response.status_code == 200, response.text

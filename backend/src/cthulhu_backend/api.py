@@ -154,6 +154,8 @@ class DesensitizeRequest(BaseModel):
     subtract_beta: float = Field(0.0, ge=0, le=4)
     transcode_chain: bool = False
     saliency: int = Field(0, ge=0, le=4)
+    detail_protect: float = Field(0.0, ge=0, le=1)
+    audio_strong: bool = False
     echo_defeat: bool = False
     skip_vmaf: bool = False
     filter_scale: int = Field(0, ge=0, le=1080)
@@ -435,6 +437,8 @@ async def desensitize(request: DesensitizeRequest) -> dict:
             subtract_beta=request.subtract_beta,
             transcode_chain=request.transcode_chain,
             saliency=request.saliency,
+            detail_protect=request.detail_protect,
+            audio_strong=request.audio_strong,
             echo_defeat=request.echo_defeat,
             skip_vmaf=request.skip_vmaf,
             filter_scale=request.filter_scale,

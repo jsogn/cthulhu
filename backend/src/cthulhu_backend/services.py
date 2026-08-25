@@ -926,12 +926,7 @@ def run_desensitize(
                 except InterruptedError:
                     raise
                 except BaseException:  # noqa: BLE001 - 段级失败统一回退串行
-                    # 任一段失败回退串行，保证任务可用；清理半成品段文件。
-                    for seg_path in seg_paths:
-                        try:
-                            os.unlink(seg_path)
-                        except OSError:
-                            pass
+                    # 任一段失败回退串行，保证任务可用。
                     out_index = _process_segment_yuv(
                         path, 0, total_out, temp_video,
                         frame_w, frame_h, output_fps,
@@ -941,7 +936,8 @@ def run_desensitize(
                         crf=crf, preset=preset, gop=gop, threads=None,
                         stop=should_stop,
                     )
-                else:
+                finally:
+                    # 成功、失败、取消都要清理段文件，避免残留 .segN.mp4。
                     for seg_path in seg_paths:
                         try:
                             os.unlink(seg_path)

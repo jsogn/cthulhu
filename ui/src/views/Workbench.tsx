@@ -145,7 +145,6 @@ const SNAKE_OPTION_KEYS: Record<string, string> = {
   chromaLevels: "chroma_levels",
   subtractBeta: "subtract_beta",
   transcodeChain: "transcode_chain",
-  nativeFilters: "native_filters",
   detailProtect: "detail_protect",
   shotRetime: "shot_retime",
   cutJitter: "cut_jitter",
@@ -203,7 +202,6 @@ type AntiPreset = {
   transcodeChain?: boolean;
   jointAttack?: boolean;
   saliency?: number;
-  nativeFilters?: boolean;
   detailProtect?: number;
   shotRetime?: boolean;
   cutJitter?: number;
@@ -217,7 +215,6 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     rotate: 0.2,
     requant: 96,
     noise: 0.003,
-    nativeFilters: true,
     audioStrong: true,
   },
   强力: {
@@ -225,7 +222,6 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     epsilon: 0.045,
     requant: 64,
     noise: 0.004,
-    nativeFilters: true,
     audioStrong: true,
   },
   全兵器: {
@@ -238,7 +234,6 @@ const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
     subtractBeta: 1.2,
     transcodeChain: true,
     jointAttack: true,
-    nativeFilters: true,
     audioStrong: true,
   },
 };
@@ -1284,7 +1279,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
               ...(anti.transcodeChain ? { transcodeChain: true } : {}),
               ...(anti.jointAttack ? { multiHashAttack: true } : {}),
               ...(anti.saliency ? { saliency: anti.saliency } : {}),
-              ...(anti.nativeFilters ? { nativeFilters: true } : {}),
               ...(anti.detailProtect ? { detailProtect: anti.detailProtect } : {}),
               ...(anti.shotRetime ? { shotRetime: true } : {}),
               ...(anti.cutJitter ? { cutJitter: anti.cutJitter } : {}),
