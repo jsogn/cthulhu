@@ -1229,7 +1229,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     const pad = (value: number) => String(value).padStart(2, "0");
     const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
       now.getHours(),
-    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    )}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
     const fileName =
       settingsNaming === "时间戳 + 原文件名"
         ? `${ts}_${srcName}_清洗.mp4`
@@ -1408,7 +1408,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     const pad = (value: number) => String(value).padStart(2, "0");
     const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
       now.getHours(),
-    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    )}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
     const output = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_修复_${ts}.mp4`;
     try {
       await enqueueJob(`${target.name} · 修复`, [
