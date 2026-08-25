@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eraser, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,7 +142,6 @@ export default function ProductsView() {
             disabled={selected.size === 0}
             onClick={() => setConfirmPaths([...selected])}
           >
-            <Trash2 />
             删除所选
           </Button>
           <Button
@@ -152,11 +150,9 @@ export default function ProductsView() {
             disabled={products.length === 0}
             onClick={() => setConfirmClear(true)}
           >
-            <Eraser />
             清空
           </Button>
           <Button variant="ghost" disabled={loading} onClick={() => void load()}>
-            <RefreshCw />
             刷新
           </Button>
         </div>
@@ -247,7 +243,6 @@ export default function ProductsView() {
                 <div className="flex shrink-0 gap-1">
                   {p.exists && (
                     <Button variant="ghost" size="sm" onClick={() => openInFolder(p.path)}>
-                      <FolderOpen />
                       打开
                     </Button>
                   )}
@@ -257,7 +252,6 @@ export default function ProductsView() {
                     className="text-destructive"
                     onClick={() => setConfirmPaths([p.path])}
                   >
-                    <Trash2 />
                     删除
                   </Button>
                 </div>
