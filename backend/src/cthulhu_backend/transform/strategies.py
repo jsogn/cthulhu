@@ -126,15 +126,15 @@ def _embed_qim_frames(frames: np.ndarray, bits: list[int], delta: int = 6) -> np
 
 
 def _fast_recrop_u8(frames: np.ndarray, crop_frac: float) -> np.ndarray:
-    """重新构图（uint8 直通）：PIL 原生双线性重采样，免精度转换。"""
+    """重新构图（uint8 直通）：只裁左/下两边，保护顶部与右侧（剧名区）。"""
     h, w = frames.shape[1:3]
-    cy0, cy1 = int(h * crop_frac), h - int(h * crop_frac)
-    cx0, cx1 = int(w * crop_frac), w - int(w * crop_frac)
+    crop_x = int(w * crop_frac)
+    crop_y = round(h * crop_x / w)
 
     def resize(frame: np.ndarray) -> np.ndarray:
         mode = "RGB" if frame.ndim == 3 else "L"
         image = Image.fromarray(frame, mode=mode)
-        resized = image.resize((w, h), Image.BILINEAR, box=(cx0, cy0, cx1, cy1))
+        resized = image.resize((w, h), Image.BILINEAR, box=(crop_x, 0, w, h - crop_y))
         return np.asarray(resized, dtype=np.uint8)
 
     from cthulhu_backend.transform.parallel import map_frames

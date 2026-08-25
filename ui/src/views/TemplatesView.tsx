@@ -277,42 +277,6 @@ export default function TemplatesView() {
                 </Select>
               </div>
 
-              <div className="section-title">编码参数</div>
-              <div className="field-row">
-                <div className="field">
-                  <span className="field-label">码率（kbps）</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={100}
-                    value={form.bitrate ?? ""}
-                    onChange={(e) => setField("bitrate", e.target.value ? Number(e.target.value) : null)}
-                    placeholder="留空使用 CRF"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">帧率（fps）</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={1}
-                    value={form.fpsOut ?? ""}
-                    onChange={(e) => setField("fpsOut", e.target.value ? Number(e.target.value) : null)}
-                    placeholder="留空原帧率"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">GOP 帧数</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={1}
-                    value={form.gop ?? ""}
-                    onChange={(e) => setField("gop", e.target.value ? Number(e.target.value) : null)}
-                    placeholder="留空自动"
-                  />
-                </div>
-              </div>
             </div>
           </ScrollArea>
           <DialogFooter>

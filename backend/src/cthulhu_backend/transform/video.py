@@ -73,13 +73,15 @@ def cut_jitter(
 
 
 def recrop(frames: np.ndarray, crop_frac: float = 0.04) -> np.ndarray:
-    """重新构图：四周裁剪后缩回原分辨率。"""
+    """重新构图：只裁左/下两边后缩回原分辨率，保护顶部与右侧（短剧剧名
+    常见位置）；x/y 缩放系数一致，避免画面变形。
+    """
     h, w = frames.shape[1:3]
-    cy0, cy1 = int(h * crop_frac), h - int(h * crop_frac)
-    cx0, cx1 = int(w * crop_frac), w - int(w * crop_frac)
+    crop_x = int(w * crop_frac)
+    crop_y = round(h * crop_x / w)
 
     def resize(frame: np.ndarray) -> np.ndarray:
-        cropped = frame[cy0:cy1, cx0:cx1]
+        cropped = frame[0 : h - crop_y, crop_x:w]
         factors = (h / cropped.shape[0], w / cropped.shape[1])
         if cropped.ndim == 3:
             factors = factors + (1.0,)

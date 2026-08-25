@@ -168,7 +168,7 @@ function toSnakeOptions(options: DesensitizeOptions): Record<string, unknown> {
 const FIXED_PERTURB = 0.15;
 const FIXED_GAMMA = 0.03 + 0.2 * FIXED_PERTURB;
 const FIXED_BRIGHTNESS = 0.02 + 0.06 * FIXED_PERTURB;
-const FIXED_CROP = 0.02;
+const FIXED_CROP = 0.03;
 
 const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   cleaned: "清洗",
@@ -1055,9 +1055,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const [codec, setCodec] = useState("H.264");
   const [lossless, setLossless] = useState(false);
   const [resolution, setResolution] = useState("保持原始分辨率");
-  const [bitrate, setBitrate] = useState("");
-  const [gop, setGop] = useState("");
-  const [fpsOut, setFpsOut] = useState("");
   const [settingsExportDir, setSettingsExportDir] = useState("");
   const [settingsNaming, setSettingsNaming] = useState("原文件名 + 时间戳");
   const [settingsMetricsMode, setSettingsMetricsMode] = useState("full");
@@ -1146,9 +1143,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     setCodec(payload.codec);
     setLossless(payload.lossless);
     setResolution(payload.resolution);
-    setBitrate(payload.bitrate != null ? String(payload.bitrate) : "");
-    setGop(payload.gop != null ? String(payload.gop) : "");
-    setFpsOut(payload.fpsOut != null ? String(payload.fpsOut) : "");
   };
 
   const applyTemplateById = (id: string) => {
@@ -1271,9 +1265,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
         lossless,
         spoof,
         ...(resolution !== "保持原始分辨率" ? { resolution } : {}),
-        ...(bitrate ? { bitrateKbps: Number(bitrate) } : {}),
-        ...(gop ? { gop: Number(gop) } : {}),
-        ...(fpsOut ? { fpsOut: Number(fpsOut) } : {}),
         ...(anti
           ? {
               rotate: anti.rotate,
@@ -2024,41 +2015,6 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                     <SelectItem value="1280x720">1280×720</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <span className="field-label">码率（kbps）</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={100}
-                    value={bitrate}
-                    onChange={(e) => setBitrate(e.target.value)}
-                    placeholder="留空使用 CRF"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">帧率（fps）</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={1}
-                    value={fpsOut}
-                    onChange={(e) => setFpsOut(e.target.value)}
-                    placeholder="留空原帧率"
-                  />
-                </div>
-                <div className="field">
-                  <span className="field-label">GOP 帧数</span>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={1}
-                    value={gop}
-                    onChange={(e) => setGop(e.target.value)}
-                    placeholder="留空自动"
-                  />
-                </div>
               </div>
               <div className="switch">
                 <div>

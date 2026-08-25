@@ -640,11 +640,17 @@ def run_desensitize(
         if recrop > 0 and ffmpeg.has_filter("crop") and ffmpeg.has_filter("scale"):
             frame_w, frame_h = info["width"], info["height"]
             crop_x = int(frame_w * recrop)
-            crop_y = int(frame_h * recrop)
-            crop_w = max(2, frame_w - 2 * crop_x)
-            crop_h = max(2, frame_h - 2 * crop_y)
+            # 只裁左/下两边，保护顶部与右侧（短剧剧名常见位置）；
+            # crop_y 按同比例推导，保证 x/y 缩放一致不变形。
+            crop_y = round(frame_h * crop_x / frame_w)
+            crop_w = max(2, frame_w - crop_x)
+            crop_h = max(2, frame_h - crop_y)
+            if crop_w % 2:
+                crop_w -= 1
+            if crop_h % 2:
+                crop_h -= 1
             chain.append(
-                f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},scale={frame_w}:{frame_h}:flags=bilinear"
+                f"crop={crop_w}:{crop_h}:{crop_x}:0,scale={frame_w}:{frame_h}:flags=bilinear"
             )
         if filter_scale > 0:
             frame_w, frame_h = info["width"], info["height"]
