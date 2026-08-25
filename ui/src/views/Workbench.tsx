@@ -1300,7 +1300,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     const srcName = srcStem.split(/[\\/]/).pop() ?? srcStem;
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, "0");
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+    const ts = `${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
       now.getHours(),
     )}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
     const fileName =
@@ -1479,7 +1479,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     }
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, "0");
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+    const ts = `${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
       now.getHours(),
     )}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
     const output = `${target.path.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "")}_修复_${ts}.mp4`;
