@@ -1045,7 +1045,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
   const [audioClean, setAudioClean] = useState(true);
   const [echoDefeat, setEchoDefeat] = useState(false);
   const [antiReembed, setAntiReembed] = useState(false);
-  const [antiLevel, setAntiLevel] = useState("轻度");
+  const [antiLevel, setAntiLevel] = useState("标准");
   const [recropOn, setRecropOn] = useState(true);
   const [detailProtectOn, setDetailProtectOn] = useState(false);
   const [sharpness, setSharpness] = useState(true);
@@ -1237,12 +1237,12 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
     )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const fileName =
       settingsNaming === "时间戳 + 原文件名"
-        ? `${ts}_${srcName}_cleaned.mp4`
-        : `${srcName}_cleaned_${ts}.mp4`;
+        ? `${ts}_${srcName}_清洗.mp4`
+        : `${srcName}_清洗_${ts}.mp4`;
     const baseDir = settingsExportDir;
     const output = baseDir
       ? `${baseDir.replace(/\/+$/, "")}/${fileName}`
-      : `${srcStem}_cleaned_${ts}.mp4`;
+      : `${srcStem}_清洗_${ts}.mp4`;
     const anti = ANTI_PRESETS[antiLevel];
     try {
       const cleanOptions: DesensitizeOptions = {
@@ -1918,7 +1918,7 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="关闭">关闭 · 仅基础清洗，判重风险高</SelectItem>
-                    <SelectItem value="轻度">轻度 · 低成本近无损，适合已二创素材</SelectItem>
+                    <SelectItem value="轻度">轻度 · 低成本近无损</SelectItem>
                     <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
                     <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
                     <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
