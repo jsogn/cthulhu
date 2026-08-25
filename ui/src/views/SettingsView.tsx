@@ -32,7 +32,6 @@ const DEFAULTS: Record<string, string> = {
   gpu: "仅 CPU（软件编码）",
   transform_strategy: "fast",
   preset: "veryfast",
-  temp_dir: "/tmp/watermark-cleaner",
 };
 
 export default function SettingsView() {
@@ -298,16 +297,6 @@ export default function SettingsView() {
             <div className="form-help">
               实测 H.265 硬编约快 1.5 倍但体积约大 2 倍；H.264 软件编码综合更优
             </div>
-          </div>
-          <div className="form-field full">
-            <Label>临时目录</Label>
-            <Input
-              className="form-input"
-              value={form.temp_dir}
-              onChange={(e) => setValue("temp_dir", e.target.value)}
-              disabled
-            />
-            <div className="form-help">当前使用系统临时目录</div>
           </div>
           <div className="form-field full">
             <Label>界面主题</Label>
