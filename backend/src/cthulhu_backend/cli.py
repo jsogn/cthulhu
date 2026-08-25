@@ -438,7 +438,7 @@ def desensitize(
     seed: int = typer.Option(0),
 ) -> None:
     """内容脱敏流水线：变换画面并量化与源内容的相似度下降。"""
-    frames, info = ffmpeg.decode_video(input)
+    frames, info = ffmpeg.decode_video(input, grayscale=False)
     original = frames
     rng = np.random.default_rng(seed)
     if reorder:
@@ -453,12 +453,20 @@ def desensitize(
         frames = video_transform.overlay_banner(frames, banner, seed)
     ffmpeg.encode_video(frames, output, fps=info["fps"])
 
+    def _luma(frames: np.ndarray) -> np.ndarray:
+        """相似度报告基于亮度通道；彩色帧转灰度避免破坏 blockmean 的二维假设。"""
+        if frames.ndim == 4:
+            return 0.299 * frames[..., 0] + 0.587 * frames[..., 1] + 0.114 * frames[..., 2]
+        return frames
+
+    original_gray = _luma(original)
+    frames_gray = _luma(frames)
     report = {
         "input": input,
         "output": output,
         "frames": len(original),
-        "similarity_before": embedding.similarity_report(original, original),
-        "similarity_after": embedding.similarity_report(original, frames),
+        "similarity_before": embedding.similarity_report(original_gray, original_gray),
+        "similarity_after": embedding.similarity_report(original_gray, frames_gray),
         "vmaf": ffmpeg.vmaf_score(output, input),
         "note": "画面层变换；音频重混待接入音画联合管线",
     }
