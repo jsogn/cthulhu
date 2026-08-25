@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS variants (
     seed INTEGER NOT NULL,
     template_id TEXT,
     metrics TEXT NOT NULL DEFAULT '{}',
+    kind TEXT NOT NULL DEFAULT 'cleaned',
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_variants_output ON variants (output);
@@ -82,6 +83,16 @@ def init_db() -> None:
         for legacy in ("batch", "label"):
             if legacy in columns:
                 connection.execute(f"ALTER TABLE variants DROP COLUMN {legacy}")
+        # 产物类型改为记录字段承载，不再依赖文件名推断；老库补列并按历史命名回填。
+        if "kind" not in columns:
+            connection.execute(
+                "ALTER TABLE variants ADD COLUMN kind TEXT NOT NULL DEFAULT 'cleaned'"
+            )
+            connection.execute(
+                "UPDATE variants SET kind = 'repaired' "
+                "WHERE output LIKE '%_修复%' OR output LIKE '%_repaired%'"
+            )
+            connection.execute("UPDATE variants SET kind = 'candidate' WHERE output LIKE '%_候选%'")
         # 处理历史已与任务中心合并，清理旧审计表。
         connection.execute("DROP TABLE IF EXISTS audit")
         # 演示素材默认关闭；清理旧版本写入的演示库残留，避免用户素材库里
@@ -197,14 +208,15 @@ def create_variant(
     seed: int,
     template_id: str | None = None,
     metrics: dict | None = None,
+    kind: str = "cleaned",
 ) -> dict:
     import time
 
     variant_id = uuid.uuid4().hex[:12]
     with _connect() as connection:
         connection.execute(
-            "INSERT INTO variants (id, source, output, options, seed, template_id, metrics, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO variants (id, source, output, options, seed, template_id, metrics, kind, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 variant_id,
                 source,
@@ -213,6 +225,7 @@ def create_variant(
                 int(seed),
                 template_id,
                 json.dumps(metrics or {}, ensure_ascii=False),
+                kind,
                 time.time(),
             ),
         )
@@ -224,6 +237,7 @@ def create_variant(
         "seed": int(seed),
         "template_id": template_id,
         "metrics": metrics or {},
+        "kind": kind,
         "created_at": time.time(),
     }
 
@@ -249,10 +263,37 @@ def list_variants(source: str | None = None) -> list[dict]:
             "seed": row["seed"],
             "template_id": row["template_id"],
             "metrics": json.loads(row["metrics"]),
+            "kind": row["kind"],
             "created_at": row["created_at"],
         }
         for row in rows
     ]
+
+
+def get_variant_by_output(output: str) -> dict | None:
+    """按输出路径查找产物记录，兼容 ~ 与绝对路径两种写法。"""
+    try:
+        target = os.path.realpath(os.path.expanduser(output))
+        with _connect() as connection:
+            for row in connection.execute(
+                "SELECT id, source, output, options, seed, template_id, metrics, kind, created_at "
+                "FROM variants"
+            ).fetchall():
+                if os.path.realpath(os.path.expanduser(row["output"])) == target:
+                    return {
+                        "id": row["id"],
+                        "source": row["source"],
+                        "output": os.path.expanduser(row["output"]),
+                        "options": json.loads(row["options"]),
+                        "seed": row["seed"],
+                        "template_id": row["template_id"],
+                        "metrics": json.loads(row["metrics"]),
+                        "kind": row["kind"],
+                        "created_at": row["created_at"],
+                    }
+    except sqlite3.OperationalError:
+        return None
+    return None
 
 
 def delete_variant_by_output(output: str) -> bool:

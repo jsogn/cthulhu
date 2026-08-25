@@ -1255,8 +1255,15 @@ def library_output_counts() -> dict[str, int]:
 
 
 def delete_output(path: str) -> bool:
-    """删除产物文件并清理记录；文件已被手动删除时仍清理记录，避免列表残留。"""
+    """删除产物：优先按产物记录删除；无记录的历史产物才按命名规则放行。"""
     target = Path(path)
+    if db.get_variant_by_output(path):
+        removed_file = False
+        if target.is_file():
+            target.unlink()
+            removed_file = True
+        removed_record = db.delete_variant_by_output(path)
+        return removed_file or removed_record
     name = target.name
     if not any(part in name for part in ("_清洗", "_cleaned", "_修复", "_repaired", "_候选")):
         raise ValueError("仅允许删除清洗/修复/候选产物")
@@ -1278,11 +1285,14 @@ def list_all_products() -> dict:
             continue
         path = Path(os.path.expanduser(output))
         key = str(path)
+        kind = record.get("kind") or "cleaned"
+        if kind == "candidate":
+            continue
         exists = path.is_file()
         items[key] = {
             "path": key,
             "name": path.name,
-            "kind": _product_kind(path),
+            "kind": kind,
             "size": path.stat().st_size if exists else 0,
             "mtime": path.stat().st_mtime if exists else record.get("created_at") or 0,
             "source": record.get("source") or "",
@@ -1317,9 +1327,11 @@ def list_all_products() -> dict:
 
 
 def delete_products(paths: list[str]) -> dict:
-    """批量删除产物：先校验全部为产物命名，再逐个删除文件与记录。"""
+    """批量删除产物：先校验全部可删（有记录或符合历史命名），再逐个删除。"""
     targets = [Path(path) for path in paths]
     for target in targets:
+        if db.get_variant_by_output(str(target)):
+            continue
         if not any(
             part in target.name for part in ("_清洗", "_cleaned", "_修复", "_repaired", "_候选")
         ):
@@ -1338,6 +1350,7 @@ def record_variant(
     seed: int,
     template_id: str | None = None,
     metrics: dict | None = None,
+    kind: str = "cleaned",
 ) -> dict:
     """把产物参数与指标写入 variants 数据表，A/B 追溯用。"""
     return db.create_variant(
@@ -1347,6 +1360,7 @@ def record_variant(
         seed=seed,
         template_id=template_id,
         metrics=metrics,
+        kind=kind,
     )
 
 

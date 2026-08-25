@@ -116,6 +116,7 @@ def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) 
                 "_app_version": APP_VERSION,
             },
             seed=0,
+            kind="repaired",
         )
     except Exception:  # noqa: BLE001, S110 - 记录失败不影响任务结果
         pass

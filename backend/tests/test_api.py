@@ -301,6 +301,26 @@ def test_products_delete_matches_tilde_record(tmp_path, monkeypatch):
     assert client.get("/api/products").json()["count"] == 0
 
 
+def test_products_delete_by_record_without_marker(tmp_path):
+    """产物类型与删除安全以记录为准：改名产物仍可删除，类型取自记录字段。"""
+    product = tmp_path / "renamed_output.mp4"
+    product.write_bytes(b"renamed-bytes")
+    db.create_variant(
+        source=str(tmp_path / "src.mp4"),
+        output=str(product),
+        options={},
+        seed=1,
+        kind="repaired",
+    )
+    listing = client.get("/api/products").json()
+    assert listing["products"][0]["kind"] == "repaired"
+    response = client.post("/api/products/delete", json={"paths": [str(product)]})
+    assert response.status_code == 200
+    assert response.json()["removed"] == 1
+    assert not product.exists()
+    assert client.get("/api/products").json()["count"] == 0
+
+
 @needs_ffmpeg
 def test_detect_reports_stage_progress(tmp_path):
     """检测任务按阶段汇报单调递增的进度。"""
