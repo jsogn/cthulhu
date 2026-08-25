@@ -1184,7 +1184,12 @@ def _product_candidates(source: str) -> list[Path]:
         f"{source_path.stem}_候选*.mp4",
     ):
         for candidate in source_path.parent.glob(pattern):
-            if candidate.is_file():
+            name = candidate.name
+            # 排除中间产物：分段文件（.segN）、视频轨临时（.video.mp4）、
+            # 转码链临时（.chain.mp4 / .final.mp4），避免处理中/异常残留混入列表。
+            if candidate.is_file() and not any(
+                token in name for token in (".video.mp4", ".seg", ".chain.mp4", ".final.mp4")
+            ):
                 paths.add(candidate)
     return list(paths)
 
