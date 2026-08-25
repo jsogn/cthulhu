@@ -387,6 +387,11 @@ function MaterialPane() {
               <p>正在启动处理引擎…</p>
               <p className="mat-empty-hint">首次启动需要一点时间，请稍候</p>
             </div>
+          ) : material?.missing ? (
+            <div className="mat-empty">
+              <p>文件不存在或已被移动</p>
+              <p className="mat-empty-hint">素材记录仍保留；文件放回原路径后会自动恢复，或在素材库中移除记录</p>
+            </div>
           ) : (
             <div className="mat-empty">
               <p>素材库还是空的</p>
@@ -425,7 +430,7 @@ function MaterialPane() {
                   />
                   <span className="mat-thumb">
                     {m.missing ? (
-                      <span className="mat-missing-icon">丢失</span>
+                      <span className="mat-missing-icon">无文件</span>
                     ) : (
                       <img
                         src={m.path ? thumbUrl(m.path) : m.frame}
@@ -437,7 +442,7 @@ function MaterialPane() {
                   <span className="mat-info">
                     <span className="mat-name">
                       {m.name}
-                      {m.missing && <span className="tag tag-warn">文件已丢失</span>}
+                      {m.missing && <span className="tag tag-warn">文件不存在</span>}
                     </span>
                     <span className="mat-meta mono">
                       {m.dur} · {m.res} · {m.fps} · {m.size}
