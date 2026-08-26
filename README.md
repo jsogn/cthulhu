@@ -40,7 +40,7 @@ pnpm dev:desktop            # 桌面模式：额外拉起 Electron（其主进�
 
 ```text
 docs/        规划文档
-ui/          React 前端（迁移自 docs/样式demo 的高保真原型）
+ui/          React 前端（由早期高保真原型迁移实现）
 electron/    Electron 主进程与 preload
 backend/     Python 后端（FastAPI）
 data/        样本与实验数据（不入库）
