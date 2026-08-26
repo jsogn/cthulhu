@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import tempfile
 
-os.environ["CTHULHU_DB"] = os.path.join(tempfile.mkdtemp(prefix="cthulhu-test-"), "test.db")
+_test_root = tempfile.mkdtemp(prefix="cthulhu-test-")
+os.environ["CTHULHU_DB"] = os.path.join(_test_root, "test.db")
+os.environ["CTHULHU_THUMB_CACHE"] = os.path.join(_test_root, "thumb-cache")
 os.environ["CTHULHU_AUTH_TOKEN"] = "test-token"
 
 

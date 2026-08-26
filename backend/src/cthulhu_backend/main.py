@@ -10,6 +10,7 @@ import asyncio
 import os
 import platform
 import secrets
+import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -20,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from cthulhu_backend import db
 from cthulhu_backend.api import router as api_router
+from cthulhu_backend.api import sweep_thumb_cache
 from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
 from cthulhu_backend.version import APP_VERSION
@@ -52,6 +54,12 @@ if not _ENV_TOKEN:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    try:
+        swept = sweep_thumb_cache()
+        if swept["removed"]:
+            print(f"[thumb-cache] 启动清理：移除 {swept['removed']} 个孤儿封面")
+    except Exception as exc:  # noqa: BLE001 - 缓存清理失败不阻塞启动
+        print(f"[thumb-cache] 启动清理失败（可忽略）：{exc}")
     saved_ffmpeg_dir = db.load_settings().get("ffmpeg_dir")
     if saved_ffmpeg_dir:
         from cthulhu_backend.media import ffmpeg
@@ -65,8 +73,31 @@ async def lifespan(_: FastAPI):
         print(f"[demo-library] 初始化失败（可忽略）：{exc}")
     job_queue.restore()
     job_queue.start()
+    thumb_sweep_stop = threading.Event()
+    threading.Thread(
+        target=_periodic_thumb_sweep,
+        args=(thumb_sweep_stop,),
+        daemon=True,
+        name="thumb-cache-sweeper",
+    ).start()
     yield
+    thumb_sweep_stop.set()
     await job_queue.stop()
+
+
+def _periodic_thumb_sweep(stop_event: threading.Event) -> None:
+    """低频兜底清理封面缓存孤儿；占用极小，无需实时。"""
+    try:
+        interval = float(os.environ.get("CTHULHU_THUMB_SWEEP_INTERVAL", "14400"))
+    except ValueError:
+        interval = 14400.0
+    while not stop_event.wait(interval):
+        try:
+            swept = sweep_thumb_cache()
+            if swept["removed"]:
+                print(f"[thumb-cache] 定时清理：移除 {swept['removed']} 个孤儿封面")
+        except Exception as exc:  # noqa: BLE001 - 清理失败不影响服务运行
+            print(f"[thumb-cache] 定时清理失败（可忽略）：{exc}")
 
 
 app = FastAPI(title="暗水印清洗台后端", version=APP_VERSION, lifespan=lifespan)

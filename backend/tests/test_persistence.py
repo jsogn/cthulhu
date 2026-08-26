@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 
 import pytest
@@ -112,6 +113,16 @@ def test_library_register_and_remove(client, tmp_path):
     removed = client.delete("/api/library", params={"path": str(path)})
     assert removed.json()["removed"] == 1
     assert path.exists()
+
+
+def test_db_connect_closes_connection_on_exit():
+    """短期连接退出 with 块后应立即关闭，而不是等待周期性 GC。"""
+    from cthulhu_backend import db
+
+    with db._connect() as connection:
+        assert connection.execute("SELECT 1").fetchone()[0] == 1
+    with pytest.raises(sqlite3.ProgrammingError):
+        connection.execute("SELECT 1")
 
 
 def test_clear_finished_jobs(client):

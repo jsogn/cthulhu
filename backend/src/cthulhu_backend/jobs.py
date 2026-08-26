@@ -312,6 +312,9 @@ class JobQueue:
         if scope == "all":
             removed = len(self._jobs)
             self._jobs.clear()
+            # 同步清理取消/暂停标记，避免任务已移除后标记集合持续累积。
+            self._cancelled.clear()
+            self._paused.clear()
             return removed
         finished = [
             job_id
@@ -320,6 +323,8 @@ class JobQueue:
         ]
         for job_id in finished:
             self._jobs.pop(job_id, None)
+            self._cancelled.discard(job_id)
+            self._paused.discard(job_id)
         return len(finished)
 
     async def _run_worker(self) -> None:
@@ -338,6 +343,7 @@ class JobQueue:
             job["status"] = "canceled"
             await self._publish_job(job)
             db.save_job(self.public_view(job))
+            self._cancelled.discard(job_id)
             return
         if job_id in self._paused:
             return
@@ -403,6 +409,10 @@ class JobQueue:
             job["status"] = "failed" if job["tasks"] and all(t["status"] == "failed" for t in job["tasks"]) else "done"
         db.save_job(self.public_view(job))
         await self._publish_job(job)
+        # 任务到达终态后清理标记，防止长期运行中集合随取消/暂停操作无界增长。
+        self._cancelled.discard(job_id)
+        if job["status"] != "paused":
+            self._paused.discard(job_id)
 
     async def _publish_job(self, job: dict) -> None:
         await broker.publish({"type": "job:state", "job": self.public_view(job)})

@@ -167,6 +167,63 @@ def test_thumbnail_extraction(tmp_path):
 
 
 @needs_ffmpeg
+def test_thumb_cache_sweep_keeps_library_and_removes_orphans(tmp_path, monkeypatch):
+    """封面缓存清理：素材库当前封面保留，孤儿 jpg 与残留 tmp 回收。"""
+    from cthulhu_backend import api as api_module
+
+    cache_dir = tmp_path / "thumb-cache"
+    monkeypatch.setattr(api_module, "_THUMB_CACHE_DIR", cache_dir)
+
+    source = _video(tmp_path, "sweep.mp4", seed=96)
+    registered = client.post("/api/library", json={"path": str(source)})
+    assert registered.status_code == 200
+    try:
+        response = client.get("/api/thumb", params={"path": str(source), "width": 320})
+        assert response.status_code == 200
+        expected_key = api_module._thumb_cache_key(str(source), 320)
+        assert (cache_dir / f"{expected_key}.jpg").is_file()
+
+        orphan = cache_dir / ("0" * 40 + ".jpg")
+        orphan.write_bytes(b"stale")
+        stray_tmp = cache_dir / ("1" * 40 + ".tmp")
+        stray_tmp.write_bytes(b"stale")
+
+        result = api_module.sweep_thumb_cache(grace_seconds=0)
+        assert result["kept"] == 1
+        assert result["removed"] == 2
+        assert (cache_dir / f"{expected_key}.jpg").is_file()
+        assert not orphan.exists()
+        assert not stray_tmp.exists()
+    finally:
+        db.remove_library(str(source))
+
+
+@needs_ffmpeg
+def test_thumb_cache_sweep_drops_cover_when_source_deleted(tmp_path, monkeypatch):
+    """源文件被删除后，其封面缓存在下一次清理时回收。"""
+    from cthulhu_backend import api as api_module
+
+    cache_dir = tmp_path / "thumb-cache"
+    monkeypatch.setattr(api_module, "_THUMB_CACHE_DIR", cache_dir)
+
+    source = _video(tmp_path, "gone.mp4", seed=97)
+    registered = client.post("/api/library", json={"path": str(source)})
+    assert registered.status_code == 200
+    try:
+        response = client.get("/api/thumb", params={"path": str(source), "width": 320})
+        assert response.status_code == 200
+        cached = list(cache_dir.glob("*.jpg"))
+        assert len(cached) == 1
+
+        source.unlink()
+        result = api_module.sweep_thumb_cache(grace_seconds=0)
+        assert result["removed"] == 1
+        assert not cached[0].exists()
+    finally:
+        db.remove_library(str(source))
+
+
+@needs_ffmpeg
 def test_media_streaming_supports_range(tmp_path):
     """媒体接口流式返回原文件并支持 Range 请求（播放器拖动定位）。"""
     source = _video(tmp_path, "m.mp4", seed=93)

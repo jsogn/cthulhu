@@ -144,7 +144,7 @@ def run_detect(path: str, progress_cb=None, should_stop=None) -> dict:
     step(78, "盲检测抽样")
     try:
         # 盲检测仅抽样前 300 帧，避免长视频全量解码拖垮导入。
-        frames, _ = ffmpeg.decode_video(path, max_frames=300)
+        frames, _ = ffmpeg.decode_video(path, max_frames=300, out_dtype="float32")
         check_cancelled()
         step(90, "音频分析")
         blind: dict = detect.video_scores(frames)
@@ -167,7 +167,7 @@ def run_detect(path: str, progress_cb=None, should_stop=None) -> dict:
 def run_blind(path: str) -> dict | None:
     """仅盲检测抽样：空间/频域置信度与音频回声（清洗产物残留复检用）。"""
     try:
-        frames, _ = ffmpeg.decode_video(path, max_frames=300)
+        frames, _ = ffmpeg.decode_video(path, max_frames=300, out_dtype="float32")
         blind: dict = detect.video_scores(frames)
         audio = ffmpeg.decode_audio(path, max_seconds=120)
         if audio is not None:
@@ -222,29 +222,44 @@ def _prefetch_batches(
     使解码与变换/编码重叠；块序与逐块同步读取完全一致。
     """
     batch_queue: queue.Queue = queue.Queue(maxsize=1)
+    stop = threading.Event()
+
+    def put_or_exit(item) -> None:
+        """投递一项；消费方停止后立即放弃，避免线程永久阻塞持有帧块。"""
+        while not stop.is_set():
+            try:
+                batch_queue.put(item, timeout=0.5)
+                return
+            except queue.Full:
+                continue
 
     def producer() -> None:
         try:
             pos = 0
-            while pos < seg_len:
+            while pos < seg_len and not stop.is_set():
                 batch = decoder.read(min(chunk, seg_len - pos), dtype=dtype)
                 if len(batch) == 0:
                     break
-                batch_queue.put((pos, batch))
+                put_or_exit((pos, batch))
                 pos += len(batch)
         except BaseException as exc:  # noqa: BLE001 - 异常传给主线程统一处理
-            batch_queue.put(exc)
+            put_or_exit(exc)
         finally:
-            batch_queue.put(None)
+            put_or_exit(None)
 
-    threading.Thread(target=producer, daemon=True).start()
-    while True:
-        item = batch_queue.get()
-        if item is None:
-            break
-        if isinstance(item, BaseException):
-            raise item
-        yield item
+    threading.Thread(target=producer, daemon=True, name="cthulhu-prefetch").start()
+    try:
+        while True:
+            item = batch_queue.get()
+            if item is None:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        # 消费方提前退出（取消/异常）时，通知生产者停止并等待其释放
+        # 当前帧块；生产者靠超时 put 及时察觉，无需等待其退出。
+        stop.set()
 
 
 def _requant_yuv(yuv: np.ndarray, levels: int) -> np.ndarray:
@@ -388,8 +403,10 @@ def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
 
 def run_similarity(a: str, b: str) -> dict:
     a, b = _require_file(a), _require_file(b)
-    frames_a, _ = ffmpeg.decode_video(a)
-    frames_b, _ = ffmpeg.decode_video(b)
+    # 相似度报告最多消费 60 帧，全片 float64 解码毫无必要且会在长片上
+    # 造成十数 GB 瞬时峰值；改为跨片抽样 float32，内存有界。
+    frames_a, _ = ffmpeg.decode_sampled(a, cap=200)
+    frames_b, _ = ffmpeg.decode_sampled(b, cap=200)
     return embedding.similarity_report(frames_a, frames_b)
 
 

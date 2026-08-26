@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -73,6 +76,31 @@ def test_streaming_decoder_matches_range_decode(tmp_path):
     actual = np.concatenate(chunks, axis=0) if chunks else np.empty_like(expected)
     assert actual.shape == expected.shape
     np.testing.assert_allclose(actual, expected)
+
+
+@needs_ffmpeg
+def test_prefetch_batches_stops_thread_on_early_exit(tmp_path):
+    """消费方提前退出后，预取线程应停止并释放帧块，而非永久阻塞。"""
+    video = samples.make_cut_video(3, 80, 160, 120, seed=34)
+    path = tmp_path / "src.mp4"
+    ffmpeg.encode_video(video, str(path), fps=30)
+    decoder = ffmpeg.StreamingDecoder(str(path), 0, 80)
+    before = {t.ident for t in threading.enumerate()}
+    try:
+        gen = services._prefetch_batches(decoder, 80, 8, "float32")
+        _, batch = next(gen)
+        assert len(batch) == 8
+        gen.close()
+        deadline = time.time() + 5
+        leaked = None
+        while time.time() < deadline:
+            leaked = [t for t in threading.enumerate() if t.ident not in before]
+            if not leaked:
+                break
+            time.sleep(0.05)
+        assert not leaked, f"预取线程未退出：{[t.name for t in leaked]}"
+    finally:
+        decoder.close()
 
 
 @needs_ffmpeg

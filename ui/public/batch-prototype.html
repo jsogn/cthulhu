@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>批量清洗 UI 演示（方案 B 原型）</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #131722;
+    --border: #242b3a;
+    --text: #e8ecf4;
+    --muted: #8b94a7;
+    --primary: #d97b3f;
+    --primary-soft: rgba(217, 123, 63, 0.16);
+    --danger: #e5534b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .proto-banner {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: #ffd9a8;
+    background: rgba(217, 123, 63, 0.12);
+    border-bottom: 1px solid var(--border);
+  }
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 320px 1fr 340px;
+    gap: 1px;
+    background: var(--border);
+    min-height: 0;
+  }
+  .pane {
+    background: var(--panel);
+    overflow: auto;
+    padding: 14px;
+  }
+  .pane-title {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .mat {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .mat.active { border-color: var(--primary); }
+  .mat input { accent-color: var(--primary); }
+  .mat .name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mat .meta { font-size: 11px; color: var(--muted); }
+  .sel-count {
+    font-size: 12px;
+    color: var(--primary);
+    margin-bottom: 10px;
+  }
+  .center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(217,123,63,0.10), transparent 60%),
+      var(--panel);
+    flex-direction: column;
+    gap: 12px;
+  }
+  .fake-frame {
+    width: 64%;
+    aspect-ratio: 9/16;
+    max-height: 62vh;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: linear-gradient(160deg, #1b2233, #0e1320);
+    position: relative;
+  }
+  .fake-frame::after {
+    content: "预览区（保持不变）";
+    position: absolute;
+    inset: auto 0 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .seg {
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    background: #0e1320;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    margin-bottom: 12px;
+    width: 100%;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 7px 0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .seg button.on {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field select, .field input {
+    width: 100%;
+    background: #0e1320;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .switch { position: relative; width: 38px; height: 22px; }
+  .switch input { display: none; }
+  .switch span { position: absolute; inset: 0; background: #20283a; border-radius: 20px; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: var(--primary); }
+  .switch input:checked + span::after { transform: translateX(16px); }
+  .primary {
+    width: 100%;
+    border: 0;
+    background: var(--primary);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 11px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .batch-block {
+    border: 1px solid var(--primary);
+    background: var(--primary-soft);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 8px;
+  }
+  .batch-block .head { color: var(--primary); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .batch-block .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+  .queue {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    align-items: center;
+  }
+  .job {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+  }
+  .job .n { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .s { font-size: 11px; color: var(--muted); }
+  .queue-label { font-size: 12px; color: var(--muted); margin-right: 4px; white-space: nowrap; }
+  .queue .scroll { display: flex; gap: 8px; overflow-x: auto; flex: 1; padding: 4px 0; }
+</style>
+</head>
+<body>
+  <div class="proto-banner">UI 原型（仅演示，非正式功能）· 方案 B：右侧面板「单个 / 批量」切换</div>
+  <div class="main">
+    <aside class="pane">
+      <p class="pane-title">素材库</p>
+      <div class="sel-count">已选 <b id="selCount">0</b> 个</div>
+      <div id="materials"></div>
+    </aside>
+    <section class="center">
+      <div class="fake-frame"></div>
+      <div style="font-size:12px;color:var(--muted)">中栏不需要任何额外提示</div>
+    </section>
+    <aside class="pane">
+      <div class="seg">
+        <button id="segSingle" class="on" onclick="setMode('single')">单个</button>
+        <button id="segBatch" onclick="setMode('batch')">批量</button>
+      </div>
+
+      <div class="field">
+        <label>指纹对抗强度</label>
+        <select>
+          <option>标准 · 均衡，哈希层打满</option>
+          <option>轻度 · 低成本近无损</option>
+          <option>强力 · 轻微模糊</option>
+        </select>
+      </div>
+      <div class="row"><span>音频重混</span><label class="switch"><input type="checkbox" checked><span></span></label></div>
+      <div class="row"><span>画面微扰动</span><label class="switch"><input type="checkbox" checked><span></span></label></div>
+      <div class="row"><span>重新构图（3%）</span><label class="switch"><input type="checkbox" checked><span></span></label></div>
+
+      <div id="singleArea">
+        <button class="primary">加入处理队列</button>
+      </div>
+      <div id="batchArea" class="batch-block" style="display:none">
+        <div class="head">批量清洗 <span id="batchCount">0</span> 个素材</div>
+        <div class="field">
+          <label>应用参数</label>
+          <select>
+            <option>当前面板参数</option>
+            <option>模板：标准档</option>
+            <option>模板：强力档</option>
+          </select>
+        </div>
+        <div class="hint">
+          右侧这套参数将应用到已选的 <b id="batchCount2">0</b> 个素材；
+          入队后在任务中心显示为独立的 <b id="batchCount3">0</b> 个任务，逐个执行，互不影响。
+        </div>
+        <button class="primary" id="batchBtn">批量清洗 <span id="batchCount4">0</span> 个</button>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="queue">
+    <span class="queue-label">任务中心预览（扁平 N 个任务）</span>
+    <div class="scroll" id="queue"></div>
+  </footer>
+
+<script>
+  const names = [
+    "0702房东收楼后_我带走了生意卡10-9下载抖音素材_3.mp4",
+    "0608-发光吧_翻译官-09下载抖音素材.mp4",
+    "0717房东收楼后_我带走了生意卡10-6下载抖音素材.mp4",
+    "短剧_第7集_高光.mp4",
+    "直播切片_美妆_0712.mp4",
+  ];
+  const state = { mode: "single", selected: new Set() };
+
+  function render() {
+    document.getElementById("selCount").textContent = state.selected.size;
+    const n = state.selected.size;
+    ["batchCount","batchCount2","batchCount3","batchCount4"].forEach(id => document.getElementById(id).textContent = n);
+    document.getElementById("singleArea").style.display = state.mode === "single" ? "" : "none";
+    document.getElementById("batchArea").style.display = state.mode === "batch" ? "" : "none";
+    document.getElementById("segSingle").className = state.mode === "single" ? "on" : "";
+    document.getElementById("segBatch").className = state.mode === "batch" ? "on" : "";
+    const q = document.getElementById("queue");
+    q.innerHTML = "";
+    if (n === 0) {
+      const empty = document.createElement("span");
+      empty.style.cssText = "font-size:12px;color:var(--muted)";
+      empty.textContent = "（勾选素材后这里会显示将入队的任务）";
+      q.appendChild(empty);
+    } else {
+      [...state.selected].forEach(path => {
+        const job = document.createElement("div");
+        job.className = "job";
+        job.innerHTML = `<div class="n">${names[path]} · 清洗去重</div><div class="s">队列中 · 等待执行</div>`;
+        q.appendChild(job);
+      });
+    }
+  }
+
+  function renderMaterials() {
+    const box = document.getElementById("materials");
+    box.innerHTML = "";
+    names.forEach((name, i) => {
+      const row = document.createElement("div");
+      row.className = "mat";
+      row.innerHTML = `
+        <input type="checkbox" id="cb${i}" ${state.selected.has(i) ? "checked" : ""}>
+        <div class="name">${name}</div>
+        <div class="meta">1080×1920 · 8分钟</div>`;
+      row.onclick = (e) => {
+        if (e.target.tagName !== "INPUT") row.querySelector("input").click();
+      };
+      box.appendChild(row);
+      row.querySelector("input").onchange = () => {
+        state.selected.has(i) ? state.selected.delete(i) : state.selected.add(i);
+        render();
+      };
+    });
+  }
+
+  function setMode(m) {
+    state.mode = m;
+    render();
+  }
+
+  renderMaterials();
+  render();
+</script>
+</body>
+</html>

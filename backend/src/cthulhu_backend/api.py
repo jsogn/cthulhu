@@ -7,7 +7,9 @@ import errno
 import hashlib
 import os
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -41,6 +43,9 @@ _THUMB_CACHE_DIR = Path(
         str(Path(__file__).resolve().parents[2] / "data" / "thumb-cache"),
     )
 )
+
+# 界面素材封面统一使用 320px 宽；清理时只按此宽度重算期望键。
+_THUMB_DEFAULT_WIDTH = 320
 
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".ts", ".m4v"}
 
@@ -108,6 +113,17 @@ def _friendly_detail(exc: Exception) -> str:
     if isinstance(exc, OSError):
         return "读写文件失败，请检查磁盘状态与文件是否被占用"
     return "处理失败，请重试；若持续出现，请反馈给开发者"
+
+
+def _default_ffmpeg_install_dir() -> str:
+    """无环境变量时的 ffmpeg 安装兜底目录，按平台放系统缓存区，
+    避免在主目录或应用数据目录留下安装残留。"""
+    if sys.platform == "darwin":
+        return str(Path.home() / "Library" / "Caches" / "cthulhu-backend" / "ffmpeg")
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return str(Path(local) / "cthulhu-backend" / "Cache" / "ffmpeg")
+    return str(Path.home() / ".cache" / "cthulhu-backend" / "ffmpeg")
 
 
 class PathRequest(BaseModel):
@@ -276,17 +292,21 @@ def frame(
 @router.get("/thumb")
 def thumb(
     path: str = Query(...),
-    width: int = Query(320, ge=16, le=1920),
+    width: int = Query(_THUMB_DEFAULT_WIDTH, ge=16, le=1920),
 ) -> Response:
     """返回等比缩放的首帧缩略图（JPEG），带磁盘缓存，供素材封面使用。"""
-    try:
-        mtime = os.path.getmtime(path)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
-    key = hashlib.sha1(f"{os.path.abspath(path)}|{mtime}|{width}".encode()).hexdigest()
+    key = _thumb_cache_key(path, width)
+    if key is None:
+        raise HTTPException(
+            status_code=404,
+            detail=_friendly_detail(FileNotFoundError(path)),
+        )
     cache_file = _THUMB_CACHE_DIR / f"{key}.jpg"
     if cache_file.is_file():
-        return Response(content=cache_file.read_bytes(), media_type="image/jpeg")
+        try:
+            return Response(content=cache_file.read_bytes(), media_type="image/jpeg")
+        except OSError:
+            pass
     try:
         content = ffmpeg.extract_thumbnail(path, width)
     except Exception as exc:
@@ -299,6 +319,57 @@ def thumb(
     except OSError:
         pass
     return Response(content=content, media_type="image/jpeg")
+
+
+def _thumb_cache_key(path: str, width: int) -> str | None:
+    """按「绝对路径 + 修改时间 + 宽度」计算封面缓存键；源文件缺失时返回 None。"""
+    try:
+        mtime = os.path.getmtime(path)
+    except FileNotFoundError:
+        return None
+    return hashlib.sha1(f"{os.path.abspath(path)}|{mtime}|{width}".encode()).hexdigest()
+
+
+def sweep_thumb_cache(grace_seconds: float = 3600.0) -> dict:
+    """清理封面缓存：素材库当前期望的条目保留，其余孤儿文件回收。
+
+    封面按「路径 + mtime + 宽度」定址，素材被删除、移动或 mtime 变化后，
+    旧键都会成为孤儿。这里以素材库当前记录重算期望键集合，其余 .jpg
+    视为孤儿清除；.tmp 为写入中间态，按宽限期保护后清除。其他非缓存
+    产生的文件一律不动。删除前按宽限期保护，避免误删刚生成/正在写入的条目。
+    """
+    if not _THUMB_CACHE_DIR.is_dir():
+        return {"kept": 0, "removed": 0, "removed_bytes": 0}
+    expected = {
+        f"{key}.jpg"
+        for record in db.list_library()
+        if (key := _thumb_cache_key(record["path"], _THUMB_DEFAULT_WIDTH))
+    }
+    now = time.time()
+    kept = 0
+    removed = 0
+    removed_bytes = 0
+    for entry in _THUMB_CACHE_DIR.iterdir():
+        try:
+            if not entry.is_file():
+                continue
+            age = now - entry.stat().st_mtime
+        except OSError:
+            continue
+        if entry.name in expected:
+            kept += 1
+            continue
+        if entry.suffix not in {".jpg", ".tmp"}:
+            continue
+        if age < grace_seconds:
+            continue
+        try:
+            removed_bytes += entry.stat().st_size
+            entry.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return {"kept": kept, "removed": removed, "removed_bytes": removed_bytes}
 
 
 @router.get("/library")
@@ -516,7 +587,9 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
 @router.post("/audio/analyze")
 def audio_analyze(request: PathRequest) -> dict:
     """音频分析：波形、对数频谱与回声隐藏置信度。"""
-    audio = ffmpeg.decode_audio(request.path)
+    # 波形取音轨开头、频谱与回声置信度均为统计口径，只解码前 120 秒，
+    # 避免长视频整轨 float64 解码造成数百 MB 瞬时峰值。
+    audio = ffmpeg.decode_audio(request.path, max_seconds=120)
     if audio is None:
         raise HTTPException(status_code=404, detail="该视频没有音轨")
     signal, sample_rate = audio
@@ -679,7 +752,7 @@ def select_ffmpeg(request: PathRequest) -> dict:
 @router.post("/ffmpeg/install", status_code=202)
 def install_ffmpeg() -> dict:
     """后台下载静态视频处理引擎，前端轮询状态直到完成。"""
-    target = os.environ.get("CTHULHU_FFMPEG_INSTALL_DIR") or str(Path.home() / ".cthulhu" / "ffmpeg")
+    target = os.environ.get("CTHULHU_FFMPEG_INSTALL_DIR") or _default_ffmpeg_install_dir()
     return services.install_ffmpeg(target)
 
 

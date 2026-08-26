@@ -6,6 +6,8 @@ import json
 import os
 import sqlite3
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -59,11 +61,22 @@ CREATE TABLE IF NOT EXISTS variants (
 CREATE INDEX IF NOT EXISTS idx_variants_output ON variants (output);
 """
 
-def _connect() -> sqlite3.Connection:
+
+@contextmanager
+def _connect() -> Iterator[sqlite3.Connection]:
+    """打开一个短期连接：正常退出自动提交，无论成败都显式关闭。
+
+    旧实现只提交不关闭，连接对象参与引用环，文件描述符与页缓存要到
+    周期性 GC 才回收，高流量下会持续累积。
+    """
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def init_db() -> None:

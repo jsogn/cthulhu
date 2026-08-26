@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,23 @@ const IS_DEV = !app.isPackaged;
 const BACKEND_PORT = 57173;
 const DEV_AUTH_TOKEN = "dev-local";
 const VITE_URL = process.env.VITE_DEV_SERVER_URL ?? "http://localhost:5173";
+
+/** 系统缓存目录：Chromium 会话数据与后端可重建缓存统一放这里，
+ *  Application Support 只保留数据库、素材库等用户数据。 */
+function getCacheDir() {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Caches", "cthulhu-electron");
+  }
+  if (process.platform === "win32") {
+    const local = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+    return path.join(local, "cthulhu-electron", "Cache");
+  }
+  return path.join(os.homedir(), ".cache", "cthulhu-electron");
+}
+
+// 必须在 ready 前设置，Chromium 的 Cache/Code Cache/GPUCache 等
+// 才会落到系统缓存目录而不是污染 Application Support。
+app.setPath("sessionData", getCacheDir());
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let backendProcess = null;
@@ -31,6 +49,14 @@ function getFreePort() {
 
 async function startBackend() {
   console.log("[backend] 启动模式：", IS_DEV ? "dev" : "packaged", "resources:", process.resourcesPath);
+  const onBackendExit = () => {
+    console.log(`[backend] 退出，code=${backendProcess?.exitCode ?? "unknown"}`);
+    backendProcess = null;
+  };
+  const onBackendError = (error) => {
+    console.error("[backend] 启动错误：", error.message);
+    backendProcess = null;
+  };
   if (IS_DEV) {
     const backendDir = path.resolve(__dirname, "..", "backend");
     backendProcess = spawn(
@@ -42,10 +68,12 @@ async function startBackend() {
         env: {
           ...process.env,
           CTHULHU_AUTH_TOKEN: DEV_AUTH_TOKEN,
-          CTHULHU_FFMPEG_INSTALL_DIR: path.join(app.getPath("userData"), "ffmpeg"),
+          CTHULHU_FFMPEG_INSTALL_DIR: path.join(getCacheDir(), "ffmpeg"),
         },
       },
     );
+    backendProcess.once("exit", onBackendExit);
+    backendProcess.once("error", onBackendError);
     return { port: BACKEND_PORT, authToken: DEV_AUTH_TOKEN };
   } else {
     // 生产模式：启动打包后的 Python sidecar，并由其后端托管前端静态资源。
@@ -59,17 +87,18 @@ async function startBackend() {
     const ffmpegBinary = path.join(ffmpegDir, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
     const deepModel = path.join(process.resourcesPath, "backend", "models", "clip-vit-b32-vision-fp16.onnx");
     const userData = app.getPath("userData");
+    const cacheDir = getCacheDir();
     const env = {
       ...process.env,
       CTHULHU_STATIC_DIR: staticDir,
       // 数据写入用户目录，避免向只读的 .app 包内写库与演示素材。
       CTHULHU_DB: path.join(userData, "cthulhu.db"),
-      CTHULHU_THUMB_CACHE: path.join(userData, "thumb-cache"),
+      CTHULHU_THUMB_CACHE: path.join(cacheDir, "thumb-cache"),
       CTHULHU_LIBRARY_DIR: path.join(userData, "library"),
       CTHULHU_DEEP_MODEL: deepModel,
       CTHULHU_AUTH_TOKEN: authToken,
       CTHULHU_PORT: String(port),
-      CTHULHU_FFMPEG_INSTALL_DIR: path.join(userData, "ffmpeg"),
+      CTHULHU_FFMPEG_INSTALL_DIR: path.join(cacheDir, "ffmpeg"),
     };
     if (fs.existsSync(ffmpegBinary)) {
       env.CTHULHU_FFMPEG_DIR = ffmpegDir;
@@ -79,15 +108,10 @@ async function startBackend() {
       stdio: "inherit",
     });
     console.log("[backend] pid:", backendProcess.pid, "exe:", backendExe);
+    backendProcess.once("exit", onBackendExit);
+    backendProcess.once("error", onBackendError);
     return { port, authToken };
   }
-  backendProcess.on("exit", (code) => {
-    console.log(`[backend] 退出，code=${code}`);
-    backendProcess = null;
-  });
-  backendProcess.on("error", (error) => {
-    console.error("[backend] 启动错误：", error.message);
-  });
 }
 
 async function waitForBackend(port, timeoutMs = 30000) {
