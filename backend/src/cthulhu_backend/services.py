@@ -143,11 +143,17 @@ def run_detect(path: str, progress_cb=None, should_stop=None) -> dict:
     check_cancelled()
     step(78, "盲检测抽样")
     try:
-        # 盲检测仅抽样前 300 帧，避免长视频全量解码拖垮导入。
-        frames, _ = ffmpeg.decode_video(path, max_frames=300, out_dtype="float32")
+        # 跨全片抽样 300 帧逐窗口打分，内存与视频总长解耦。
+        frames, _ = ffmpeg.decode_sampled(path, cap=300)
         check_cancelled()
         step(90, "音频分析")
-        blind: dict = detect.video_scores(frames)
+        blind, confidence = detect.windowed_video_scores_with_confidence(frames)
+        structural = detect.structural_scores(frames)
+        color_frames, _ = ffmpeg.decode_sampled(
+            path, cap=60, grayscale=False, scale_long_edge=detect.STATS_LONG_EDGE
+        )
+        blind["chroma"] = detect.chroma_blind(color_frames)
+        del color_frames
         # 检测只做抽样，取前 120 秒音轨即可，避免长视频整段解码。
         audio = ffmpeg.decode_audio(path, max_seconds=120)
         check_cancelled()
@@ -155,6 +161,10 @@ def run_detect(path: str, progress_cb=None, should_stop=None) -> dict:
             signal, sample_rate = audio
             blind["echo"] = detect.audio_scores(signal, sample_rate)["echo"]
         report["blind"] = blind
+        report["blind_structural"] = structural
+        report["blind_confidence"] = confidence
+        report["thresholds"] = detect.CALIBRATED_THRESHOLDS
+        report["hits"] = detect.hits(blind, structural, confidence)
     except InterruptedError:
         raise
     except Exception:  # noqa: BLE001 - 盲检测失败不影响压缩域报告
@@ -167,8 +177,8 @@ def run_detect(path: str, progress_cb=None, should_stop=None) -> dict:
 def run_blind(path: str) -> dict | None:
     """仅盲检测抽样：空间/频域置信度与音频回声（清洗产物残留复检用）。"""
     try:
-        frames, _ = ffmpeg.decode_video(path, max_frames=300, out_dtype="float32")
-        blind: dict = detect.video_scores(frames)
+        frames, _ = ffmpeg.decode_sampled(path, cap=300)
+        blind, _ = detect.windowed_video_scores_with_confidence(frames)
         audio = ffmpeg.decode_audio(path, max_seconds=120)
         if audio is not None:
             signal, sample_rate = audio

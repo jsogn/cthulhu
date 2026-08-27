@@ -172,8 +172,18 @@ export interface DetectReport {
     ss: number;
     qim: number;
     lsb: number;
+    temporal?: number;
+    dwt?: number;
+    chroma?: number;
     echo?: number;
   } | null;
+  blind_structural?: {
+    dctmod: number;
+    svd: number;
+  };
+  blind_confidence?: Record<string, number>;
+  thresholds?: Record<string, number>;
+  hits?: string[];
 }
 
 export interface DesensitizeOptions {

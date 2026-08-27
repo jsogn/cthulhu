@@ -1633,25 +1633,62 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
 
                   {report.blind && (
                     <>
-                      <div className="section-title">盲检测（启发式）</div>
+                      <div className="section-title">盲检测（启发式 · 标定阈值）</div>
                       <div className="kv-card">
-                        <div className="kv-row">
-                          <span>空域扩频 SS</span>
-                          <b>{report.blind.ss.toFixed(2)}</b>
-                        </div>
-                        <div className="kv-row">
-                          <span>DCT-QIM 量化格</span>
-                          <b>{report.blind.qim.toFixed(2)}</b>
-                        </div>
+                        {(
+                          [
+                            ["空域扩频 SS", "ss"],
+                            ["DCT-QIM 量化格", "qim"],
+                            ["时域帧差", "temporal"],
+                            ["小波 DWT", "dwt"],
+                            ["色度残差", "chroma"],
+                          ] as const
+                        ).map(([label, key]) => {
+                          const blind = report.blind;
+                          if (!blind || typeof blind[key] !== "number") return null;
+                          const confidence = report.blind_confidence?.[key];
+                          const isHit = report.hits?.includes(key);
+                          return (
+                            <div className="kv-row" key={key}>
+                              <span>
+                                {label}
+                                {isHit ? " ▲" : ""}
+                              </span>
+                              <b>
+                                {blind[key].toFixed(2)}
+                                {confidence !== undefined && (
+                                  <small> 置信 {confidence.toFixed(2)}</small>
+                                )}
+                              </b>
+                            </div>
+                          );
+                        })}
                         {report.blind.echo !== undefined && (
                           <div className="kv-row">
-                            <span>音频回声</span>
+                            <span>音频回声{report.hits?.includes("echo") ? " ▲" : ""}</span>
                             <b>{report.blind.echo.toFixed(2)}</b>
                           </div>
                         )}
+                        {report.blind_structural && (
+                          <>
+                            <div className="kv-row">
+                              <span>DCT 模运算（辅助）</span>
+                              <b>{report.blind_structural.dctmod.toFixed(2)}</b>
+                            </div>
+                            <div className="kv-row">
+                              <span>SVD 格点（辅助）</span>
+                              <b>{report.blind_structural.svd.toFixed(2)}</b>
+                            </div>
+                          </>
+                        )}
                       </div>
+                      {report.hits && report.hits.length > 0 && (
+                        <p className="note">
+                          疑似命中（≥标定阈值且窗口置信度≥0.75）：{report.hits.join("、")}
+                        </p>
+                      )}
                       <p className="note">
-                        0~1 置信度，研究口径；单样本分数不能证明水印存在，判定需干净同源差分与平台实测。
+                        分数 0~1、括号为窗口一致性置信度，研究口径；判定三要素：分数＋置信度＋干净同源差分。基于文件身份的平台标记（原件字节匹配）不在画面与码流中，本地无法复现。
                       </p>
                     </>
                   )}
@@ -1772,12 +1809,19 @@ function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
                         );
                       }
                       if (report.blind) {
-                        if (report.blind.ss > 0.5 || report.blind.qim > 0.6) {
+                        const pixelHits = (report.hits ?? []).filter((hit) =>
+                          ["ss", "qim", "temporal", "dwt", "dctmod", "svd"].includes(hit),
+                        );
+                        if (pixelHits.length > 0) {
+                          suggestions.push({
+                            text: `盲检测命中 ${pixelHits.join("、")}，建议开启空间降噪与 DCT 重量化`,
+                          });
+                        } else if (!report.hits && (report.blind.ss > 0.5 || report.blind.qim > 0.6)) {
                           suggestions.push(
                             { text: `空域/频域疑似度偏高（ss ${report.blind.ss.toFixed(2)}、qim ${report.blind.qim.toFixed(2)}），建议开启空间降噪与 DCT 重量化` },
                           );
                         }
-                        if ((report.blind.echo ?? 0) > 0.6) {
+                        if (report.hits?.includes("echo") || (!report.hits && (report.blind.echo ?? 0) > 0.6)) {
                           suggestions.push(
                             { text: `音频回声置信度 ${(report.blind.echo ?? 0).toFixed(2)}，建议同步音频重混` },
                           );

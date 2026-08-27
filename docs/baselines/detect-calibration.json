@@ -1,0 +1,173 @@
+{
+  "version": "2026-08-27",
+  "real_samples": {
+    "flagged": [
+      "暗水印1",
+      "暗水印2",
+      "暗水印3"
+    ],
+    "passed": [
+      "暗水印1-清洗",
+      "暗水印2-清洗",
+      "V0_仅重编码",
+      "V1_快速档全关",
+      "R_仅重封装"
+    ],
+    "bands": {
+      "ss": {
+        "flagged": {
+          "mean": 0.9418,
+          "min": 0.8633,
+          "max": 0.9918
+        },
+        "passed": {
+          "mean": 0.876,
+          "min": 0.6241,
+          "max": 0.9926
+        },
+        "margin": -0.1293
+      },
+      "qim": {
+        "flagged": {
+          "mean": 0.8271,
+          "min": 0.7846,
+          "max": 0.8545
+        },
+        "passed": {
+          "mean": 0.8267,
+          "min": 0.7846,
+          "max": 0.8926
+        },
+        "margin": -0.108
+      },
+      "lsb": {
+        "flagged": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "passed": {
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0
+        },
+        "margin": 0.0
+      },
+      "temporal": {
+        "flagged": {
+          "mean": 0.7891,
+          "min": 0.7379,
+          "max": 0.8788
+        },
+        "passed": {
+          "mean": 0.8489,
+          "min": 0.7268,
+          "max": 0.881
+        },
+        "margin": -0.1431
+      },
+      "dwt": {
+        "flagged": {
+          "mean": 0.3894,
+          "min": 0.3868,
+          "max": 0.3911
+        },
+        "passed": {
+          "mean": 0.3836,
+          "min": 0.3727,
+          "max": 0.3911
+        },
+        "margin": -0.0043
+      },
+      "chroma": {
+        "flagged": {
+          "mean": 0.4619,
+          "min": 0.2898,
+          "max": 0.7065
+        },
+        "passed": {
+          "mean": 0.3289,
+          "min": 0.2791,
+          "max": 0.4699
+        },
+        "margin": -0.1801
+      },
+      "dctmod": {
+        "flagged": {
+          "mean": 0.1396,
+          "min": 0.1368,
+          "max": 0.1415
+        },
+        "passed": {
+          "mean": 0.1406,
+          "min": 0.1359,
+          "max": 0.1426
+        },
+        "margin": -0.0058
+      },
+      "svd": {
+        "flagged": {
+          "mean": 0.1833,
+          "min": 0.1759,
+          "max": 0.1876
+        },
+        "passed": {
+          "mean": 0.193,
+          "min": 0.1864,
+          "max": 0.2006
+        },
+        "margin": -0.0247
+      }
+    }
+  },
+  "synthetic": {
+    "ss": {
+      "clean": 0.2344,
+      "watermarked": 0.9346,
+      "threshold": 0.5845,
+      "margin": 0.7002
+    },
+    "qim": {
+      "clean": 0.2205,
+      "watermarked": 0.9852,
+      "threshold": 0.6028,
+      "margin": 0.7647
+    },
+    "lsb": {
+      "clean": 0.2727,
+      "watermarked": 0.2708,
+      "threshold": 0.2717,
+      "margin": -0.0019
+    },
+    "temporal": {
+      "clean": 0.2739,
+      "watermarked": 0.7866,
+      "threshold": 0.5302,
+      "margin": 0.5127
+    },
+    "dwt": {
+      "clean": 0.4601,
+      "watermarked": 0.8757,
+      "threshold": 0.6679,
+      "margin": 0.4156
+    },
+    "dctmod": {
+      "clean": 0.1371,
+      "watermarked": 0.7428,
+      "threshold": 0.44,
+      "margin": 0.6057
+    },
+    "svd": {
+      "clean": 0.1574,
+      "watermarked": 0.3187,
+      "threshold": 0.238,
+      "margin": 0.1613
+    },
+    "chroma": {
+      "clean": 0.1589,
+      "watermarked": 1.0,
+      "threshold": 0.5794,
+      "margin": 0.8411
+    }
+  }
+}
