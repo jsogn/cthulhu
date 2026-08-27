@@ -81,6 +81,22 @@ def has_encoder(codec: str) -> bool:
 
 _FILTER_CACHE: set[str] | None = None
 
+# 解码/编码的统一内存闸门：任何单次帧缓冲超过该字节数直接拒绝执行，
+# 从根上保证不会因全片 float64 加载把机器内存打爆。
+_MAX_FRAME_BYTES = int(os.environ.get("CTHULHU_MAX_FRAME_BYTES", str(16 * 1024**3)))
+
+
+def _check_frame_budget(frames: int, height: int, width: int, channels: int, extra_bytes_per_px: int) -> None:
+    """按预估帧数与 dtype 检查瞬时内存，超限时给出可操作错误。"""
+    total_bytes = frames * height * width * channels * (extra_bytes_per_px + 1)
+    if total_bytes >= _MAX_FRAME_BYTES:
+        raise ValueError(
+            f"拒绝执行：预计瞬时内存约 {total_bytes / 1024**3:.1f} GiB，超过上限 "
+            f"{_MAX_FRAME_BYTES / 1024**3:.1f} GiB。请传入 max_frames 或 vf=scale 降采样，"
+            "或改用 decode_sampled / decode_video_range / StreamingDecoder；"
+            "如确需提高上限，可设置环境变量 CTHULHU_MAX_FRAME_BYTES。"
+        )
+
 
 def has_filter(name: str) -> bool:
     """检查当前 FFmpeg 是否包含指定视频滤镜（结果缓存）。"""
@@ -134,6 +150,15 @@ def decode_video(
 ) -> tuple[np.ndarray, dict]:
     """解码为帧数组（灰度 float64 [0,1]，形状 (F,H,W)），返回 (frames, info)。"""
     info = video_info(path)
+    channels = 1 if grayscale else 3
+    scale = re.search(r"scale=(\d+):(\d+)", vf or "")
+    width = int(scale.group(1)) if scale else info["width"]
+    height = int(scale.group(2)) if scale else info["height"]
+    expected_frames = max_frames
+    if expected_frames is None:
+        duration = float(info.get("duration") or 0)
+        expected_frames = max(1, round(duration * info["fps"])) if duration > 0 else 1
+    _check_frame_budget(expected_frames, height, width, channels, np.dtype(out_dtype).itemsize)
     pix_fmt = "gray" if grayscale else "rgb24"
     cmd = [FFMPEG_BIN, "-v", "error"]
     if hwaccel:
@@ -149,11 +174,6 @@ def decode_video(
         capture_output=True,
         check=True,
     ).stdout
-    channels = 1 if grayscale else 3
-    # vf 缩放会改变输出尺寸，info 里的宽高不再适用于 reshape。
-    scale = re.search(r"scale=(\d+):(\d+)", vf or "")
-    width = int(scale.group(1)) if scale else info["width"]
-    height = int(scale.group(2)) if scale else info["height"]
     total = len(raw) // (height * width * channels)
     arr = np.frombuffer(raw, dtype=np.uint8)
     shape = (total, height, width) if grayscale else (total, height, width, 3)
@@ -173,6 +193,8 @@ def decode_video_range(
     用于分块流式处理：内存只占一块，不再整片驻留。
     """
     info = video_info(path)
+    channels = 1 if grayscale else 3
+    _check_frame_budget(count, info["height"], info["width"], channels, np.dtype(np.float32).itemsize)
     start = max(0.0, start_frame / info["fps"])
     pix_fmt = "gray" if grayscale else "rgb24"
     cmd = [
@@ -183,7 +205,6 @@ def decode_video_range(
         "-f", "rawvideo", "-pix_fmt", pix_fmt, "-",
     ]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
-    channels = 1 if grayscale else 3
     height, width = info["height"], info["width"]
     total = len(raw) // (height * width * channels)
     arr = np.frombuffer(raw, dtype=np.uint8)
@@ -294,17 +315,34 @@ def decode_sampled(
     cap: int = 200,
     grayscale: bool = True,
     return_starts: bool = False,
+    scale_long_edge: int | None = None,
 ):
     """跨全片抽样解码至多 cap 帧（关键帧 seek，长视频不再整段解码）。
 
     等间隔取 10 个位置，每个位置连续解码 cap/10 帧；仅解码 cap 帧左右，
     相比 fps 滤镜全片解码，长片（8 分钟以上）耗时下降一个量级。
     return_starts=True 时额外返回每个窗口首帧的全局帧号（用于镜头边界映射）。
+    scale_long_edge 指定输出长边像素（等比缩放），把降采样下沉到解码器。
     """
     info = video_info(path)
+    in_w, in_h = info["width"], info["height"]
+    out_w, out_h = in_w, in_h
+    scale_filter = None
+    if scale_long_edge and max(in_w, in_h) > scale_long_edge:
+        if in_w >= in_h:
+            out_w, out_h = scale_long_edge, max(2, round(scale_long_edge * in_h / in_w) // 2 * 2)
+        else:
+            out_h, out_w = scale_long_edge, max(2, round(scale_long_edge * in_w / in_h) // 2 * 2)
+        scale_filter = f"scale={out_w}:{out_h}:flags=bicubic"
+
     total = max(1, round(info["duration"] * info["fps"]))
     if total <= cap:
-        frames, _ = decode_video(path, grayscale=grayscale, out_dtype="float32")
+        frames, _ = decode_video(
+            path,
+            grayscale=grayscale,
+            out_dtype="float32",
+            vf=scale_filter,
+        )
         frames = frames[:cap]
         return (frames, info, [0]) if return_starts else (frames, info)
 
@@ -321,26 +359,27 @@ def decode_sampled(
             FFMPEG_BIN, "-v", "error",
             "-ss", str(start_frame / info["fps"]),
             "-i", path,
+            *(["-vf", scale_filter] if scale_filter else []),
             "-frames:v", str(per),
             "-f", "rawvideo", "-pix_fmt", pix_fmt, "-",
         ]
         raw = subprocess.run(cmd, capture_output=True, check=True).stdout
-        count = len(raw) // (info["height"] * info["width"] * channels)
+        count = len(raw) // (out_h * out_w * channels)
         if count == 0:
             continue
         shape = (
-            (count, info["height"], info["width"])
+            (count, out_h, out_w)
             if grayscale
-            else (count, info["height"], info["width"], 3)
+            else (count, out_h, out_w, 3)
         )
         part = np.frombuffer(raw, dtype=np.uint8).reshape(shape).astype(np.float32) / 255.0
         parts.append(part)
         starts.append(start_frame)
     if not parts:
         shape = (
-            (0, info["height"], info["width"])
+            (0, out_h, out_w)
             if grayscale
-            else (0, info["height"], info["width"], 3)
+            else (0, out_h, out_w, 3)
         )
         frames = np.zeros(shape, dtype=np.float32)
     else:
@@ -472,6 +511,8 @@ def encode_video(
     """把帧数组编码为 MP4（yuv420p）；灰度 (F,H,W) 或彩色 (F,H,W,3) 均可。"""
     color = frames.ndim == 4
     _, height, width = frames.shape[:3]
+    channels = frames.shape[3] if color else 1
+    _check_frame_budget(len(frames), height, width, channels, frames.dtype.itemsize)
     raw = np.clip(frames, 0, 1)
     payload = (raw * 255).round().astype(np.uint8).tobytes()
     if hardware and sys.platform == "darwin":
@@ -551,6 +592,7 @@ def encode_video_with_audio(
 ) -> None:
     """把灰度帧数组与单声道音频编码为带音轨的 MP4。"""
     _, height, width = frames.shape
+    _check_frame_budget(len(frames), height, width, 1, frames.dtype.itemsize)
     video_payload = (np.clip(frames, 0, 1) * 255).round().astype(np.uint8).tobytes()
     audio_payload = (np.clip(audio, -1, 1) * 32767).round().astype(np.int16).tobytes()
     if hardware and sys.platform == "darwin":
@@ -767,14 +809,15 @@ def extract_thumbnail(path: str, width: int = 320) -> bytes:
     return result.stdout
 
 
-def benchmark(path: str) -> dict:
+def benchmark(path: str, max_frames: int = 600) -> dict:
     """软/硬件编解码耗时对比（秒）。"""
     started = time.perf_counter()
-    frames, _ = decode_video(path, hwaccel=False)
+    frames, _ = decode_video(path, hwaccel=False, max_frames=max_frames, out_dtype="float32")
     decode_sw = time.perf_counter() - started
+    frame_count = len(frames)
 
     started = time.perf_counter()
-    frames_hw, _ = decode_video(path, hwaccel=True)
+    frames_hw, _ = decode_video(path, hwaccel=True, max_frames=max_frames, out_dtype="float32")
     decode_hw = time.perf_counter() - started
 
     sw_path = os.path.join(tempfile.gettempdir(), "cthulhu-bench-sw.mp4")
@@ -782,12 +825,14 @@ def benchmark(path: str) -> dict:
     started = time.perf_counter()
     encode_video(frames, sw_path, fps=30, hardware=False)
     encode_sw = time.perf_counter() - started
+    del frames
     started = time.perf_counter()
     encode_video(frames_hw, hw_path, fps=30, hardware=True)
     encode_hw = time.perf_counter() - started
+    del frames_hw
 
     return {
-        "frames": len(frames),
+        "frames": frame_count,
         "decode_sw_s": round(decode_sw, 3),
         "decode_hw_s": round(decode_hw, 3),
         "encode_sw_s": round(encode_sw, 3),

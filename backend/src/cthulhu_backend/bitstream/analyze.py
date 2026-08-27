@@ -41,7 +41,7 @@ def analyze(path: str, reference: str | None = None, max_frames: int | None = No
     }
 
     if reference:
-        ref_qp, ref_alloc, _, _ = _features(reference)
+        ref_qp, ref_alloc, _, _ = _features(reference, max_frames)
         delta_qp = float(qp_feat.get("qp_temporal_periodicity") or 0.0) - float(
             ref_qp.get("qp_temporal_periodicity") or 0.0
         )

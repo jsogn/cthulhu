@@ -22,9 +22,7 @@ from cthulhu_backend.evaluate import (
 )
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
-from cthulhu_backend.similarity import embedding
-from cthulhu_backend.transform import shots
-from cthulhu_backend.transform import video as video_transform
+from cthulhu_backend.transform import parallel
 from cthulhu_backend.watermark import common, detect, dwt, lsb, qim, qim_rep, ss, temporal
 
 app = typer.Typer(help="暗水印研究工具：样本生成与对抗评估")
@@ -66,11 +64,16 @@ def harness_video(
     clean = samples.make_video_frames(frames, width, height, seed)
     bits = common.payload_bits(seed + 1, payload_bits)
     report = {}
-    for method in methods.split(","):
-        method = method.strip()
-        result = harness.run_video_harness(method, clean, bits, [a.strip() for a in attacks.split(",")], seed)
-        report[method] = result["attacks"]
-        for attack, r in result["attacks"].items():
+
+    def _method_one(method: str) -> tuple[str, dict]:
+        result = harness.run_video_harness(
+            method, clean, bits, [a.strip() for a in attacks.split(",")], seed
+        )
+        return method, result["attacks"]
+
+    for method, result in parallel.map_items(_method_one, [m.strip() for m in methods.split(",")]):
+        report[method] = result
+        for attack, r in result.items():
             typer.echo(
                 f"{method:>4} × {attack:<14} BER={r['ber']:.3f}  PSNR={r['psnr_db']:.1f}dB  SSIM={r['ssim']:.4f}"
             )
@@ -183,15 +186,17 @@ def sample_diff(
     watermarked: str = typer.Argument(..., help="带水印视频"),
     out_dir: str = typer.Option("data/samples", help="输出目录"),
     name: str = typer.Option("sample", help="样本名"),
+    max_frames: int = typer.Option(300, help="跨全片抽样的最大帧数（内存护栏）"),
 ) -> None:
     """样本制备：解码 → 相位相关对齐 → 差分报告与 DCT 热图。"""
-    clean_frames, clean_info = ffmpeg.decode_video(clean)
-    wm_frames, _ = ffmpeg.decode_video(watermarked)
+    clean_frames, clean_info = ffmpeg.decode_sampled(clean, cap=max_frames)
+    wm_frames, _ = ffmpeg.decode_sampled(watermarked, cap=max_frames)
     if clean_frames.shape[1:] != wm_frames.shape[1:]:
         typer.echo("错误：两段视频分辨率不一致", err=True)
         raise typer.Exit(code=1)
     report = diff_module.build_report(clean_frames, wm_frames, out_dir, name)
     report["clean_frames"] = len(clean_frames)
+    report["sampled_frames"] = len(clean_frames)
     report["resolution"] = f"{clean_info['width']}x{clean_info['height']}"
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
     typer.echo(f"输出目录：{out_dir}")
@@ -201,9 +206,10 @@ def sample_diff(
 def bitstream(
     file: str = typer.Argument(..., help="视频文件路径"),
     reference: str = typer.Option(None, "--reference", help="干净基准视频（差分判定）"),
+    max_frames: int = typer.Option(600, help="QP/码量分析的最大帧数（内存护栏）"),
 ) -> None:
     """压缩域（码流层）检测：QP 图、码量分配、GOP/SEI 与启发式评分。"""
-    report = bitstream_analyze.analyze(file, reference)
+    report = bitstream_analyze.analyze(file, reference, max_frames=max_frames)
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
@@ -212,17 +218,29 @@ def detect_watermark(
     file: str = typer.Argument(..., help="待检视频文件路径"),
 ) -> None:
     """盲检测置信度：对视频各方案输出 0~1 的启发式分数。"""
-    frames, info = ffmpeg.decode_video(file)
-    scores = detect.video_scores(frames)
+    frames, info = ffmpeg.decode_sampled(file, cap=300)
+    scores, confidence = detect.windowed_video_scores_with_confidence(frames)
+    structural = detect.structural_scores(frames)
+    color_frames, _ = ffmpeg.decode_sampled(
+        file, cap=60, grayscale=False, scale_long_edge=detect.STATS_LONG_EDGE
+    )
+    scores["chroma"] = detect.chroma_blind(color_frames)
+    del color_frames
     typer.echo(json.dumps(
         {
             "file": file,
             "resolution": f"{info['width']}x{info['height']}",
             "frames": len(frames),
             "scores": scores,
+            "structural": structural,
+            "confidence": confidence,
             "note": (
-                "像素域启发式置信度：有损压缩视频会抬高 LSB/QIM 基线，"
-                "建议与干净同源基准做差分判定（bitstream --reference）"
+                "像素域启发式置信度（跨全片抽样 300 帧、逐窗口打分，"
+                "structural 为降帧 SVD/DCT-mod 检测，chroma 另抽样 60 帧彩色）。"
+                "有损压缩视频会抬高 LSB/QIM 基线；"
+                "有密钥的神经水印（RivaGAN/平台自研）无法无密钥盲检测，"
+                "本报告不覆盖。"
+                "建议与干净同源基准做差分判定（bitstream --reference）。"
             ),
         },
         ensure_ascii=False,
@@ -405,6 +423,7 @@ def cleanse_matrix(
 @app.command()
 def benchmark(
     path: str = typer.Option(None, help="待测视频；缺省时生成 240 帧合成视频"),
+    max_frames: int = typer.Option(600, help="软/硬解码对比的最大帧数（内存护栏）"),
 ) -> None:
     """软/硬件编解码耗时对比（macOS 使用 VideoToolbox）。"""
     target = path
@@ -414,15 +433,16 @@ def benchmark(
         video = samples.make_video_frames(240, 640, 360, seed=200, motion_speed=1.2)
         target = os.path.join(tempfile.gettempdir(), "cthulhu-bench-src.mp4")
         ffmpeg.encode_video(video, target, fps=30)
-    typer.echo(json.dumps(ffmpeg.benchmark(target), ensure_ascii=False, indent=2))
+    typer.echo(json.dumps(ffmpeg.benchmark(target, max_frames=max_frames), ensure_ascii=False, indent=2))
 
 
 @app.command()
 def similarity(a: str = typer.Argument(..., help="参考视频"), b: str = typer.Argument(..., help="待比较视频")) -> None:
     """量化两段视频的内容/运动/哈希/画质相似度（自建 embedding）。"""
-    frames_a, _ = ffmpeg.decode_video(a)
-    frames_b, _ = ffmpeg.decode_video(b)
-    report = embedding.similarity_report(frames_a, frames_b)
+    # 复用 GUI 服务层的抽样实现：跨全片 float32 抽样，内存有界。
+    from cthulhu_backend import services
+
+    report = services.run_similarity(a, b)
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
@@ -438,38 +458,19 @@ def desensitize(
     seed: int = typer.Option(0),
 ) -> None:
     """内容脱敏流水线：变换画面并量化与源内容的相似度下降。"""
-    frames, info = ffmpeg.decode_video(input, grayscale=False)
-    original = frames
-    rng = np.random.default_rng(seed)
-    if reorder:
-        frames = video_transform.reorder_shots(frames, shots.detect_cuts(frames), rng)
-    if speed != 1.0:
-        frames = video_transform.retime(frames, speed)
-    if recrop > 0:
-        frames = video_transform.recrop(frames, recrop)
-    if regrade:
-        frames = video_transform.regrade(frames, rng)
-    if banner:
-        frames = video_transform.overlay_banner(frames, banner, seed)
-    ffmpeg.encode_video(frames, output, fps=info["fps"])
+    # 复用 GUI 的流式分块管线：内存与视频总长解耦，且是旧全量实现的超集。
+    from cthulhu_backend import services
 
-    def _luma(frames: np.ndarray) -> np.ndarray:
-        """相似度报告基于亮度通道；彩色帧转灰度避免破坏 blockmean 的二维假设。"""
-        if frames.ndim == 4:
-            return 0.299 * frames[..., 0] + 0.587 * frames[..., 1] + 0.114 * frames[..., 2]
-        return frames
-
-    original_gray = _luma(original)
-    frames_gray = _luma(frames)
-    report = {
-        "input": input,
-        "output": output,
-        "frames": len(original),
-        "similarity_before": embedding.similarity_report(original_gray, original_gray),
-        "similarity_after": embedding.similarity_report(original_gray, frames_gray),
-        "vmaf": ffmpeg.vmaf_score(output, input),
-        "note": "画面层变换；音频重混待接入音画联合管线",
-    }
+    report = services.run_desensitize(
+        input,
+        output,
+        reorder=reorder,
+        speed=speed,
+        recrop=recrop,
+        regrade=regrade,
+        banner=banner,
+        seed=seed,
+    )
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
