@@ -16,7 +16,7 @@ from scipy.io import wavfile
 from cthulhu_backend.evaluate import dedup_harness, metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import shots, strategies
+from cthulhu_backend.transform import parallel, shots, strategies
 from cthulhu_backend.transform import video as video_transform
 
 _FF = ffmpeg.FFMPEG_BIN
@@ -38,10 +38,15 @@ def _mux_audio(video_path: str, audio: np.ndarray, sample_rate: int, out_path: s
     )
 
 
+def _gray(frames: np.ndarray) -> np.ndarray:
+    return 0.299 * frames[..., 0] + 0.587 * frames[..., 1] + 0.114 * frames[..., 2]
+
+
 def build_variant(
     reference: str,
     out_path: str,
     *,
+    reference_frames: np.ndarray | None = None,
     seed: int,
     shot_retime: tuple[float, float] | None = None,
     cut_margin: int = 0,
@@ -56,10 +61,13 @@ def build_variant(
 ) -> str:
     """对 540p 参考片段应用一组原语并输出带音轨的 MP4。"""
     rng = np.random.default_rng(seed)
-    frames, _ = ffmpeg.decode_video(
-        reference, grayscale=False, vf="scale=540:960:flags=lanczos", out_dtype="float32"
-    )
-    gray = 0.299 * frames[..., 0] + 0.587 * frames[..., 1] + 0.114 * frames[..., 2]
+    if reference_frames is not None:
+        frames = reference_frames
+    else:
+        frames, _ = ffmpeg.decode_video(
+            reference, grayscale=False, vf="scale=540:960:flags=lanczos", out_dtype="float32"
+        )
+    gray = _gray(frames)
     boundaries = shots.detect_cuts(gray)
 
     if shot_retime is not None:
@@ -96,9 +104,9 @@ def build_variant(
     return out_path
 
 
-def _quality(ref_path: str, variant_path: str) -> dict:
+def _quality(ref_path: str, variant_path: str, ref_frames: np.ndarray | None = None) -> dict:
     """变速会造成帧错位，VMAF 不可用；改用时间对齐的 SSIM 与叙事连续性。"""
-    ref, _ = ffmpeg.decode_video(ref_path, out_dtype="float32")
+    ref = ref_frames if ref_frames is not None else ffmpeg.decode_video(ref_path, out_dtype="float32")[0]
     cand, _ = ffmpeg.decode_video(variant_path, out_dtype="float32")
     if ref.shape[1:] != cand.shape[1:]:
         return {"ssim_aligned": None, "order_cosine": None}
@@ -168,22 +176,29 @@ def run_matrix(clip: str, out_dir: str, seed: int = 0, reuse: bool = False) -> d
         check=True,
         capture_output=True,
     )
-    rows = []
+    # 参考片只解码一次：全部变体共享同一份只读帧（变换均返回新数组，无原地写）。
+    ref_rgb, _ = ffmpeg.decode_video(reference, grayscale=False, out_dtype="float32")
+    ref_gray = _gray(ref_rgb)
+    built: list[tuple[str, str]] = []
     for name, options in PRESETS.items():
         variant = str(work / f"variant-{name}.mp4")
         if not (reuse and Path(variant).exists()):
-            build_variant(reference, variant, seed=seed, **options)
+            build_variant(reference, variant, reference_frames=ref_rgb, seed=seed, **options)
+        built.append((name, variant))
+
+    def _score_one(item: tuple[str, str]) -> dict:
+        name, variant = item
         dedup = dedup_harness.compare(reference, variant)
-        quality = _quality(reference, variant)
-        rows.append(
-            {
-                "preset": name,
-                "duplicate_risk": dedup["duplicate_risk"],
-                "risk_level": dedup["risk_level"],
-                "distances": dedup["distances"],
-                **quality,
-            }
-        )
+        quality = _quality(reference, variant, ref_frames=ref_gray)
+        return {
+            "preset": name,
+            "duplicate_risk": dedup["duplicate_risk"],
+            "risk_level": dedup["risk_level"],
+            "distances": dedup["distances"],
+            **quality,
+        }
+
+    rows = parallel.map_items(_score_one, built)
     report = {"reference": reference, "seed": seed, "rows": rows}
     (work / "attack-matrix.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

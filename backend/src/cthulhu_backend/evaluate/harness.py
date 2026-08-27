@@ -14,7 +14,7 @@ from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.similarity import embedding
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import shots
+from cthulhu_backend.transform import parallel, shots
 from cthulhu_backend.transform import video as video_transform
 from cthulhu_backend.watermark import common, detect, dwt, echo, lsb, qim, qim_rep, ss
 
@@ -49,6 +49,7 @@ def run_video_harness(
     bits: list[int],
     attacks: list[str],
     seed: int = 0,
+    workers: int | None = None,
     **kwargs: object,
 ) -> dict:
     embed_fn, extract_fn = VIDEO_EMBEDDERS[method]
@@ -59,8 +60,7 @@ def run_video_harness(
             for frame in frames
         ]
     )
-    results = {}
-    for attack in attacks:
+    def _attack_one(attack: str) -> tuple[str, dict]:
         attacked = VIDEO_ATTACKS[attack](watermarked)
         out_bits = []
         for frame in attacked:
@@ -70,11 +70,13 @@ def run_video_harness(
                 else extract_fn(frame, len(bits), **kwargs)
             )
         ref = (common.SYNC + bits) * len(frames)
-        results[attack] = {
+        return attack, {
             "ber": metrics.ber(ref, out_bits),
             "psnr_db": metrics.psnr(frames, attacked),
             "ssim": metrics.ssim(frames, attacked),
         }
+
+    results = dict(parallel.map_items(_attack_one, attacks, workers))
     return {"method": method, "attacks": results}
 
 
@@ -85,17 +87,20 @@ def run_audio_harness(
     sample_rate: int = 16000,
     seed: int = 0,
     segment: float = 0.05,
+    workers: int | None = None,
 ) -> dict:
     watermarked = echo.embed(signal, bits, sample_rate, segment=segment)
-    results = {}
-    for attack in attacks:
+
+    def _attack_one(attack: str) -> tuple[str, dict]:
         rng = np.random.default_rng(seed)
         attacked = AUDIO_ATTACKS[attack](watermarked, rng)
         out_bits = echo.extract(attacked, len(bits), sample_rate, segment=segment)
-        results[attack] = {
+        return attack, {
             "ber": metrics.ber(common.SYNC + bits, out_bits),
             "psnr_db": metrics.psnr(signal, attacked),
         }
+
+    results = dict(parallel.map_items(_attack_one, attacks, workers))
     return {"method": "echo", "attacks": results}
 
 
@@ -105,12 +110,14 @@ def run_detection_video_harness(
     bits: list[int],
     attacks: list[str],
     seed: int = 0,
+    workers: int | None = None,
     **kwargs: object,
 ) -> dict:
     """盲检测评估：干净基线 vs 水印 vs 攻击后，各方案置信度对比。"""
     clean_scores = detect.video_scores(frames)
     report: dict = {"clean": clean_scores}
-    for method in methods:
+
+    def _method_one(method: str) -> tuple[str, dict]:
         embed_fn = VIDEO_EMBEDDERS[method][0]
         seeded = method in {"lsb", "ss", "dwt"}
         watermarked = np.stack(
@@ -126,10 +133,13 @@ def run_detection_video_harness(
             attack: detect.video_scores(VIDEO_ATTACKS[attack](watermarked))[method]
             for attack in attacks
         }
-        report[method] = {
+        return method, {
             "watermarked": watermarked_scores[method],
             "attacked": attacked_scores,
         }
+
+    for method, entry in parallel.map_items(_method_one, methods, workers):
+        report[method] = entry
     return report
 
 
@@ -140,16 +150,18 @@ def run_detection_audio_harness(
     sample_rate: int = 16000,
     seed: int = 0,
     segment: float = 0.25,
+    workers: int | None = None,
 ) -> dict:
     """音频盲检测评估：干净 vs 回声水印 vs 攻击后置信度。"""
     clean_score = detect.audio_scores(signal, sample_rate)["echo"]
     watermarked = echo.embed(signal, bits, sample_rate, segment=segment)
     watermarked_score = detect.audio_scores(watermarked, sample_rate)["echo"]
-    attacked_scores = {}
-    for attack in attacks:
+    def _attack_one(attack: str) -> tuple[str, float]:
         rng = np.random.default_rng(seed)
         attacked = AUDIO_ATTACKS[attack](watermarked, rng)
-        attacked_scores[attack] = detect.audio_scores(attacked, sample_rate)["echo"]
+        return attack, detect.audio_scores(attacked, sample_rate)["echo"]
+
+    attacked_scores = dict(parallel.map_items(_attack_one, attacks, workers))
     return {
         "clean": clean_score,
         "watermarked": watermarked_score,
@@ -185,6 +197,7 @@ def run_compressed_detection_baseline(
     attacks: list[str],
     fps: float = 30.0,
     crf: int = 23,
+    workers: int | None = None,
 ) -> dict:
     """压缩域差分基线：干净 / 水印 / 攻击后均经编码往返后检测。
 
@@ -201,40 +214,51 @@ def run_compressed_detection_baseline(
         "fps": fps,
         "crf": crf,
     }, "methods": {}}
-    for method in methods:
-        clean_values: list[float] = []
-        watermarked_values: list[float] = []
-        attacked_values: dict[str, list[float]] = {attack: [] for attack in attacks}
+    def _unit(item: tuple[str, int]) -> tuple[str, int, float, float, dict[str, float]]:
+        method, seed = item
         embed_fn = VIDEO_EMBEDDERS[method][0]
-        for seed in seeds:
-            clean = samples.make_video_frames(frames_n, width, height, seed=seed)
-            bits = common.payload_bits(seed + 1, payload_bits)
-            clean_coded = _codec_roundtrip(clean, fps, crf)
-            clean_values.append(detect.video_scores(clean_coded)[method])
+        clean = samples.make_video_frames(frames_n, width, height, seed=seed)
+        bits = common.payload_bits(seed + 1, payload_bits)
+        clean_coded = _codec_roundtrip(clean, fps, crf)
+        clean_score = detect.video_scores(clean_coded)[method]
+        if method == "ss":
+            watermarked = np.stack(
+                [embed_fn(frame, bits, seed=seed, alpha=0.03) for frame in clean],
+            )
+        elif method in {"lsb", "dwt"}:
+            watermarked = np.stack(
+                [embed_fn(frame, bits, seed=seed) for frame in clean],
+            )
+        else:
+            watermarked = np.stack([embed_fn(frame, bits) for frame in clean])
+        watermarked_coded = _codec_roundtrip(watermarked, fps, crf)
+        watermarked_score = detect.video_scores(watermarked_coded)[method]
+        attacked_scores = {
+            attack: detect.video_scores(_codec_roundtrip(VIDEO_ATTACKS[attack](watermarked_coded), fps, crf))[method]
+            for attack in attacks
+        }
+        return method, seed, clean_score, watermarked_score, attacked_scores
 
-            if method == "ss":
-                watermarked = np.stack(
-                    [embed_fn(frame, bits, seed=seed, alpha=0.03) for frame in clean],
-                )
-            elif method in {"lsb", "dwt"}:
-                watermarked = np.stack(
-                    [embed_fn(frame, bits, seed=seed) for frame in clean],
-                )
-            else:
-                watermarked = np.stack([embed_fn(frame, bits) for frame in clean])
-            watermarked_coded = _codec_roundtrip(watermarked, fps, crf)
-            watermarked_values.append(detect.video_scores(watermarked_coded)[method])
+    rows = parallel.map_items(
+        _unit, [(method, seed) for method in methods for seed in seeds], workers
+    )
+    clean_values: dict[str, list[float]] = {method: [] for method in methods}
+    watermarked_values: dict[str, list[float]] = {method: [] for method in methods}
+    attacked_values: dict[str, dict[str, list[float]]] = {
+        method: {attack: [] for attack in attacks} for method in methods
+    }
+    for method, _, clean_score, watermarked_score, attacked_scores in rows:
+        clean_values[method].append(clean_score)
+        watermarked_values[method].append(watermarked_score)
+        for attack in attacks:
+            attacked_values[method][attack].append(attacked_scores[attack])
 
-            for attack in attacks:
-                attacked = VIDEO_ATTACKS[attack](watermarked_coded)
-                attacked_coded = _codec_roundtrip(attacked, fps, crf)
-                attacked_values[attack].append(detect.video_scores(attacked_coded)[method])
-
-        watermarked_stats = _stats(watermarked_values)
-        clean_stats = _stats(clean_values)
+    for method in methods:
+        watermarked_stats = _stats(watermarked_values[method])
+        clean_stats = _stats(clean_values[method])
         diff_mean = round(watermarked_stats["mean"] - clean_stats["mean"], 4)
         attacked_report: dict[str, dict] = {}
-        for attack, values in attacked_values.items():
+        for attack, values in attacked_values[method].items():
             attacked_stats = _stats(values)
             attacked_diff = attacked_stats["mean"] - clean_stats["mean"]
             residual_ratio = (
@@ -258,14 +282,15 @@ def run_desensitize_harness(
     frames: np.ndarray,
     configs: dict[str, dict],
     seed: int = 0,
+    workers: int | None = None,
 ) -> dict:
     """内容脱敏评估：各参数组合对内容/运动相似度与画质的影响。
 
     psnr_db 为未时间对齐的帧序差，变速/重排会造成帧错位而拉低分数，
     仅作同一口径下的横向对比，不代表逐帧视觉画质。
     """
-    report: dict = {}
-    for name, config in configs.items():
+    def _config_one(item: tuple[str, dict]) -> tuple[str, dict]:
+        name, config = item
         rng = np.random.default_rng(seed)
         out = frames
         if config.get("reorder"):
@@ -289,7 +314,7 @@ def run_desensitize_harness(
             out = spatial.wiener_denoise(out, size=5)
         length = min(len(frames), len(out))
         similarity = embedding.similarity_report(frames[:length], out[:length])
-        report[name] = {
+        return name, {
             "frames": len(out),
             "content_cosine": round(similarity["content_cosine"], 4),
             "motion_cosine": round(similarity["motion_cosine"], 4),
@@ -298,6 +323,8 @@ def run_desensitize_harness(
             "aligned_psnr_db": round(metrics.temporal_aligned_psnr(frames, out), 2),
             "psnr_db": round(metrics.psnr(frames[:length], out[:length]), 2),
         }
+
+    report = dict(parallel.map_items(_config_one, list(configs.items()), workers))
     return report
 
 
@@ -319,6 +346,7 @@ def run_cleanse_matrix(
     seed: int = 0,
     fps: float = 30.0,
     crf: int = 23,
+    workers: int | None = None,
 ) -> dict:
     """通杀验收矩阵：各水印变体经编码与各档清洗后的已知水印误码率。
 
@@ -328,6 +356,7 @@ def run_cleanse_matrix(
     bits = bits or common.payload_bits(seed + 1, 64)
     report: dict = {}
     with tempfile.TemporaryDirectory() as tmp:
+        prepared = []
         for variant_name, variant in variants.items():
             segment = variant.get("segment", False)
             if segment:
@@ -341,14 +370,26 @@ def run_cleanse_matrix(
                 "encoded_ber": round(_extract_ber(coded, variant["extract"], bits, segment), 4),
                 "levels": {},
             }
-            for level_name, params in levels.items():
-                out_path = os.path.join(tmp, f"{variant_name}-{level_name}.mp4")
-                services.run_desensitize(wm_path, out_path, **params)
-                cleaned, _ = ffmpeg.decode_video(out_path)
-                row["levels"][level_name] = round(
-                    _extract_ber(cleaned, variant["extract"], bits, segment), 4,
-                )
             report[variant_name] = row
+            for level_name, params in levels.items():
+                prepared.append((variant_name, level_name, variant, params, wm_path))
+
+        def _level_one(item: tuple[str, str, dict, dict, str]) -> tuple[str, str, float]:
+            variant_name, level_name, variant, params, wm_path = item
+            out_path = os.path.join(tmp, f"{variant_name}-{level_name}.mp4")
+            services.run_desensitize(wm_path, out_path, **params)
+            cleaned, _ = ffmpeg.decode_video(out_path)
+            return (
+                variant_name,
+                level_name,
+                round(
+                    _extract_ber(cleaned, variant["extract"], bits, variant.get("segment", False)),
+                    4,
+                ),
+            )
+
+        for variant_name, level_name, ber in parallel.map_items(_level_one, prepared, workers):
+            report[variant_name]["levels"][level_name] = ber
     return report
 
 

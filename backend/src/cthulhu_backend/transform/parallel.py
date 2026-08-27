@@ -60,3 +60,20 @@ def map_chunks(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         parts = list(pool.map(lambda pair: fn(frames[pair[0] : pair[1]]), pairwise(bounds)))
     return np.concatenate(parts, axis=0)
+
+
+def map_items(
+    fn: Callable[[object], object],
+    items: list[object],
+    workers: int | None = None,
+) -> list[object]:
+    """对独立项并行执行 fn，按原顺序返回结果；项数过少时顺序执行。
+
+    适用于互不共享可变随机状态的评估组合（如方法×攻击×种子矩阵），
+    结果与顺序执行逐位一致。
+    """
+    workers = workers or default_workers()
+    if workers <= 1 or len(items) < 2:
+        return [fn(item) for item in items]
+    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
+        return list(pool.map(fn, items))
