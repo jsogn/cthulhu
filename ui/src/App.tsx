@@ -41,6 +41,20 @@ export default function App() {
     localStorage.setItem("theme", themePref);
   }, [effective, themePref]);
 
+  // 首屏稳定后闲时预热其余视图：启动仍保持代码分割，
+  // 预热完成后点菜单即为零等待切换，不再出现懒加载占位闪烁。
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void Promise.all([
+        import("@/views/JobsView"),
+        import("@/views/TemplatesView"),
+        import("@/views/ProductsView"),
+        import("@/views/SettingsView"),
+      ]);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     return connectEvents((msg) => {
       if (msg.type === "open") {

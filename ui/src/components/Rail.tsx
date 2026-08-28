@@ -1,3 +1,4 @@
+import { useTransition } from "react";
 import type { LucideIcon } from "lucide-react";
 import { FolderOutput, Layers, LayoutDashboard, ListTodo, Settings } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,6 +14,7 @@ const MAIN_ITEMS: { key: ViewKey; label: string; icon: LucideIcon }[] = [
 export default function Rail() {
   const view = useAppStore((state) => state.view);
   const setView = useAppStore((state) => state.setView);
+  const [, startTransition] = useTransition();
 
   const renderItem = ({ key, label, icon: Icon }: { key: ViewKey; label: string; icon: LucideIcon }) => (
     <Tooltip key={key}>
@@ -21,7 +23,7 @@ export default function Rail() {
           type="button"
           className={`rail-item${view === key ? " active" : ""}`}
           aria-current={view === key ? "page" : undefined}
-          onClick={() => setView(key)}
+          onClick={() => startTransition(() => setView(key))}
         >
           <Icon className="rail-icon" aria-hidden="true" />
           <span className="rail-label">{label}</span>
