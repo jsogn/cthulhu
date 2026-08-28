@@ -234,20 +234,6 @@ def run_detect(path: str, progress_cb=None, should_stop=None, pause=None) -> dic
     return report
 
 
-def run_blind(path: str) -> dict | None:
-    """仅盲检测抽样：空间/频域置信度与音频回声（清洗产物残留复检用）。"""
-    try:
-        frames, _ = ffmpeg.decode_sampled(path, cap=300)
-        blind, _ = detect.windowed_video_scores_with_confidence(frames)
-        audio = ffmpeg.decode_audio(path, max_seconds=120)
-        if audio is not None:
-            signal, sample_rate = audio
-            blind["echo"] = detect.audio_scores(signal, sample_rate)["echo"]
-        return blind
-    except Exception:  # noqa: BLE001 - 残留复检失败不影响任务成功状态
-        return None
-
-
 def _temporal_aligned_vmaf(
     ref: np.ndarray,
     mov: np.ndarray,
@@ -780,6 +766,106 @@ def _apply_attacks(state: _DesensitizeState, frames: np.ndarray, output_ids: lis
     return frames
 
 
+def _plan_shots(
+    sampled: np.ndarray,
+    sampled_starts: list[int],
+    total_in: int,
+    need_shots: bool,
+) -> list[tuple[int, int]]:
+    """抽样窗口内检测切点并映射回全局帧号，返回相邻切点区间。"""
+    if need_shots and len(sampled) > 2 and sampled_starts:
+        # 抽样按窗口返回；逐窗口检测切点再映射回全局帧号，避免窗口拼接处的假切点。
+        per_window = max(1, len(sampled) // len(sampled_starts))
+        boundaries = []
+        for window, start in enumerate(sampled_starts):
+            segment = sampled[window * per_window : (window + 1) * per_window]
+            if len(segment) < 2:
+                continue
+            for cut in shots.detect_cuts(segment):
+                if 0 < cut < len(segment):
+                    boundaries.append(start + cut)
+        boundaries = sorted({boundary for boundary in boundaries if 0 < boundary < total_in})
+        boundaries = [0] + boundaries + [total_in]
+    else:
+        boundaries = [0, total_in]
+    return list(pairwise(boundaries))
+
+
+def _build_segments(
+    shot_ranges: list[tuple[int, int]],
+    opts: DesensitizeOptions,
+    speed: float,
+    rng: np.random.Generator,
+) -> tuple[list[tuple[int, int, int]], list[float], list[int], int]:
+    """逐镜头切点漂移/变速与重排，输出编码区间（消耗 rng 流，顺序敏感）。"""
+    shot_offsets: list[tuple[int, int]] = []
+    shot_factors: list[float] = []
+    for start, end in shot_ranges:
+        length = end - start
+        drop_start = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
+        drop_end = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
+        if drop_start + drop_end >= length:
+            drop_start = min(drop_start, max(0, length - 1))
+            drop_end = 0
+        shot_offsets.append((drop_start, drop_end))
+        shot_factors.append(
+            float(rng.uniform(opts.shot_retime_min, opts.shot_retime_max))
+            if opts.shot_retime
+            else 1.0
+        )
+    order = rng.permutation(len(shot_ranges)) if opts.reorder else np.arange(len(shot_ranges))
+    segments: list[tuple[int, int, int]] = []
+    seg_factors: list[float] = []
+    seg_out_lens: list[int] = []
+    cursor = 0
+    for shot_index in order:
+        orig_start, orig_end = shot_ranges[int(shot_index)]
+        drop_start, drop_end = shot_offsets[int(shot_index)]
+        eff_start = orig_start + drop_start
+        eff_len = (orig_end - orig_start) - drop_start - drop_end
+        factor = speed * shot_factors[int(shot_index)]
+        retimed = speed != 1.0 or opts.shot_retime
+        out_len = max(1, round(eff_len / factor)) if retimed else eff_len
+        segments.append((cursor, eff_start, eff_len))
+        seg_factors.append(factor)
+        seg_out_lens.append(out_len)
+        cursor += out_len
+    return segments, seg_factors, seg_out_lens, cursor
+
+
+def _regrade_curves(
+    rng: np.random.Generator,
+    total_out: int,
+    perturb: float,
+    regrade: bool,
+) -> tuple[np.ndarray, np.ndarray, float, float, tuple[float, float, float, float], tuple[float, float, float, float]]:
+    """调光曲线：低频平滑的 gamma/亮度轨迹（确定性，消耗 rng 流）。"""
+    gammas = np.ones(total_out, dtype=np.float32)
+    deltas = np.zeros(total_out, dtype=np.float32)
+    gamma_strength = 0.03 + 0.2 * perturb
+    brightness = 0.02 + 0.06 * perturb
+    periods = (0.0, 0.0, 0.0, 0.0)
+    phases = (0.0, 0.0, 0.0, 0.0)
+    if regrade:
+        # 时间平滑：调光参数沿低频轨迹变化，避免逐帧独立随机造成的暗部闪烁。
+        # 幅度与旧实现一致（gamma ±gamma_strength、亮度 ±brightness），对抗
+        # 语义不变，只是相邻帧连续过渡。
+        t = np.arange(total_out, dtype=np.float32)
+        periods = tuple(float(rng.uniform(80.0, 180.0)) for _ in range(4))
+        phases = tuple(float(rng.uniform(0.0, 2.0 * np.pi)) for _ in range(4))
+        period_a, period_b, period_c, period_d = periods
+        phase_a, phase_b, phase_c, phase_d = phases
+        gammas = 1.0 + gamma_strength * (
+            0.6 * np.sin(2.0 * np.pi * t / period_a + phase_a)
+            + 0.4 * np.sin(2.0 * np.pi * t / period_b + phase_b)
+        ).astype(np.float32)
+        deltas = brightness * (
+            0.6 * np.sin(2.0 * np.pi * t / period_c + phase_c)
+            + 0.4 * np.sin(2.0 * np.pi * t / period_d + phase_d)
+        ).astype(np.float32)
+    return gammas, deltas, gamma_strength, brightness, periods, phases
+
+
 def _prepare_desensitize(
     path: str,
     opts: DesensitizeOptions,
@@ -825,87 +911,18 @@ def _prepare_desensitize(
     else:
         sampled = np.empty((0,), dtype=np.float32)
         sampled_starts = [0]
-    if need_shots and len(sampled) > 2 and sampled_starts:
-        # 抽样按窗口返回；逐窗口检测切点再映射回全局帧号，避免窗口拼接处的假切点。
-        per_window = max(1, len(sampled) // len(sampled_starts))
-        boundaries = []
-        for window, start in enumerate(sampled_starts):
-            segment = sampled[window * per_window : (window + 1) * per_window]
-            if len(segment) < 2:
-                continue
-            for cut in shots.detect_cuts(segment):
-                if 0 < cut < len(segment):
-                    boundaries.append(start + cut)
-        boundaries = sorted({boundary for boundary in boundaries if 0 < boundary < total_in})
-        boundaries = [0] + boundaries + [total_in]
-    else:
-        boundaries = [0, total_in]
-    shot_ranges = list(pairwise(boundaries))
+    shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
 
     rng = np.random.default_rng(opts.seed)
-    # 逐镜头对抗参数按原镜头序号确定性生成：切点漂移 + 逐镜头变速因子。
-    shot_offsets: list[tuple[int, int]] = []
-    shot_factors: list[float] = []
-    for start, end in shot_ranges:
-        length = end - start
-        drop_start = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
-        drop_end = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
-        if drop_start + drop_end >= length:
-            drop_start = min(drop_start, max(0, length - 1))
-            drop_end = 0
-        shot_offsets.append((drop_start, drop_end))
-        shot_factors.append(
-            float(rng.uniform(opts.shot_retime_min, opts.shot_retime_max))
-            if opts.shot_retime
-            else 1.0
-        )
-    order = rng.permutation(len(shot_ranges)) if opts.reorder else np.arange(len(shot_ranges))
-    # 重排后的输入区间；seg_factors 为该段最终变速因子（全局 speed × 逐镜头）。
-    segments: list[tuple[int, int, int]] = []
-    seg_factors: list[float] = []
-    seg_out_lens: list[int] = []
-    cursor = 0
-    for shot_index in order:
-        orig_start, orig_end = shot_ranges[int(shot_index)]
-        drop_start, drop_end = shot_offsets[int(shot_index)]
-        eff_start = orig_start + drop_start
-        eff_len = (orig_end - orig_start) - drop_start - drop_end
-        factor = speed * shot_factors[int(shot_index)]
-        retimed = speed != 1.0 or opts.shot_retime
-        out_len = max(1, round(eff_len / factor)) if retimed else eff_len
-        segments.append((cursor, eff_start, eff_len))
-        seg_factors.append(factor)
-        seg_out_lens.append(out_len)
-        cursor += out_len
-    total_out = cursor
+    segments, seg_factors, seg_out_lens, total_out = _build_segments(
+        shot_ranges, opts, speed, rng
+    )
 
-    gammas = np.ones(total_out, dtype=np.float32)
-    deltas = np.zeros(total_out, dtype=np.float32)
-    gamma_strength = 0.03 + 0.2 * opts.perturb
-    brightness = 0.02 + 0.06 * opts.perturb
-    period_a = period_b = period_c = period_d = 0.0
-    phase_a = phase_b = phase_c = phase_d = 0.0
-    if opts.regrade:
-        # 时间平滑：调光参数沿低频轨迹变化，避免逐帧独立随机造成的暗部闪烁。
-        # 幅度与旧实现一致（gamma ±gamma_strength、亮度 ±brightness），对抗
-        # 语义不变，只是相邻帧连续过渡。
-        t = np.arange(total_out, dtype=np.float32)
-        period_a = float(rng.uniform(80.0, 180.0))
-        period_b = float(rng.uniform(80.0, 180.0))
-        period_c = float(rng.uniform(80.0, 180.0))
-        period_d = float(rng.uniform(80.0, 180.0))
-        phase_a = float(rng.uniform(0.0, 2.0 * np.pi))
-        phase_b = float(rng.uniform(0.0, 2.0 * np.pi))
-        phase_c = float(rng.uniform(0.0, 2.0 * np.pi))
-        phase_d = float(rng.uniform(0.0, 2.0 * np.pi))
-        gammas = 1.0 + gamma_strength * (
-            0.6 * np.sin(2.0 * np.pi * t / period_a + phase_a)
-            + 0.4 * np.sin(2.0 * np.pi * t / period_b + phase_b)
-        ).astype(np.float32)
-        deltas = brightness * (
-            0.6 * np.sin(2.0 * np.pi * t / period_c + phase_c)
-            + 0.4 * np.sin(2.0 * np.pi * t / period_d + phase_d)
-        ).astype(np.float32)
+    gammas, deltas, gamma_strength, brightness, periods, phases = _regrade_curves(
+        rng, total_out, opts.perturb, opts.regrade
+    )
+    period_a, period_b, period_c, period_d = periods
+    phase_a, phase_b, phase_c, phase_d = phases
 
     mid_rng = np.random.default_rng(opts.seed)
     spoof_bits = None
@@ -1465,8 +1482,6 @@ def _measure_desensitize(
             (path, output),
         )
     ref_s, mov_s, matches = metrics.temporal_match(original_sampled, processed_sampled)
-    stability_in = metrics.temporal_stability(original_sampled)
-    stability_out = metrics.temporal_stability(processed_sampled)
     # 几何去同步（旋转）使逐像素画质指标失去对齐口径，数值会误导用户。
     quality_na = opts.rotate > 0
     return {
@@ -1475,9 +1490,6 @@ def _measure_desensitize(
         "transform_strategy": state.strategy.name,
         "preset": opts.preset,
         "frames": state.total_in,
-        "order_disruption": round(
-            metrics.order_disruption(original_sampled, processed_sampled), 4,
-        ),
         # 与自身比较恒为 1，直接给出常量，省去一次全量 embedding。
         "similarity_before": IDENTICAL_SIMILARITY,
         "similarity_after": embedding.similarity_report(original_sampled, processed_sampled),
@@ -1491,7 +1503,6 @@ def _measure_desensitize(
             else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=state.output_fps)
         ),
         "quality_metrics_na": quality_na,
-        "stability_ratio": round(stability_out / max(stability_in, 1e-9), 3),
         "export_health": _export_health(output),
     }
 

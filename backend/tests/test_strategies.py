@@ -25,6 +25,32 @@ def make_context(count: int) -> strategies.TransformContext:
     )
 
 
+def test_plan_shots_maps_window_cuts_to_global_frames(monkeypatch):
+    """窗口内的切点要映射回全局帧号，并夹在 [0, total_in] 之间。"""
+    sampled = np.zeros((6,), dtype=np.float32)
+    monkeypatch.setattr(
+        "cthulhu_backend.services.shots.detect_cuts",
+        lambda segment: [1] if len(segment) >= 2 else [],
+    )
+    ranges = services._plan_shots(sampled, [0, 3], 10, need_shots=True)
+    assert ranges == [(0, 1), (1, 4), (4, 10)]
+
+
+def test_regrade_curves_deterministic_and_bounded():
+    """同种子曲线一致、幅度有界；关闭时返回恒等曲线。"""
+    first = services._regrade_curves(np.random.default_rng(7), 120, 0.15, True)
+    second = services._regrade_curves(np.random.default_rng(7), 120, 0.15, True)
+    gammas, deltas, *_ = first
+    assert np.allclose(gammas, second[0])
+    assert np.allclose(deltas, second[1])
+    assert np.all((gammas > 0.95) & (gammas < 1.05))
+    assert np.all(np.abs(deltas) < 0.05)
+
+    off = services._regrade_curves(np.random.default_rng(7), 120, 0.15, False)
+    assert np.all(off[0] == 1.0)
+    assert np.all(off[1] == 0.0)
+
+
 def test_thorough_matches_existing_sequence():
     frames = samples.make_video_frames(4, 64, 64, seed=1)
     context = make_context(len(frames))
