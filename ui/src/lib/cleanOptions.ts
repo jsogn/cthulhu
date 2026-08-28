@@ -94,7 +94,7 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     output_mode: state.outputMode,
     audio_remix: state.audioClean,
     echo_defeat: state.echoDefeat,
-    skip_vmaf: state.settingsMetricsMode === "fast",
+    skip_vmaf: true,
     filter_scale: Number(state.settingsFilterScale) || 0,
     sharpness: state.sharpness,
     color_restore: state.colorFix,

@@ -39,14 +39,6 @@ export function VariantDetailDialog({ variantDetail, onClose }: VariantDetailDia
                 {new Date(variantDetail.created_at * 1000).toLocaleString()}
               </b>
             </div>
-            {variantDetail.metrics.duplicate_risk != null && (
-              <div className="kv-row">
-                <span>源片相似度</span>
-                <b>
-                  {((variantDetail.metrics.duplicate_risk as number) * 100).toFixed(0)}%
-                </b>
-              </div>
-            )}
             {variantDetail.metrics.ssim != null && (
               <div className="kv-row">
                 <span>SSIM</span>

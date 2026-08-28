@@ -51,22 +51,7 @@ export const useQueueStore = create<QueueState>((set) => ({
             useMaterialsStore.getState().applyDetectResult(task.path, report);
           }
         }
-        const residuals = job.tasks
-          .filter((task) => task.kind === "desensitize")
-          .map(
-            (task) =>
-              (task.result as { residual?: { ss: number | null } | null } | null)?.residual?.ss,
-          )
-          .filter((value): value is number => value != null);
-        if (residuals.length) {
-          const mean = residuals.reduce((sum, value) => sum + value, 0) / residuals.length;
-          toast(
-            `任务完成：${job.name}`,
-            `清洗产物空间水印残留均值 ${mean.toFixed(2)}（干净基线约 0.28）`,
-          );
-        } else {
-          toast(`任务完成：${job.name}`);
-        }
+        toast(`任务完成：${job.name}`);
         try {
           new Notification(`Cthulhu · 任务完成`, { body: job.name });
         } catch {

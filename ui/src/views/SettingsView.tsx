@@ -27,7 +27,6 @@ const DEFAULTS: Record<string, string> = {
   export_dir: "~/Documents/Cthulhu",
   naming: "原文件名 + 时间戳",
   parallelism: "2",
-  metrics_mode: "fast",
   filter_scale: "720",
   gpu: "仅 CPU（软件编码）",
   transform_strategy: "fast",
@@ -218,21 +217,6 @@ export default function SettingsView() {
             </Select>
             <div className="form-help">
               任务中心按此额度统一调度所有清洗、检测与修复任务；数值越高越快，占用资源越多
-            </div>
-          </div>
-          <div className="form-field">
-            <Label>画质指标</Label>
-            <Select value={form.metrics_mode} onValueChange={(v) => setValue("metrics_mode", v)}>
-              <SelectTrigger className="form-input h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="full">完整（含 VMAF，每任务约多 5 秒）</SelectItem>
-                <SelectItem value="fast">快速（跳过 VMAF，批量推荐）</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="form-help">
-              跳过 VMAF 后处理校验仍展示 PSNR/SSIM 与源片相似度
             </div>
           </div>
           <div className="form-field">

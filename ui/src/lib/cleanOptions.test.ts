@@ -59,9 +59,8 @@ describe("makeCleanOptions", () => {
     expect(options.regrade).toBe(true);
   });
 
-  it("快速指标模式跳过 VMAF，完整模式保留", () => {
-    expect(makeCleanOptions(panelState({ settingsMetricsMode: "fast" })).skip_vmaf).toBe(true);
-    expect(makeCleanOptions(panelState({ settingsMetricsMode: "full" })).skip_vmaf).toBe(false);
+  it("默认跳过 VMAF 质量评估，保留 PSNR/SSIM", () => {
+    expect(makeCleanOptions(panelState()).skip_vmaf).toBe(true);
   });
 });
 

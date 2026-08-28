@@ -81,22 +81,11 @@ export function useContextPanel(
   } = useCleanPanel();
   const [templateList, setTemplateList] = useState<TemplateInfo[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
-  const [lastOutput, setLastOutput] = useState<string | null>(null);
   const [cleanSubmitting, setCleanSubmitting] = useState(false);
   const cleanDebounceRef = useRef<number | null>(null);
   const [detectSubmitting, setDetectSubmitting] = useState(false);
   const [audio, setAudio] = useState<AudioAnalysis | null>(null);
   const [audioMissing, setAudioMissing] = useState(false);
-  const [lastClean, setLastClean] = useState<{
-    psnr_db?: number;
-    ssim?: number;
-    vmaf?: number | null;
-    vmaf_aligned?: number | null;
-  } | null>(null);
-  const [dedupRisk, setDedupRisk] = useState<{
-    duplicate_risk: number;
-    risk_level: string;
-  } | null>(null);
   const [outputs, setOutputs] = useState<OutputInfo[]>([]);
   const [variantDetail, setVariantDetail] = useState<VariantInfo | null>(null);
   const [pendingDelete, setPendingDelete] = useState<OutputInfo | null>(null);
@@ -222,8 +211,6 @@ export function useContextPanel(
           options: { output, ...makeCleanOptions(cleanPanel) },
         },
       ]);
-      setLastClean(null);
-      setLastOutput(null);
       setCleanSubmitting(true);
       if (cleanDebounceRef.current !== null) window.clearTimeout(cleanDebounceRef.current);
       cleanDebounceRef.current = window.setTimeout(() => setCleanSubmitting(false), 1800);
@@ -295,8 +282,7 @@ export function useContextPanel(
     }
   };
 
-  // 清洗任务完成后：更新校验指标、产物列表、历史与并排预览。
-  const lastHandledTaskRef = useRef<string | null>(null);
+  // 清洗任务完成后：刷新产物列表并提示；判重等补充指标留在任务结果里，不打扰用户。
   useEffect(() => {
     const task = jobs
       .flatMap((job) => job.tasks)
@@ -305,18 +291,13 @@ export function useContextPanel(
           item.kind === "desensitize" &&
           item.path === material?.path &&
           item.status === "done" &&
-          item.result != null &&
-          item.id !== lastHandledTaskRef.current,
+          item.result != null,
       );
     if (!task) return;
     if (handledTaskIds.has(task.id)) return;
-    rememberHandledTask(task.id);
-    lastHandledTaskRef.current = task.id;
     const result = task.result as DesensitizeJobResult | null;
     if (!result?.output) return;
-    setLastOutput(result.output);
-    setLastClean(result);
-    setDedupRisk(result.dedup ?? null);
+    rememberHandledTask(task.id);
     void useMaterialsStore.getState().refreshOutputCounts();
     void fetchOutputs(material?.path ?? "")
       .then((report) => setOutputs(report.outputs))
@@ -382,9 +363,6 @@ export function useContextPanel(
     detectSubmitting,
     audio,
     audioMissing,
-    lastClean,
-    dedupRisk,
-    lastOutput,
     templateList,
     cleanSubmitting,
     outputs,
@@ -403,10 +381,5 @@ export function useContextPanel(
     confirmDelete,
     runRepairJob,
     applyTemplateById,
-    compareLastOutput: () => {
-      if (material?.path && lastOutput) {
-        runComparePair(material.path, lastOutput, "原片", "处理后");
-      }
-    },
   };
 }

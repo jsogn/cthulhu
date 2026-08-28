@@ -128,7 +128,7 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
     rows.push({ label: "输出帧率", value: `${options.fps_out} fps` });
   }
   if (enabled(options.hardware)) rows.push({ label: "硬件编码", value: "开启" });
-  if (enabled(options.skip_vmaf)) rows.push({ label: "快速模式", value: "跳过质量评估" });
+  if (enabled(options.skip_vmaf)) rows.push({ label: "画质评估", value: "PSNR/SSIM · 跳过 VMAF" });
 
   return rows;
 }

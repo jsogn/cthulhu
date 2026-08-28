@@ -66,7 +66,6 @@ describe("cleanPanel store", () => {
       json: async () => ({
         export_dir: "/导出目录",
         naming: "时间戳 + 原文件名",
-        metrics_mode: "fast",
         filter_scale: "480",
       }),
     });
@@ -75,7 +74,6 @@ describe("cleanPanel store", () => {
     const state = useCleanPanel.getState();
     expect(state.settingsExportDir).toBe("/导出目录");
     expect(state.settingsNaming).toBe("时间戳 + 原文件名");
-    expect(state.settingsMetricsMode).toBe("fast");
     expect(state.settingsFilterScale).toBe("480");
   });
 });

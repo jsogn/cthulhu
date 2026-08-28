@@ -219,7 +219,6 @@ export interface DesensitizeReport {
   input: string;
   output: string;
   frames: number;
-  order_disruption?: number;
   similarity_before: { content_cosine: number; motion_cosine: number };
   similarity_after: { content_cosine: number; motion_cosine: number };
   vmaf: number | null;
@@ -233,7 +232,7 @@ export interface DesensitizeReport {
   } | null;
 }
 
-/** 清洗任务完成后的完整结果（含校验指标与判重代理分）。 */
+/** 清洗任务完成后的完整结果（含画质校验指标）。 */
 export interface DesensitizeJobResult {
   output: string;
   similarity_after?: { content_cosine: number };
@@ -241,12 +240,6 @@ export interface DesensitizeJobResult {
   ssim?: number;
   vmaf?: number | null;
   vmaf_aligned?: number | null;
-  stability_ratio?: number;
-  dedup?: {
-    duplicate_risk: number;
-    risk_level: string;
-    distances: Record<string, number | null>;
-  } | null;
 }
 
 export type JobKind = "detect" | "desensitize" | "repair";

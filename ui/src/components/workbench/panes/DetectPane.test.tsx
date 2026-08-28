@@ -48,13 +48,9 @@ function renderPane(props: Partial<React.ComponentProps<typeof DetectPane>> = {}
         detectSubmitting={false}
         audio={null}
         audioMissing={false}
-        lastClean={null}
-        dedupRisk={null}
-        lastOutput={null}
         antiLevel="关闭"
         setAntiLevel={vi.fn()}
         onDetect={vi.fn()}
-        onCompareLast={vi.fn()}
         {...props}
       />
     </Tabs>,

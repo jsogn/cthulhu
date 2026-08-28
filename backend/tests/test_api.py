@@ -409,16 +409,6 @@ def test_detect_reports_stage_progress(tmp_path):
 
 
 @needs_ffmpeg
-def test_run_blind_scores(tmp_path):
-    """盲检测抽样只返回空间/频域置信度，供清洗产物残留复检。"""
-    source = _video(tmp_path, "b.mp4", seed=98)
-    blind = services.run_blind(str(source))
-    assert blind is not None
-    for key in ("ss", "qim", "lsb"):
-        assert 0 <= blind[key] <= 1
-
-
-@needs_ffmpeg
 def test_repair_delogo_stops_before_start(tmp_path):
     """取消标志置位时，修复任务在启动 ffmpeg 前立即中断。"""
     source = _video(tmp_path, "c.mp4", seed=97)

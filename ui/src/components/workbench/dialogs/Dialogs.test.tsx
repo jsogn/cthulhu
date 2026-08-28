@@ -26,7 +26,7 @@ const variant: VariantInfo = {
   options: { output_mode: "reencode", rotate: 0.2, requant: 96, noise: 0.003 },
   seed: 42,
   template_id: null,
-  metrics: { duplicate_risk: 0.87, ssim: 0.93 },
+  metrics: { ssim: 0.93 },
   created_at: 1724803200,
 };
 
@@ -37,7 +37,6 @@ describe("VariantDetailDialog", () => {
     expect(screen.getByText("/src/素材.mp4")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("标准")).toBeInTheDocument();
-    expect(screen.getByText("87%")).toBeInTheDocument();
   });
 });
 

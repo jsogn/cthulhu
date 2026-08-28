@@ -6,14 +6,6 @@ import type { AudioAnalysis, DetectReport } from "@/lib/backend";
 import { riskLabel } from "@/lib/workbenchOptions";
 import type { AntiLevel } from "@/lib/templates";
 import type { Material, RiskLevel } from "@/stores/materials";
-import { openInFolder } from "@/stores/toasts";
-
-interface LastCleanSummary {
-  psnr_db?: number;
-  ssim?: number;
-  vmaf?: number | null;
-  vmaf_aligned?: number | null;
-}
 
 interface DetectPaneProps {
   material: Material | null;
@@ -24,13 +16,9 @@ interface DetectPaneProps {
   detectSubmitting: boolean;
   audio: AudioAnalysis | null;
   audioMissing: boolean;
-  lastClean: LastCleanSummary | null;
-  dedupRisk: { duplicate_risk: number; risk_level: string } | null;
-  lastOutput: string | null;
   antiLevel: AntiLevel;
   setAntiLevel: (value: AntiLevel) => void;
   onDetect: () => void;
-  onCompareLast: () => void;
 }
 
 export function DetectPane({
@@ -42,13 +30,9 @@ export function DetectPane({
   detectSubmitting,
   audio,
   audioMissing,
-  lastClean,
-  dedupRisk,
-  lastOutput,
   antiLevel,
   setAntiLevel,
   onDetect,
-  onCompareLast,
 }: DetectPaneProps) {
   const pct = risk === "待检测" ? 100 : Math.max(0, Math.min(100, score));
   const ringColor =
@@ -200,73 +184,6 @@ export function DetectPane({
                 </>
               )}
 
-              <div className="section-title">处理校验</div>
-              {lastClean ? (
-                <>
-                  <div className="metric-grid">
-                    <div className="metric">
-                      <div className="metric-value">
-                        {lastClean.psnr_db != null ? `${lastClean.psnr_db} dB` : "—"}
-                      </div>
-                      <div className="metric-label">PSNR</div>
-                    </div>
-                    <div className="metric">
-                      <div className="metric-value">{lastClean.ssim ?? "—"}</div>
-                      <div className="metric-label">SSIM</div>
-                    </div>
-                    <div className="metric">
-                      <div className="metric-value">
-                        {lastClean.vmaf_aligned != null
-                          ? lastClean.vmaf_aligned.toFixed(1)
-                          : lastClean.vmaf != null
-                            ? lastClean.vmaf.toFixed(1)
-                            : "—"}
-                      </div>
-                      <div className="metric-label">VMAF（对齐）</div>
-                    </div>
-                    <div className="metric">
-                      <div className="metric-value">
-                        {dedupRisk
-                          ? `${(dedupRisk.duplicate_risk * 100).toFixed(0)}% · ${dedupRisk.risk_level}`
-                          : "—"}
-                      </div>
-                      <div className="metric-label">源片相似度（判重代理）</div>
-                    </div>
-                  </div>
-                  <p className="note">
-                    判重维度为本地代理口径，衡量产物与源片的相似程度，不代表平台实际判定。
-                  </p>
-                  {lastOutput && (
-                    <div className="kv-row mt-2">
-                      <span className="mono truncate text-xs text-muted-foreground">
-                        {lastOutput}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openInFolder(lastOutput)}
-                      >
-                        打开文件夹
-                      </Button>
-                    </div>
-                  )}
-                  {lastOutput && material?.path && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2 w-full"
-                      onClick={onCompareLast}
-                    >
-                      与原片同屏对比（同步播放）
-                    </Button>
-                  )}
-                </>
-              ) : (
-                <p className="note">
-                  清洗后展示 PSNR / SSIM / VMAF 与源片相似度。
-                </p>
-              )}
-
               <div className="section-title">音频分析</div>
               {audio ? (
                 <>
@@ -334,7 +251,7 @@ export function DetectPane({
                   }
                   if (score >= 60) {
                     suggestions.push({
-                      text: `与源片相似度 ${score}，建议至少开启标准指纹对抗档`,
+                      text: `码流评分 ${score}，建议至少开启标准指纹对抗档`,
                       action: { label: "应用标准档", level: "标准" },
                     });
                   }

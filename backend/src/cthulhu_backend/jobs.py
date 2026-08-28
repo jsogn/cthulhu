@@ -10,7 +10,6 @@ import uuid
 from typing import Any
 
 from cthulhu_backend import db, services
-from cthulhu_backend.evaluate import dedup_harness
 from cthulhu_backend.events import broker
 from cthulhu_backend.transform import strategies
 from cthulhu_backend.version import APP_VERSION
@@ -57,33 +56,11 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         pause=pause,
         **params,
     )
-    # 自动复检：对清洗产物跑盲检测，量化残留风险供界面反馈。
-    try:
-        if stop and stop():
-            raise InterruptedError("任务已取消")
-        post = services.run_blind(options["output"])
-        blind = post or {}
-        result["residual"] = {key: blind.get(key) for key in ("ss", "qim", "lsb", "echo")}
-    except InterruptedError:
-        raise
-    except Exception:  # noqa: BLE001 - 复检失败不影响任务成功状态
-        result["residual"] = None
-    # 判重代理基准：量化清洗产物相对原片的逃逸效果，供界面校验区展示。
-    try:
-        dedup = dedup_harness.compare(path, options["output"])
-        result["dedup"] = {
-            "duplicate_risk": dedup["duplicate_risk"],
-            "risk_level": dedup["risk_level"],
-            "distances": dedup["distances"],
-        }
-    except Exception:  # noqa: BLE001 - 判重打分失败不影响任务成功
-        result["dedup"] = None
+    # 产物记录写入编码阶段已有的画质指标。
     try:
         metrics = {
-            "duplicate_risk": (result.get("dedup") or {}).get("duplicate_risk"),
             "psnr_db": result.get("psnr_db"),
             "ssim": result.get("ssim"),
-            "stability_ratio": result.get("stability_ratio"),
         }
         services.record_variant(
             path,

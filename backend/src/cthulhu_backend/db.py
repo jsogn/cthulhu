@@ -276,11 +276,10 @@ def save_settings(values: dict[str, Any]) -> None:
 # ---------- 模板 ----------
 def list_templates() -> list[dict]:
     with _connect() as connection:
-        # 最新创建的排最前，与素材库「最新导入在前」的约定一致，
-        # 保证新建模板立即可见，而不是掉到列表底部视区之外。
+        # 正序排列：最早创建的在前，预置模板保持「快速/标准/强力/全兵器」顺序。
         rows = connection.execute(
             "SELECT id, name, payload, created_at FROM templates "
-            "ORDER BY created_at DESC, rowid DESC"
+            "ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return [
         {"id": row["id"], "name": row["name"], "payload": json.loads(row["payload"]), "created_at": row["created_at"]}

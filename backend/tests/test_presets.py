@@ -10,7 +10,8 @@ def test_preset_templates_seeded_once(monkeypatch, tmp_path) -> None:
     db.init_db()
 
     first = db.list_templates()
-    assert {t["name"] for t in first} == {p["name"] for p in db.PRESET_TEMPLATES}
+    # 模板列表正序：预置模板按定义顺序（快速→标准→强力→全兵器）返回。
+    assert [t["name"] for t in first] == [p["name"] for p in db.PRESET_TEMPLATES]
 
     # 再次初始化不会重复写入，也不会被旧版迁移逻辑改写。
     db.init_db()

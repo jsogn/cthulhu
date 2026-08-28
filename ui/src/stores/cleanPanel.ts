@@ -40,7 +40,6 @@ export interface CleanPanelState {
   templateId: string;
   settingsExportDir: string;
   settingsNaming: string;
-  settingsMetricsMode: string;
   settingsFilterScale: string;
   setAudioClean: (value: boolean) => void;
   setEchoDefeat: (value: boolean) => void;
@@ -60,7 +59,6 @@ export interface CleanPanelState {
   setTemplateId: (value: string) => void;
   setSettingsExportDir: (value: string) => void;
   setSettingsNaming: (value: string) => void;
-  setSettingsMetricsMode: (value: string) => void;
   setSettingsFilterScale: (value: string) => void;
   applyTemplatePayload: (payload: TemplatePayload) => void;
   resetCleanDefaults: () => void;
@@ -76,7 +74,6 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
   templateId: "manual",
   settingsExportDir: "",
   settingsNaming: "原文件名 + 时间戳",
-  settingsMetricsMode: "full",
   settingsFilterScale: "720",
   setAudioClean: (audioClean) => set({ audioClean }),
   setEchoDefeat: (echoDefeat) => set({ echoDefeat }),
@@ -96,7 +93,6 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
   setTemplateId: (templateId) => set({ templateId }),
   setSettingsExportDir: (settingsExportDir) => set({ settingsExportDir }),
   setSettingsNaming: (settingsNaming) => set({ settingsNaming }),
-  setSettingsMetricsMode: (settingsMetricsMode) => set({ settingsMetricsMode }),
   setSettingsFilterScale: (settingsFilterScale) => set({ settingsFilterScale }),
   applyTemplatePayload: (payload) =>
     set({
@@ -122,7 +118,6 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
       set({
         settingsExportDir: (settings.export_dir as string) ?? "",
         settingsNaming: (settings.naming as string) ?? "原文件名 + 时间戳",
-        settingsMetricsMode: (settings.metrics_mode as string) ?? "fast",
         settingsFilterScale: (settings.filter_scale as string) ?? "720",
       });
     } catch {
