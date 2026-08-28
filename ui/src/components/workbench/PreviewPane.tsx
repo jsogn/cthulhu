@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Code, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RegionOverlay } from "@/components/workbench/RegionOverlay";
 import { frameUrl, mediaUrl } from "@/lib/backend";
 import { fmtFrames } from "@/lib/format";
-import { useRegionsStore } from "@/stores/regions";
 import type { Material } from "@/stores/materials";
 
 const FRAME_MAX = 540;
@@ -38,24 +38,16 @@ export function PreviewPane({
   compareRightLabel,
   onExitCompare,
 }: PreviewProps) {
-  const regions = useRegionsStore((state) => state.regions);
-  const activeRegionId = useRegionsStore((state) => state.activeId);
-  const patchRegion = useRegionsStore((state) => state.patchRegion);
-  const beginMove = useRegionsStore((state) => state.beginMove);
-
   const stageRef = useRef<HTMLDivElement>(null);
   const mediaBoxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const compareLeftRef = useRef<HTMLVideoElement>(null);
   const compareMode = !!compareLeft && !!compareRight;
   const lastEmitRef = useRef(0);
-  const [zoomPos, setZoomPos] = useState<{ x: number; y: number } | null>(null);
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [mediaDuration, setMediaDuration] = useState<number | null>(null);
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null);
   const [fitBox, setFitBox] = useState<{ w: number; h: number } | null>(null);
 
-  const activeRegion = regions.find((r) => r.id === activeRegionId) ?? null;
   const fps = Number.parseFloat(material?.fps ?? "30") || 30;
   const hasRealFrame = !!material?.path && !material.missing;
   const durationSec = mediaDuration ?? material?.duration ?? null;
@@ -73,13 +65,11 @@ export function PreviewPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [material?.id]);
 
-  // 素材切换：重置真实时长/尺寸与放大镜快照，避免串台。
+  // 素材切换：重置真实时长/尺寸，避免串台。
   useEffect(() => {
     setMediaDuration(null);
     setMediaSize(null);
     setFitBox(null);
-    setZoomPos(null);
-    setZoomSrc(null);
   }, [material?.id]);
 
   // 素材切换或元数据就绪后，把时间轴收敛到真实时长内。
@@ -146,20 +136,6 @@ export function PreviewPane({
     }
   }, [frame, fps, playing, hasRealFrame, material?.id, compareLeft]);
 
-  // 把当前视频画面快照成放大镜底图（跨源播放时需匿名 CORS）。
-  const captureZoom = () => {
-    const video = videoRef.current;
-    const box = mediaBoxRef.current;
-    if (!video || !box || video.readyState < 2 || !hasRealFrame) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = box.clientWidth || 640;
-    canvas.height = box.clientHeight || 360;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    setZoomSrc(canvas.toDataURL("image/jpeg", 0.92));
-  };
-
   const onTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -173,7 +149,6 @@ export function PreviewPane({
       lastEmitRef.current = now;
       setFrame(Math.min(maxFrame, Math.round(video.currentTime * fps)));
     }
-    if (zoomPos) captureZoom();
   };
 
   const onLoadedMetadata = () => {
@@ -201,100 +176,15 @@ export function PreviewPane({
 
   const onComparePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest(".sel-box")) return;
-    if (zoomPos) return;
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
     setComparePct(Math.max(0, Math.min(100, percentFrom(e, el).x)));
   };
 
   const onComparePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (zoomPos) {
-      setZoomPos((current) => (current ? percentFrom(e, e.currentTarget) : current));
-      return;
-    }
     if (e.buttons & 1) {
       setComparePct(Math.max(0, Math.min(100, percentFrom(e, e.currentTarget).x)));
     }
-  };
-
-  const onCompareDoubleClick = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest(".sel-box")) return;
-    const point = percentFrom(e, e.currentTarget);
-    setZoomPos((current) => (current ? null : point));
-    if (!zoomPos && hasRealFrame) captureZoom();
-  };
-
-  const onBoxPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!activeRegion) return;
-    const box = mediaBoxRef.current;
-    if (!box) return;
-    beginMove();
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
-    const start = percentFrom(e, box);
-    const startLeft = activeRegion.left;
-    const startTop = activeRegion.top;
-    const move = (ev: PointerEvent) => {
-      const rect = box.getBoundingClientRect();
-      const p = {
-        x: ((ev.clientX - rect.left) / rect.width) * 100,
-        y: ((ev.clientY - rect.top) / rect.height) * 100,
-      };
-      patchRegion(activeRegion.id, {
-        left: Math.max(0, Math.min(100 - activeRegion.w, startLeft + (p.x - start.x))),
-        top: Math.max(0, Math.min(100 - activeRegion.h, startTop + (p.y - start.y))),
-      });
-    };
-    const up = () => {
-      box.removeEventListener("pointermove", move);
-      box.removeEventListener("pointerup", up);
-    };
-    box.addEventListener("pointermove", move);
-    box.addEventListener("pointerup", up);
-  };
-
-  const onResizePointerDown = (e: ReactPointerEvent<HTMLSpanElement>) => {
-    e.stopPropagation();
-    if (!activeRegion) return;
-    const box = mediaBoxRef.current;
-    if (!box) return;
-    beginMove();
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
-    const start = percentFrom(e, box);
-    const startW = activeRegion.w;
-    const startH = activeRegion.h;
-    const move = (ev: PointerEvent) => {
-      const rect = box.getBoundingClientRect();
-      const p = {
-        x: ((ev.clientX - rect.left) / rect.width) * 100,
-        y: ((ev.clientY - rect.top) / rect.height) * 100,
-      };
-      patchRegion(activeRegion.id, {
-        w: Math.max(4, Math.min(100 - activeRegion.left, startW + (p.x - start.x))),
-        h: Math.max(3, Math.min(100 - activeRegion.top, startH + (p.y - start.y))),
-      });
-    };
-    const up = () => {
-      box.removeEventListener("pointermove", move);
-      box.removeEventListener("pointerup", up);
-    };
-    box.addEventListener("pointermove", move);
-    box.addEventListener("pointerup", up);
-  };
-
-  const onBoxKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!activeRegion) return;
-    const step = e.shiftKey ? 5 : 1;
-    let left = activeRegion.left;
-    let top = activeRegion.top;
-    if (e.key === "ArrowLeft") left = Math.max(0, left - step);
-    else if (e.key === "ArrowRight") left = Math.min(100 - activeRegion.w, left + step);
-    else if (e.key === "ArrowUp") top = Math.max(0, top - step);
-    else if (e.key === "ArrowDown") top = Math.min(100 - activeRegion.h, top + step);
-    else return;
-    e.preventDefault();
-    patchRegion(activeRegion.id, { left, top });
   };
 
   const beforeClip = `inset(0 ${100 - comparePct}% 0 0)`;
@@ -316,7 +206,6 @@ export function PreviewPane({
           ref={mediaBoxRef}
           className={hasRealFrame ? "media-box" : "media-box fill"}
           style={hasRealFrame && fitBox ? { width: fitBox.w, height: fitBox.h } : undefined}
-          onDoubleClick={onCompareDoubleClick}
         >
           {hasRealFrame ? (
             compareMode ? (
@@ -397,74 +286,7 @@ export function PreviewPane({
             </div>
           )}
 
-          {activeRegion && (
-            <div
-              className="repair-veil"
-              style={{
-                left: `${activeRegion.left}%`,
-                top: `${activeRegion.top}%`,
-                width: `${activeRegion.w}%`,
-                height: `${activeRegion.h}%`,
-                opacity: 0.25,
-              }}
-            >
-              <span>{activeRegion.name} · 修复区域预览</span>
-            </div>
-          )}
-
-          {zoomPos && (() => {
-            const box = mediaBoxRef.current;
-            const width = box?.clientWidth ?? 640;
-            const height = box?.clientHeight ?? 360;
-            const scale = 3;
-            const lens = 120;
-            const centerX = (zoomPos.x / 100) * width;
-            const centerY = (zoomPos.y / 100) * height;
-            const translateX = centerX * scale - lens / 2;
-            const translateY = centerY * scale - lens / 2;
-            const left = Math.max(0, Math.min(width - lens, centerX - lens / 2));
-            const top = Math.max(0, Math.min(height - lens, centerY - lens / 2));
-            const imageStyle = {
-              width: width * scale,
-              height: height * scale,
-              transform: `translate(${-translateX}px, ${-translateY}px)`,
-            };
-            if (hasRealFrame && !zoomSrc) return null;
-            return (
-              <div className="zoom-lens" style={{ left, top }}>
-                {hasRealFrame ? (
-                  <img src={zoomSrc ?? ""} alt="" aria-hidden="true" style={imageStyle} />
-                ) : (
-                  <>
-                    <img src={frameSrc} alt="" aria-hidden="true" style={imageStyle} />
-                    <div className="zoom-before" style={{ clipPath: beforeClip }}>
-                      <img src={frameSrc} alt="" aria-hidden="true" style={imageStyle} />
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {activeRegion && (
-            <div
-              className="sel-box"
-              role="group"
-              tabIndex={0}
-              aria-label="水印区域选框，可用方向键微调位置"
-              style={{
-                left: `${activeRegion.left}%`,
-                top: `${activeRegion.top}%`,
-                width: `${activeRegion.w}%`,
-                height: `${activeRegion.h}%`,
-              }}
-              onPointerDown={onBoxPointerDown}
-              onKeyDown={onBoxKeyDown}
-            >
-              <span className="sel-label">{activeRegion.name}</span>
-              <span className="sel-resize" onPointerDown={onResizePointerDown} />
-            </div>
-          )}
+          <RegionOverlay mediaBoxRef={mediaBoxRef} />
         </div>
       </div>
 
