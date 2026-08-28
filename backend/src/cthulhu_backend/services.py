@@ -1157,6 +1157,204 @@ def run_desensitize(
     _encode_desensitize(path, output, opts, state, progress_cb, should_stop, pause)
     return _measure_desensitize(path, output, opts, state, progress_cb)
 
+def _prepare_audio(
+    path: str,
+    opts: DesensitizeOptions,
+    state: _DesensitizeState,
+) -> tuple[np.ndarray | None, int]:
+    """音轨独立准备：整段重混/回声扰动，供编码完成后统一 mux。"""
+    sample_rate = 16000
+    if not (opts.audio_remix or opts.echo_defeat or state.needs_audio_alignment):
+        return None, sample_rate
+    decoded_audio = ffmpeg.decode_audio(path)
+    if decoded_audio is None:
+        return None, sample_rate
+    signal, sample_rate = decoded_audio
+    audio_rng = np.random.default_rng(opts.seed ^ 0x9E3779B9)
+    if opts.audio_remix and opts.audio_strong:
+        signal = audio_transform.remix_strong(
+            signal, sample_rate, audio_rng,
+            pitch_ratio=0.985, eq_db=4.0, noise_floor=0.003,
+        )
+    elif opts.audio_remix:
+        # 等长重混：不改内容时间线，音画同步只由末尾按实际帧数对齐兜底。
+        signal = audio_transform.remix(signal, sample_rate, audio_rng)
+    return signal, sample_rate
+
+
+def _mux_output(
+    path: str,
+    output: str,
+    temp_video: str,
+    out_index: int,
+    audio_signal: np.ndarray | None,
+    sample_rate: int,
+    opts: DesensitizeOptions,
+    state: _DesensitizeState,
+) -> None:
+    """把视频轨与音轨合成为最终产物：重混走 s16le，未处理则原样透传。"""
+    if audio_signal is not None:
+        # 以实际写出的帧数对齐音轨时长：等长重混下仅当视频做统一变速
+        # 时才需要拉伸，且拉伸比例与视频统一变速因子一致，保持内容对齐。
+        if not opts.echo_defeat:
+            target_len = round(out_index / state.output_fps * sample_rate)
+            if target_len != len(audio_signal):
+                audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
+        audio_payload = (
+            (np.clip(audio_signal, -1, 1) * 32767).round().astype(np.int16).tobytes()
+        )
+        mux_cmd = [
+            ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+            "-i", temp_video,
+            "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
+        ]
+        if opts.echo_defeat:
+            # atempo 保调拉伸放在 mux 滤镜里完成，与视频 factor 一致，
+            # Python 侧不重采样，避免二次变速造成漂移。
+            mux_cmd += ["-af", f"atempo={state.audio_tempo:.5f}"]
+        mux_cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", output]
+        subprocess.run(
+            mux_cmd,
+            input=audio_payload,
+            capture_output=True,
+            check=True,
+        )
+        return
+    # 未做音频处理时音轨原样透传；源无音轨则直接落盘视频。
+    source_streams = ffmpeg.probe(path).get("streams", [])
+    has_audio = any(
+        stream.get("codec_type") == "audio" for stream in source_streams
+    )
+    if has_audio:
+        copy_cmd = [
+            ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+            "-i", temp_video, "-i", path,
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c:v", "copy", "-c:a", "copy", "-shortest", output,
+        ]
+        try:
+            subprocess.run(copy_cmd, capture_output=True, check=True)
+        except subprocess.CalledProcessError:
+            # 源音轨编码不适合 MP4 直接拷贝时，重编码为 AAC 保底。
+            fallback_cmd = [
+                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
+                "-i", temp_video, "-i", path,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                "-shortest", output,
+            ]
+            subprocess.run(fallback_cmd, capture_output=True, check=True)
+    else:
+        shutil.move(temp_video, output)
+
+
+def _encode_yuv_fast(
+    path: str,
+    temp_video: str,
+    opts: DesensitizeOptions,
+    state: _DesensitizeState,
+    progress_cb,
+    should_stop,
+    pause,
+) -> int:
+    """YUV420p 快路径：静态变换全下沉编码器滤镜，长片分段并发，失败回退串行。"""
+    frame_h, frame_w = state.info["height"], state.info["width"]
+    cpu = os.cpu_count() or 1
+    max_k = 3 if cpu >= 12 else (2 if cpu >= 8 else 1)
+    k = max(1, min(max_k, state.total_out // 800))
+    if state.total_out < 2400:
+        k = 1
+    override_k = os.environ.get("CTHULHU_SEGMENT_K")
+    if override_k:
+        try:
+            k = max(1, min(int(override_k), max_k, state.total_out))
+        except ValueError:
+            pass
+    if k <= 1:
+        return _process_segment_yuv(
+            path, 0, state.total_out, temp_video,
+            frame_w, frame_h, state.output_fps,
+            chunk=state.chunk, requant_eff=state.requant_eff,
+            phash_attack=state.phash_attack,
+            phash_epsilon=state.phash_epsilon, phash_iters=state.phash_iters,
+            attack_workers=None, filters=state.native_chain, codec=opts.codec,
+            hardware=opts.hardware, crf=state.crf, preset=opts.preset, gop=opts.gop,
+            threads=None,
+            stop=should_stop,
+            pause=pause,
+        )
+
+    seg_paths = [f"{temp_video}.seg{index}.mp4" for index in range(k)]
+    seg_len = math.ceil(state.total_out / k)
+    seg_threads = max(2, cpu // k)
+    done = [0]
+    progress_lock = threading.Lock()
+
+    def seg_progress(delta: int) -> None:
+        with progress_lock:
+            done[0] += delta
+            current = done[0]
+        if progress_cb and state.total_out:
+            progress_cb(
+                8 + int(current / state.total_out * 82),
+                f"处理中 {current}/{state.total_out} 帧",
+            )
+
+    out_index = 0
+    try:
+        with ThreadPoolExecutor(max_workers=k) as pool:
+            futures = []
+            for index in range(k):
+                start = index * seg_len
+                count = min(seg_len, state.total_out - start)
+                filters = _geometry_chain(state, start) + state.base_filters
+                futures.append(
+                    pool.submit(
+                        _process_segment_yuv,
+                        path, start, count, seg_paths[index],
+                        frame_w, frame_h, state.output_fps,
+                        chunk=state.chunk, requant_eff=state.requant_eff,
+                        phash_attack=state.phash_attack,
+                        phash_epsilon=state.phash_epsilon,
+                        phash_iters=state.phash_iters, attack_workers=2,
+                        filters=filters,
+                        codec=opts.codec, hardware=opts.hardware,
+                        crf=state.crf,
+                        preset=opts.preset, gop=opts.gop, threads=seg_threads,
+                        progress=seg_progress if progress_cb else None,
+                        stop=should_stop,
+                        pause=pause,
+                    )
+                )
+            for future in as_completed(futures):
+                out_index += future.result()
+        _concat_video_segments(seg_paths, temp_video)
+        return out_index
+    except InterruptedError:
+        raise
+    except BaseException:  # noqa: BLE001 - 段级失败统一回退串行
+        # 任一段失败回退串行，保证任务可用。
+        return _process_segment_yuv(
+            path, 0, state.total_out, temp_video,
+            frame_w, frame_h, state.output_fps,
+            chunk=state.chunk, requant_eff=state.requant_eff,
+            phash_attack=state.phash_attack,
+            phash_epsilon=state.phash_epsilon, phash_iters=state.phash_iters,
+            attack_workers=None, filters=state.native_chain, codec=opts.codec,
+            hardware=opts.hardware, crf=state.crf, preset=opts.preset,
+            gop=opts.gop, threads=None,
+            stop=should_stop,
+            pause=pause,
+        )
+    finally:
+        # 成功、失败、取消都要清理段文件，避免残留 .segN.mp4。
+        for seg_path in seg_paths:
+            try:
+                os.unlink(seg_path)
+            except OSError:
+                pass
+
+
 def _encode_desensitize(
     path: str,
     output: str,
@@ -1180,23 +1378,7 @@ def _encode_desensitize(
                 raise InterruptedError("任务已取消")
             time.sleep(0.2)
 
-    # 音轨独立准备（整段重混后统一 mux）。
-    audio_signal = None
-    sample_rate = 16000
-    if opts.audio_remix or opts.echo_defeat or state.needs_audio_alignment:
-        decoded_audio = ffmpeg.decode_audio(path)
-        if decoded_audio is not None:
-            signal, sample_rate = decoded_audio
-            audio_rng = np.random.default_rng(opts.seed ^ 0x9E3779B9)
-            if opts.audio_remix and opts.audio_strong:
-                signal = audio_transform.remix_strong(
-                    signal, sample_rate, audio_rng,
-                    pitch_ratio=0.985, eq_db=4.0, noise_floor=0.003,
-                )
-            elif opts.audio_remix:
-                # 等长重混：不改内容时间线，音画同步只由末尾按实际帧数对齐兜底。
-                signal = audio_transform.remix(signal, sample_rate, audio_rng)
-            audio_signal = signal
+    audio_signal, sample_rate = _prepare_audio(path, opts, state)
 
     # ---------- 处理遍：逐块解码 → 变换 → 流式编码 ----------
     # 中间文件放系统临时目录（每任务独立子目录），避免污染输出/素材目录；
@@ -1228,103 +1410,9 @@ def _encode_desensitize(
 
     try:
         if state.use_yuv_path:
-            # YUV420p 快路径：解码/写回体积减半，静态变换全在编码器滤镜链，
-            # numpy 侧只剩像素重量化与 Y 平面签名攻击。长片按 CPU 核数分
-            # 2~3 段并发编码（滤镜链单线程是瓶颈），段间用帧号偏移保持
-            # eq/rotate 轨迹连续，任一段失败回退串行。
-            frame_h, frame_w = state.info["height"], state.info["width"]
-            cpu = os.cpu_count() or 1
-            max_k = 3 if cpu >= 12 else (2 if cpu >= 8 else 1)
-            k = max(1, min(max_k, state.total_out // 800))
-            if state.total_out < 2400:
-                k = 1
-            override_k = os.environ.get("CTHULHU_SEGMENT_K")
-            if override_k:
-                try:
-                    k = max(1, min(int(override_k), max_k, state.total_out))
-                except ValueError:
-                    pass
-            if k <= 1:
-                out_index = _process_segment_yuv(
-                    path, 0, state.total_out, temp_video,
-                    frame_w, frame_h, state.output_fps,
-                    chunk=state.chunk, requant_eff=state.requant_eff,
-                    phash_attack=state.phash_attack,
-                    phash_epsilon=state.phash_epsilon, phash_iters=state.phash_iters,
-                    attack_workers=None, filters=state.native_chain, codec=opts.codec,
-                    hardware=opts.hardware, crf=state.crf, preset=opts.preset, gop=opts.gop,
-                    threads=None,
-                    stop=should_stop,
-                    pause=pause,
-                )
-            else:
-                seg_paths = [f"{temp_video}.seg{index}.mp4" for index in range(k)]
-                seg_len = math.ceil(state.total_out / k)
-                seg_threads = max(2, cpu // k)
-                done = [0]
-                progress_lock = threading.Lock()
-
-                def seg_progress(delta: int) -> None:
-                    with progress_lock:
-                        done[0] += delta
-                        current = done[0]
-                    if progress_cb and state.total_out:
-                        progress_cb(
-                            8 + int(current / state.total_out * 82),
-                            f"处理中 {current}/{state.total_out} 帧",
-                        )
-
-                try:
-                    with ThreadPoolExecutor(max_workers=k) as pool:
-                        futures = []
-                        for index in range(k):
-                            start = index * seg_len
-                            count = min(seg_len, state.total_out - start)
-                            filters = _geometry_chain(state, start) + state.base_filters
-                            futures.append(
-                                pool.submit(
-                                    _process_segment_yuv,
-                                    path, start, count, seg_paths[index],
-                                    frame_w, frame_h, state.output_fps,
-                                    chunk=state.chunk, requant_eff=state.requant_eff,
-                                    phash_attack=state.phash_attack,
-                                    phash_epsilon=state.phash_epsilon,
-                                    phash_iters=state.phash_iters, attack_workers=2,
-                                    filters=filters,
-                                    codec=opts.codec, hardware=opts.hardware,
-                                    crf=state.crf,
-                                    preset=opts.preset, gop=opts.gop, threads=seg_threads,
-                                    progress=seg_progress if progress_cb else None,
-                                    stop=should_stop,
-                                    pause=pause,
-                                )
-                            )
-                        for future in as_completed(futures):
-                            out_index += future.result()
-                    _concat_video_segments(seg_paths, temp_video)
-                except InterruptedError:
-                    raise
-                except BaseException:  # noqa: BLE001 - 段级失败统一回退串行
-                    # 任一段失败回退串行，保证任务可用。
-                    out_index = _process_segment_yuv(
-                        path, 0, state.total_out, temp_video,
-                        frame_w, frame_h, state.output_fps,
-                        chunk=state.chunk, requant_eff=state.requant_eff,
-                        phash_attack=state.phash_attack,
-                        phash_epsilon=state.phash_epsilon, phash_iters=state.phash_iters,
-                        attack_workers=None, filters=state.native_chain, codec=opts.codec,
-                        hardware=opts.hardware, crf=state.crf, preset=opts.preset,
-                        gop=opts.gop, threads=None,
-                        stop=should_stop,
-                        pause=pause,
-                    )
-                finally:
-                    # 成功、失败、取消都要清理段文件，避免残留 .segN.mp4。
-                    for seg_path in seg_paths:
-                        try:
-                            os.unlink(seg_path)
-                        except OSError:
-                            pass
+            out_index = _encode_yuv_fast(
+                path, temp_video, opts, state, progress_cb, should_stop, pause
+            )
         elif state.speed == 1.0 and not opts.shot_retime and opts.cut_jitter == 0:
             # 默认快路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
@@ -1399,59 +1487,9 @@ def _encode_desensitize(
                     decoder.close()
         if encoder is not None:
             encoder.finish()
-        if audio_signal is not None:
-            # 以实际写出的帧数对齐音轨时长：等长重混下仅当视频做统一变速
-            # 时才需要拉伸，且拉伸比例与视频统一变速因子一致，保持内容对齐。
-            if not opts.echo_defeat:
-                target_len = round(out_index / state.output_fps * sample_rate)
-                if target_len != len(audio_signal):
-                    audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
-            audio_payload = (
-                (np.clip(audio_signal, -1, 1) * 32767).round().astype(np.int16).tobytes()
-            )
-            mux_cmd = [
-                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                "-i", temp_video,
-                "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
-            ]
-            if opts.echo_defeat:
-                # atempo 保调拉伸放在 mux 滤镜里完成，与视频 factor 一致，
-                # Python 侧不重采样，避免二次变速造成漂移。
-                mux_cmd += ["-af", f"atempo={state.audio_tempo:.5f}"]
-            mux_cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", output]
-            subprocess.run(
-                mux_cmd,
-                input=audio_payload,
-                capture_output=True,
-                check=True,
-            )
-        else:
-            # 未做音频处理时音轨原样透传；源无音轨则直接落盘视频。
-            source_streams = ffmpeg.probe(path).get("streams", [])
-            has_audio = any(
-                stream.get("codec_type") == "audio" for stream in source_streams
-            )
-            if has_audio:
-                copy_cmd = [
-                    ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                    "-i", temp_video, "-i", path,
-                    "-map", "0:v:0", "-map", "1:a:0",
-                    "-c:v", "copy", "-c:a", "copy", "-shortest", output,
-                ]
-                try:
-                    subprocess.run(copy_cmd, capture_output=True, check=True)
-                except subprocess.CalledProcessError:
-                    # 源音轨编码不适合 MP4 直接拷贝时，重编码为 AAC 保底。
-                    fallback_cmd = [
-                        ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                        "-i", temp_video, "-i", path,
-                        "-map", "0:v:0", "-map", "1:a:0",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-                        "-shortest", output,
-                    ]
-                    subprocess.run(fallback_cmd, capture_output=True, check=True)
-            else:
-                shutil.move(temp_video, output)
+        _mux_output(
+            path, output, temp_video, out_index, audio_signal, sample_rate, opts, state
+        )
         shutil.rmtree(task_temp, ignore_errors=True)
         if progress_cb:
             progress_cb(95, "编码完成")

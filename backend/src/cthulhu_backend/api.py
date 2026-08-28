@@ -38,8 +38,6 @@ _THUMB_CACHE_DIR = Path(
 # 界面素材封面统一使用 320px 宽；清理时只按此宽度重算期望键。
 _THUMB_DEFAULT_WIDTH = 320
 
-_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".ts", ".m4v"}
-
 _VIDEO_MEDIA_TYPES = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
@@ -406,7 +404,7 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
     """接收网页端导入的视频：流式落盘，去重与入库交给服务层。"""
     filename = Path(file.filename or "").name
     ext = Path(filename).suffix.lower()
-    if ext not in _VIDEO_EXTENSIONS:
+    if ext not in services.VIDEO_EXTENSIONS:
         raise HTTPException(status_code=422, detail="仅支持 MP4 / MOV / MKV / AVI / WEBM / FLV / TS 视频")
     # 清理文件名，防止路径穿越与特殊字符。
     stem = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in Path(filename).stem)
