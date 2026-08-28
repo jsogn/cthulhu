@@ -16,25 +16,16 @@ from typing import Annotated, Literal
 import numpy as np
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
+from pydantic import BaseModel, Field, ValidationError
 
 from cthulhu_backend import db, services
 from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
 from cthulhu_backend.media import ffmpeg
+from cthulhu_backend.schemas import DesensitizeOptions, DesensitizeRequest, TemplatePayload
 from cthulhu_backend.watermark import detect as watermark_detect
 
 router = APIRouter(prefix="/api")
-
-# 网页端导入素材的落地目录：浏览器拖入的 File 没有本机路径，
-# 导入到此后即可与桌面端一样走「本地路径 → 播放/检测/清洗」的完整链路。
-_LIBRARY_DIR = Path(
-    os.environ.get(
-        "CTHULHU_LIBRARY_DIR",
-        str(Path(__file__).resolve().parents[2] / "data" / "library"),
-    )
-)
 
 # 封面缩略图磁盘缓存：素材多、反复刷新列表时不重复启动 ffmpeg 抽帧。
 _THUMB_CACHE_DIR = Path(
@@ -61,31 +52,12 @@ _VIDEO_MEDIA_TYPES = {
 }
 
 
-def _probe_video(path: str) -> dict | None:
-    """读取视频元数据；失败返回 None（不阻断导入，仅缺失展示信息）。"""
-    try:
-        return ffmpeg.video_info(path)
-    except Exception:  # noqa: BLE001 - 元数据失败不影响素材导入
-        return None
-
-
-def _content_hash(path: str) -> str:
-    """分块计算文件 MD5，避免大文件一次性读入内存。"""
-    import hashlib
-
-    digest = hashlib.md5()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _library_file(record: dict) -> dict:
     """把素材库记录组装成前端可直接渲染的清单项。"""
     path = record["path"]
     meta = record.get("meta") or {}
     if not meta and os.path.isfile(path):
-        meta = _probe_video(path) or {}
+        meta = services.probe_video(path) or {}
         db.update_library_meta(path, meta)
     missing = not os.path.isfile(path)
     return {
@@ -143,56 +115,6 @@ class ScanRequest(BaseModel):
     path: str
 
 
-class DesensitizeRequest(BaseModel):
-    # 兼容前端的 camelCase 字段名（audioRemix 等）与后端的 snake_case。
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
-    path: str
-    output: str
-    reorder: bool = True
-    speed: float = Field(1.0, gt=0)
-    recrop: float = Field(0.0, ge=0, le=0.2)
-    regrade: bool = True
-    perturb: float = Field(0.0, ge=0, le=1)
-    audio_remix: bool = True
-    sharpness: bool = True
-    color_restore: bool = True
-    denoise: bool = False
-    anti_reembed: bool = False
-    banner: str = ""
-    seed: int = 0
-    codec: str = "libx264"
-    lossless: bool = False
-    spoof: bool = False
-    bitrate_kbps: int | None = Field(None, ge=100, le=100000)
-    gop: int | None = Field(None, ge=1, le=600)
-    resolution: str | None = None
-    fps_out: float | None = Field(None, gt=0, le=240)
-    rotate: float = Field(0.0, ge=0, le=10)
-    phash_attack: bool = False
-    phash_epsilon: float = Field(0.03, gt=0, le=1)
-    phash_iters: int = Field(120, ge=1, le=1000)
-    multi_hash_attack: bool = False
-    median: int = Field(0, ge=0, le=9)
-    noise: float = Field(0.0, ge=0, le=1)
-    requant: int = Field(0, ge=0, le=256)
-    dct_step: float = Field(0.0, ge=0, le=256)
-    drop_every: int = Field(0, ge=0, le=1000)
-    jitter: float = Field(0.0, ge=0, le=1)
-    perspective: float = Field(0.0, ge=0, le=1)
-    warp: float = Field(0.0, ge=0, le=1)
-    mirror: bool = False
-    chroma_levels: int = Field(0, ge=0, le=256)
-    subtract_beta: float = Field(0.0, ge=0, le=4)
-    transcode_chain: bool = False
-    saliency: int = Field(0, ge=0, le=4)
-    detail_protect: float = Field(0.0, ge=0, le=1)
-    audio_strong: bool = False
-    echo_defeat: bool = False
-    skip_vmaf: bool = False
-    filter_scale: int = Field(0, ge=0, le=1080)
-
-
 class TaskSpec(BaseModel):
     kind: Literal["detect", "desensitize", "repair"]
     path: str
@@ -232,12 +154,12 @@ class PriorityRequest(BaseModel):
 
 class TemplateCreate(BaseModel):
     name: str
-    payload: dict = {}
+    payload: TemplatePayload
 
 
 class TemplateUpdate(BaseModel):
     name: str
-    payload: dict = {}
+    payload: TemplatePayload
 
 
 @router.post("/detect")
@@ -393,7 +315,7 @@ def library_list() -> dict:
                 for other in records
             )
             if same_size:
-                meta["content_hash"] = _content_hash(path)
+                meta["content_hash"] = services.content_hash(path)
                 db.update_library_meta(path, meta)
                 hashes[meta["content_hash"]] = hashes.get(meta["content_hash"], 0) + 1
     files = []
@@ -411,42 +333,13 @@ def library_add(request: PathRequest) -> dict:
     path = os.path.abspath(request.path)
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="文件不存在或已被移动")
-    records = db.list_library()
-    real = os.path.realpath(path)
-    # 同一路径（含符号链接别名）重复导入：允许刷新时间，不算重复。
-    if any(os.path.realpath(record["path"]) == real for record in records):
-        content_hash = None
-    else:
-        size = os.path.getsize(path)
-        candidates = [
-            record
-            for record in records
-            if (record.get("size") or 0) == size and os.path.isfile(record["path"])
-        ]
-        if not candidates:
-            content_hash = None
-        else:
-            content_hash = _content_hash(path)
-            for record in candidates:
-                meta = record.get("meta") or {}
-                if meta.get("content_hash") is None:
-                    meta["content_hash"] = _content_hash(record["path"])
-                    db.update_library_meta(record["path"], meta)
-                if meta.get("content_hash") == content_hash:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"已存在相同内容的素材：{record['name']}，未重复导入",
-                    )
-    record = {
-        "path": path,
-        "name": Path(path).name,
-        "size": os.path.getsize(path),
-    }
-    meta = _probe_video(path) or {}
-    if content_hash:
-        meta["content_hash"] = content_hash
-    record["meta"] = meta
-    db.add_library(record["path"], record["name"], record["size"], record["meta"])
+    try:
+        record = services.register_library_path(path)
+    except services.DuplicateImport as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"已存在相同内容的素材：{exc.existing_name}，未重复导入",
+        ) from exc
     return _library_file(record)
 
 
@@ -510,7 +403,7 @@ def media(path: str = Query(...)) -> FileResponse:
 
 @router.post("/import")
 async def import_video(file: Annotated[UploadFile, File()]) -> dict:
-    """接收网页端导入的视频，内容去重后写入本地素材库，返回可播放路径。"""
+    """接收网页端导入的视频：流式落盘，去重与入库交给服务层。"""
     filename = Path(file.filename or "").name
     ext = Path(filename).suffix.lower()
     if ext not in _VIDEO_EXTENSIONS:
@@ -530,58 +423,13 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
     if size == 0:
         os.unlink(tmp_path)
         raise HTTPException(status_code=422, detail="导入的文件为空")
-    content_hash = digest.hexdigest()
-    # 内容去重：仅与同大小的既有文件比较，并优先复用库中缓存的哈希。
-    records = db.list_library()
-    record_by_path = {record["path"]: record for record in records}
-    candidates = [
-        Path(record["path"])
-        for record in records
-        if (record.get("size") or 0) == size and os.path.isfile(record["path"])
-    ]
-    _LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
-    candidates += [
-        existing
-        for existing in _LIBRARY_DIR.glob(f"*{ext}")
-        if existing.is_file() and existing.stat().st_size == size and existing not in candidates
-    ]
-    for existing in candidates:
-        record = record_by_path.get(str(existing))
-        existing_hash = (record.get("meta") or {}).get("content_hash") if record else None
-        if not existing_hash:
-            existing_hash = _content_hash(str(existing))
-            if record is not None:
-                cached_meta = record.get("meta") or {}
-                cached_meta["content_hash"] = existing_hash
-                db.update_library_meta(record["path"], cached_meta)
-        if existing_hash == content_hash:
-            os.unlink(tmp_path)
-            meta = _probe_video(str(existing)) or {}
-            meta["content_hash"] = existing_hash
-            db.add_library(str(existing), existing.name, size, meta)
-            return {
-                "path": str(existing),
-                "name": existing.name,
-                "size": size,
-                "video": meta or None,
-                "duplicate": True,
-            }
-    target = _LIBRARY_DIR / f"{stem}{ext}"
-    counter = 1
-    while target.exists():
-        target = _LIBRARY_DIR / f"{stem}_{counter}{ext}"
-        counter += 1
-    os.replace(tmp_path, target)
-    meta = _probe_video(str(target)) or {}
-    meta["content_hash"] = content_hash
-    db.add_library(str(target), target.name, size, meta)
-    return {
-        "path": str(target),
-        "name": target.name,
-        "size": size,
-        "video": meta or None,
-        "duplicate": False,
-    }
+    return services.ingest_upload(
+        tmp_path,
+        stem=stem,
+        ext=ext,
+        size=size,
+        content_hash_value=digest.hexdigest(),
+    )
 
 
 @router.post("/audio/analyze")
@@ -620,6 +468,7 @@ async def desensitize(request: DesensitizeRequest) -> dict:
             services.run_desensitize,
             request.path,
             request.output,
+            output_mode=request.output_mode,
             reorder=request.reorder,
             speed=request.speed,
             recrop=request.recrop,
@@ -764,12 +613,28 @@ def ffmpeg_install_status() -> dict:
 
 @router.post("/jobs", status_code=202)
 async def create_job(request: JobRequest) -> dict:
+    # 清洗任务在入队时就校验选项，拼错字段名或越界参数直接 422，
+    # 避免把坏任务放进后台慢慢失败。
+    for task in request.tasks:
+        if task.kind == "desensitize":
+            options = {
+                key: value
+                for key, value in task.options.items()
+                if key not in {"output", "transform_strategy", "preset"}
+            }
+            try:
+                DesensitizeOptions.model_validate(options)
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"清洗任务参数无效：{exc.errors()[0]['msg']}",
+                ) from exc
     settings = db.load_settings()
-    adaptive = min(4, max(2, os.cpu_count() or 2))
     try:
-        default_parallelism = int(settings.get("parallelism", adaptive))
+        default_parallelism = int(settings.get("parallelism", 2))
     except (TypeError, ValueError):
-        default_parallelism = adaptive
+        default_parallelism = 2
+    default_parallelism = min(4, max(1, default_parallelism))
     job = job_queue.create_job(
         request.name,
         [task.model_dump() for task in request.tasks],
@@ -852,14 +717,15 @@ def get_templates() -> list[dict]:
 
 @router.post("/templates", status_code=201)
 def post_template(request: TemplateCreate) -> dict:
-    return db.create_template(request.name, request.payload)
+    return db.create_template(request.name, request.payload.model_dump(mode="json"))
 
 
 @router.put("/templates/{template_id}")
 def put_template(template_id: str, request: TemplateUpdate) -> dict:
-    if not db.update_template(template_id, request.name, request.payload):
+    payload = request.payload.model_dump(mode="json")
+    if not db.update_template(template_id, request.name, payload):
         raise HTTPException(status_code=404, detail="模板不存在")
-    return {"id": template_id, "name": request.name, "payload": request.payload}
+    return {"id": template_id, "name": request.name, "payload": payload}
 
 
 @router.delete("/templates/{template_id}")

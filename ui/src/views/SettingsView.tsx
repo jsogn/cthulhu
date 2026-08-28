@@ -26,8 +26,8 @@ import { toast } from "@/stores/toasts";
 const DEFAULTS: Record<string, string> = {
   export_dir: "~/Documents/Cthulhu",
   naming: "原文件名 + 时间戳",
-  parallelism: "4",
-  metrics_mode: "full",
+  parallelism: "2",
+  metrics_mode: "fast",
   filter_scale: "720",
   gpu: "仅 CPU（软件编码）",
   transform_strategy: "fast",
@@ -203,7 +203,7 @@ export default function SettingsView() {
             <div className="form-help">清洗产物文件名格式，两种规则都不会覆盖已有产物</div>
           </div>
           <div className="form-field">
-            <Label>批量并行度上限</Label>
+            <Label>同时处理任务数</Label>
             <Select value={form.parallelism} onValueChange={(v) => setValue("parallelism", v)}>
               <SelectTrigger className="form-input h-9 w-full">
                 <SelectValue />
@@ -217,7 +217,7 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">
-              数值越高处理越快但占用资源越多；内存预算会按并行度自动均分
+              任务中心按此额度统一调度所有清洗、检测与修复任务；数值越高越快，占用资源越多
             </div>
           </div>
           <div className="form-field">

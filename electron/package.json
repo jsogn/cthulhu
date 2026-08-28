@@ -1,6 +1,6 @@
 {
   "name": "cthulhu-electron",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Cthulhu · 推广素材处理桌面工具（去重 / 暗水印 / 多版本）",
   "author": "cthulhu",
   "private": true,

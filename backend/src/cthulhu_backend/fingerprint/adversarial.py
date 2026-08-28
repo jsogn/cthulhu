@@ -128,7 +128,7 @@ def attack_frames(
     workers: int | None = None,
 ) -> np.ndarray:
     """对帧数组逐帧并行施加 pHash 对抗扰动，保持原 dtype。"""
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     # 彩色帧：只攻击亮度分量，再按比例回写 RGB，保持色相不被破坏。
     if frames.ndim == 4:
@@ -264,7 +264,7 @@ def attack_frames_joint(
     iterations: int = 100,
 ) -> np.ndarray:
     """对帧数组并行施加多哈希联合扰动，保持原 dtype；彩色帧只攻击亮度。"""
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     if frames.ndim == 4:
         original_dtype = frames.dtype

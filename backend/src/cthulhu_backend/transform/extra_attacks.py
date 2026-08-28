@@ -117,7 +117,7 @@ def salient_overlay(frames: np.ndarray, layout: SaliencyLayout | None) -> np.nda
         return frames
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
 
@@ -225,7 +225,7 @@ def protect_details(
         return attacked
     from scipy.ndimage import gaussian_filter, sobel
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = attacked.dtype == np.uint8
     attacked_f = attacked.astype(np.float32)
@@ -272,7 +272,7 @@ def median(frames: np.ndarray, size: int) -> np.ndarray:
     if frames.dtype == np.uint8:
         from PIL import Image, ImageFilter
 
-        from cthulhu_backend.transform.parallel import map_frames
+        from cthulhu_backend.parallel import map_frames
 
         def filt(frame: np.ndarray) -> np.ndarray:
             mode = "RGB" if frame.ndim == 3 else "L"
@@ -280,7 +280,7 @@ def median(frames: np.ndarray, size: int) -> np.ndarray:
             return np.asarray(image.filter(ImageFilter.MedianFilter(size=size)), dtype=np.uint8)
 
         return map_frames(filt, frames)
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(
         lambda frame: median_filter(frame, size=_spatial_kernel(frame.shape, size)),
@@ -432,7 +432,7 @@ def perspective_shear(
     """
     if strength <= 0:
         return frames
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
     work = frames.astype(np.float32)
@@ -481,7 +481,7 @@ def local_warp(
         return frames
     from scipy.ndimage import map_coordinates, zoom
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
     work = frames.astype(np.float32)
@@ -542,7 +542,7 @@ def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator
         return frames
     from PIL import Image
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
 

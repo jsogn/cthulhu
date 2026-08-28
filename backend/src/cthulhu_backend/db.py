@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from cthulhu_backend.schemas import TemplatePayload
 
 DB_PATH = os.environ.get(
     "CTHULHU_DB",
@@ -61,10 +64,65 @@ CREATE TABLE IF NOT EXISTS variants (
 CREATE INDEX IF NOT EXISTS idx_variants_output ON variants (output);
 """
 
+def _preset_payload(**overrides) -> dict:
+    """以 TemplatePayload 构造预置模板，保证种子数据与写入契约一致。"""
+    return TemplatePayload(**overrides).model_dump(mode="json")
+
+
+PRESET_TEMPLATES = [
+    {
+        "name": "快速 · 轻度",
+        "payload": _preset_payload(anti="轻度"),
+    },
+    {
+        "name": "标准 · 均衡",
+        "payload": _preset_payload(
+            audioRemix=True,
+            anti="标准",
+            regradeOn=True,
+            recropOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+        ),
+    },
+    {
+        "name": "强力 · 重对抗",
+        "payload": _preset_payload(
+            audioRemix=True,
+            echoDefeat=True,
+            antiReembed=True,
+            anti="强力",
+            regradeOn=True,
+            recropOn=True,
+            detailProtectOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+        ),
+    },
+    {
+        "name": "全兵器 · 研究",
+        "payload": _preset_payload(
+            audioRemix=True,
+            echoDefeat=True,
+            antiReembed=True,
+            anti="全兵器",
+            regradeOn=True,
+            recropOn=True,
+            detailProtectOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+            spoof=True,
+        ),
+    },
+]
+
 
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
-    """打开一个短期连接：正常退出自动提交，无论成败都显式关闭。
+    """打开一个短期连接：WAL + 写等待，正常退出自动提交，无论成败都显式关闭。
 
     旧实现只提交不关闭，连接对象参与引用环，文件描述符与页缓存要到
     周期性 GC 才回收，高流量下会持续累积。
@@ -72,6 +130,9 @@ def _connect() -> Iterator[sqlite3.Connection]:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
+    # WAL 让读不阻塞写，busy_timeout 吸收并发写竞争，避免 "database is locked"。
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA busy_timeout=5000")
     try:
         yield connection
         connection.commit()
@@ -126,16 +187,20 @@ def init_db() -> None:
                     connection.execute("DELETE FROM library WHERE path = ?", (row["path"],))
                 else:
                     seen[key] = row["path"]
-        # 平台命名的种子模板从未实现平台专属处理，属误导性残留，统一清除；
-        # 模板改为完全由用户创建与管理。
+        # 平台命名的旧版种子模板从未实现平台专属处理，属误导性残留，统一清除。
         for legacy_name in ("抖音投流", "快手分发", "跨平台通用"):
             connection.execute("DELETE FROM templates WHERE name = ?", (legacy_name,))
         # 迁移旧版展示参数为真实清洗参数。
         legacy = {"轻度": (25, 15, False), "平衡": (30, 20, True), "深度": (40, 30, True)}
         for row in connection.execute("SELECT id, payload FROM templates").fetchall():
             payload = json.loads(row["payload"])
-            # 旧字段 restruct 或新字段 retime 均表示已经迁移过，直接跳过。
-            if "restruct" in payload or "retime" in payload:
+            # 旧字段 restruct / 新字段 retime / 新版完整参数 audioRemix
+            # 均表示已经是真实清洗参数，直接跳过。
+            if (
+                "restruct" in payload
+                or "retime" in payload
+                or "audioRemix" in payload
+            ):
                 continue
             restruct, perturb, denoise = legacy.get(payload.get("level"), (30, 20, True))
             connection.execute(
@@ -155,31 +220,68 @@ def init_db() -> None:
                     row["id"],
                 ),
             )
+        # 预置默认模板：首次初始化（或升级旧库）时写入一次，用户可自由删除；
+        # 用设置标记保证只种一次，删除后不会自动复活。
+        settings_rows = connection.execute("SELECT key, value FROM settings").fetchall()
+        settings = {row["key"]: json.loads(row["value"]) for row in settings_rows}
+        if settings.get("preset_templates_seeded") != 1:
+            for preset in PRESET_TEMPLATES:
+                connection.execute(
+                    "INSERT INTO templates (id, name, payload, created_at) VALUES (?, ?, ?, ?)",
+                    (
+                        uuid.uuid4().hex[:12],
+                        preset["name"],
+                        json.dumps(preset["payload"], ensure_ascii=False),
+                        time.time(),
+                    ),
+                )
+            connection.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                ("preset_templates_seeded", json.dumps(1)),
+            )
+        # 启动迁移直接写设置表，重置进程内缓存避免读到旧值。
+        global _settings_cache
+        _settings_cache = None
 
 
 # ---------- 设置 ----------
+_settings_cache: dict[str, Any] | None = None
+
+
 def load_settings() -> dict[str, Any]:
+    """读取全部设置；进程内缓存，写入时失效，避免热路径反复开库读盘。"""
+    global _settings_cache
+    if _settings_cache is not None:
+        return _settings_cache
     try:
         with _connect() as connection:
             rows = connection.execute("SELECT key, value FROM settings").fetchall()
-        return {row["key"]: json.loads(row["value"]) for row in rows}
+        _settings_cache = {row["key"]: json.loads(row["value"]) for row in rows}
     except sqlite3.OperationalError:
         # 数据库尚未初始化（如测试直接调用服务）时返回空设置。
         return {}
+    return _settings_cache
 
 
 def save_settings(values: dict[str, Any]) -> None:
+    global _settings_cache
     with _connect() as connection:
         connection.executemany(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
             [(key, json.dumps(value, ensure_ascii=False)) for key, value in values.items()],
         )
+    _settings_cache = None
 
 
 # ---------- 模板 ----------
 def list_templates() -> list[dict]:
     with _connect() as connection:
-        rows = connection.execute("SELECT id, name, payload, created_at FROM templates ORDER BY created_at").fetchall()
+        # 最新创建的排最前，与素材库「最新导入在前」的约定一致，
+        # 保证新建模板立即可见，而不是掉到列表底部视区之外。
+        rows = connection.execute(
+            "SELECT id, name, payload, created_at FROM templates "
+            "ORDER BY created_at DESC, rowid DESC"
+        ).fetchall()
     return [
         {"id": row["id"], "name": row["name"], "payload": json.loads(row["payload"]), "created_at": row["created_at"]}
         for row in rows
@@ -187,8 +289,6 @@ def list_templates() -> list[dict]:
 
 
 def create_template(name: str, payload: dict) -> dict:
-    import time
-
     template_id = uuid.uuid4().hex[:12]
     with _connect() as connection:
         connection.execute(
@@ -283,27 +383,45 @@ def list_variants(source: str | None = None) -> list[dict]:
     ]
 
 
+def _variant_record(row: sqlite3.Row) -> dict:
+    """把 variants 行转换为对外字典（路径统一展开 ~）。"""
+    return {
+        "id": row["id"],
+        "source": row["source"],
+        "output": os.path.expanduser(row["output"]),
+        "options": json.loads(row["options"]),
+        "seed": row["seed"],
+        "template_id": row["template_id"],
+        "metrics": json.loads(row["metrics"]),
+        "kind": row["kind"],
+        "created_at": row["created_at"],
+    }
+
+
 def get_variant_by_output(output: str) -> dict | None:
-    """按输出路径查找产物记录，兼容 ~ 与绝对路径两种写法。"""
+    """按输出路径查找产物记录，兼容 ~ 与绝对路径两种写法。
+
+    先走 output 索引直查常见拼写（原样 / ~ 展开），未命中再回退全表
+    realpath 归并，软链接与路径别名下语义不变。
+    """
     try:
-        target = os.path.realpath(os.path.expanduser(output))
         with _connect() as connection:
+            candidates = {output, os.path.expanduser(output)}
+            for candidate in candidates:
+                row = connection.execute(
+                    "SELECT id, source, output, options, seed, template_id, metrics, "
+                    "kind, created_at FROM variants WHERE output = ?",
+                    (candidate,),
+                ).fetchone()
+                if row is not None:
+                    return _variant_record(row)
+            target = os.path.realpath(os.path.expanduser(output))
             for row in connection.execute(
                 "SELECT id, source, output, options, seed, template_id, metrics, kind, created_at "
                 "FROM variants"
             ).fetchall():
                 if os.path.realpath(os.path.expanduser(row["output"])) == target:
-                    return {
-                        "id": row["id"],
-                        "source": row["source"],
-                        "output": os.path.expanduser(row["output"]),
-                        "options": json.loads(row["options"]),
-                        "seed": row["seed"],
-                        "template_id": row["template_id"],
-                        "metrics": json.loads(row["metrics"]),
-                        "kind": row["kind"],
-                        "created_at": row["created_at"],
-                    }
+                    return _variant_record(row)
     except sqlite3.OperationalError:
         return None
     return None

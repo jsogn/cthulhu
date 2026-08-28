@@ -1,38 +1,22 @@
+import type { components } from "@/lib/api-types";
 import type { TemplateInfo } from "@/lib/backend";
 
-export type AntiLevel = "关闭" | "轻度" | "标准" | "强力" | "全兵器";
-export type Codec = "H.264" | "H.265";
-
-/** 与右侧「清洗去重」面板参数一一对应，模板保存完整配置。 */
-export interface TemplatePayload {
-  audioRemix: boolean;
-  echoDefeat: boolean;
-  antiReembed: boolean;
-  anti: AntiLevel;
-  recropOn: boolean;
-  detailProtectOn: boolean;
-  sharpness: boolean;
-  colorRestore: boolean;
-  denoise: boolean;
-  spoof: boolean;
-  codec: Codec;
-  lossless: boolean;
-  resolution: string;
-  bitrate: number | null;
-  gop: number | null;
-  fpsOut: number | null;
-}
+/** 模板 payload：与后端 Pydantic TemplatePayload 契约一致，由 OpenAPI 生成。 */
+export type TemplatePayload = components["schemas"]["TemplatePayload"];
+export type AntiLevel = TemplatePayload["anti"];
+export type Codec = TemplatePayload["codec"];
 
 export const DEFAULT_TEMPLATE: TemplatePayload = {
-  audioRemix: true,
+  audioRemix: false,
   echoDefeat: false,
   antiReembed: false,
-  anti: "标准",
-  recropOn: true,
+  anti: "关闭",
+  regradeOn: false,
+  recropOn: false,
   detailProtectOn: false,
-  sharpness: true,
-  colorRestore: true,
-  denoise: true,
+  sharpness: false,
+  colorRestore: false,
+  denoise: false,
   spoof: false,
   codec: "H.264",
   lossless: false,
@@ -50,6 +34,7 @@ export function payloadOf(template: TemplateInfo): TemplatePayload {
     echoDefeat: (raw.echoDefeat as boolean) ?? false,
     antiReembed: (raw.antiReembed as boolean) ?? false,
     anti: (raw.anti as AntiLevel) ?? "标准",
+    regradeOn: (raw.regradeOn as boolean) ?? true,
     recropOn: (raw.recropOn as boolean) ?? false,
     detailProtectOn: (raw.detailProtectOn as boolean) ?? false,
     sharpness: (raw.sharpness as boolean) ?? true,

@@ -72,7 +72,7 @@ def corner_mark(
         )
         return np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(draw, frames)
 

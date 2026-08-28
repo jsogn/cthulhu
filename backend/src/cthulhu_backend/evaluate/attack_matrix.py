@@ -13,10 +13,11 @@ from pathlib import Path
 import numpy as np
 from scipy.io import wavfile
 
+from cthulhu_backend import parallel
 from cthulhu_backend.evaluate import dedup_harness, metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import parallel, shots, strategies
+from cthulhu_backend.transform import shots, strategies
 from cthulhu_backend.transform import video as video_transform
 
 _FF = ffmpeg.FFMPEG_BIN

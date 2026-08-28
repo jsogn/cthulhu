@@ -1,0 +1,16 @@
+[
+  {
+    "date": "2026-08-28",
+    "mode": "Health Dashboard",
+    "score": 79,
+    "findings": { "critical": 3, "warning": 8, "suggestion": 0 },
+    "scope": "cthulhu 全项目（backend + ui + electron；含工作区未提交变更）"
+  },
+  {
+    "date": "2026-08-28",
+    "mode": "Health Dashboard",
+    "score": 92,
+    "findings": { "critical": 0, "warning": 6, "suggestion": 2 },
+    "scope": "cthulhu 全项目（维护批变更后复扫）"
+  }
+]

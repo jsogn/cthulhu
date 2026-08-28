@@ -121,7 +121,6 @@ export default function ImportDialog() {
     let done = 0;
     let success = 0;
     let failed = 0;
-    let duplicateSkipped = 0;
     const materials: { material: Material; index: number }[] = [];
 
     const refreshProgress = () => {
@@ -145,10 +144,8 @@ export default function ImportDialog() {
             percentByIndex[index] = percent;
             refreshProgress();
           });
-          if (imported.duplicate) {
-            duplicateSkipped++;
-            return;
-          }
+          // 后端内容哈希去重命中时同样返回可播放路径与元数据：文件被复用，
+          // 记录也已重新入库，这里照常加入列表，避免「列表空、刷新才出现」。
           path = imported.path;
           video = imported.video;
         }
@@ -215,7 +212,7 @@ export default function ImportDialog() {
     if (firstId) select(firstId);
     const parts = [`已导入 ${success} 个素材`];
     if (failed) parts.push(`${failed} 个失败`);
-    const skipped = dupCount + duplicateSkipped;
+    const skipped = dupCount;
     if (skipped) parts.push(`跳过 ${skipped} 个重复`);
     if (invalidCount) parts.push(`${invalidCount} 个格式不支持`);
     toast(parts.join("，"));

@@ -1,20 +1,22 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Rail from "@/components/Rail";
 import TopBar from "@/components/TopBar";
 import Toaster from "@/components/Toaster";
 import ImportDialog from "@/components/ImportDialog";
 import StatusBar from "@/components/StatusBar";
 import Workbench from "@/views/Workbench";
-import JobsView from "@/views/JobsView";
-import TemplatesView from "@/views/TemplatesView";
-import SettingsView from "@/views/SettingsView";
-import ProductsView from "@/views/ProductsView";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { connectEvents, getHealth } from "@/lib/backend";
 import { useAppStore } from "@/stores/app";
 import { useQueueStore } from "@/stores/queue";
 import { useMaterialsStore } from "@/stores/materials";
 import { toast } from "@/stores/toasts";
+
+// 非首屏视图按需加载：任务中心 / 模板 / 产物 / 设置只在切到对应页时下载。
+const JobsView = lazy(() => import("@/views/JobsView"));
+const TemplatesView = lazy(() => import("@/views/TemplatesView"));
+const ProductsView = lazy(() => import("@/views/ProductsView"));
+const SettingsView = lazy(() => import("@/views/SettingsView"));
 
 export default function App() {
   const view = useAppStore((state) => state.view);
@@ -50,6 +52,24 @@ export default function App() {
       useQueueStore.getState().applyEvent(msg);
     });
   }, [setBackendConnected]);
+
+  // 事件推送可能因断线重连窗口漏掉终态；只要还有活动任务，
+  // 每 5 秒向服务端校准一次队列，保证按钮与任务列表最终一致。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const { jobs } = useQueueStore.getState();
+      const hasActive = jobs.some((job) =>
+        job.tasks.some(
+          (task) =>
+            task.status === "queued" ||
+            task.status === "running" ||
+            task.status === "paused",
+        ),
+      );
+      if (hasActive) void useQueueStore.getState().refresh();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // 启动时等待引擎就绪后加载真实素材库；失败时由工作台展示错误空状态。
   useEffect(() => {
@@ -109,11 +129,19 @@ export default function App() {
         <div className="layout">
           <Rail />
           <main className="view">
-            {view === "workbench" && <Workbench />}
-            {view === "jobs" && <JobsView />}
-            {view === "templates" && <TemplatesView />}
-            {view === "products" && <ProductsView />}
-            {view === "settings" && <SettingsView />}
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  加载中…
+                </div>
+              }
+            >
+              {view === "workbench" && <Workbench />}
+              {view === "jobs" && <JobsView />}
+              {view === "templates" && <TemplatesView />}
+              {view === "products" && <ProductsView />}
+              {view === "settings" && <SettingsView />}
+            </Suspense>
           </main>
         </div>
         <StatusBar />

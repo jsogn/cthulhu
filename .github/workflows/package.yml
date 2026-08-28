@@ -47,7 +47,10 @@ jobs:
           enable-cache: true
 
       - name: 安装前端依赖
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir electron install --frozen-lockfile
 
       - name: 安装 Python 依赖
         working-directory: backend
@@ -59,6 +62,7 @@ jobs:
       - name: 校验（类型 / lint / 测试）
         run: |
           pnpm typecheck
+          pnpm test
           cd backend
           uv run ruff check src tests
           uv run pytest tests -q

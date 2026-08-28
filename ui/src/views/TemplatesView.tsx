@@ -73,7 +73,11 @@ export default function TemplatesView() {
 
   const save = async () => {
     try {
-      const finalName = name.trim() || "去重模板";
+      const finalName = name.trim();
+      if (!finalName) {
+        toast("请先填写模板名称");
+        return;
+      }
       if (editing) {
         await updateTemplate(editing.id, finalName, { ...form });
       } else {

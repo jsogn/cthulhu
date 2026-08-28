@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -252,80 +252,92 @@ function JobCard({
     </>
   );
 
-  return (
+  const actionButtons = (
+    <>
+      {job.status === "queued" && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onPriority(job.id, Math.max(0, job.priority - 1))}
+        >
+          提前执行
+        </Button>
+      )}
+      {job.status === "paused" ? (
+        <Button variant="secondary" size="sm" onClick={() => onResume(job.id)}>
+          继续
+        </Button>
+      ) : (
+        (job.status === "queued" || job.status === "running") && (
+          <Button variant="secondary" size="sm" onClick={() => onPause(job.id)}>
+            暂停
+          </Button>
+        )
+      )}
+      {(job.status === "queued" || job.status === "running" || job.status === "paused") && (
+        <Button variant="secondary" size="sm" onClick={() => onCancel(job.id)}>
+          取消
+        </Button>
+      )}
+      {failedCount > 0 && (
+        <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
+          重试
+        </Button>
+      )}
+    </>
+  );
+
+  const showActions =
+    job.status === "queued" ||
+    job.status === "running" ||
+    job.status === "paused" ||
+    failedCount > 0;
+
+  const renderTaskRow = (
+    task: JobInfo["tasks"][number],
+    actions?: ReactNode,
+  ) => (
     <div className="job-row">
       <div className="flex items-center gap-2">
-        <span className="job-name min-w-0 truncate">{job.name}</span>
-        <span className={`job-status ${STATUS_LABEL[job.status]}`}>{STATUS_LABEL[job.status]}</span>
+        <span className="job-name min-w-0 truncate">
+          {basename(task.path)} · {KIND_LABEL[task.kind]}
+        </span>
+        <span className={`job-status ${STATUS_LABEL[task.status]}`}>
+          {STATUS_LABEL[task.status]}
+        </span>
       </div>
       <div className="text-xs text-muted-foreground">
         {formatTime(job.created_at)}
-        {job.tasks.length === 1 && finalElapsed(job.tasks[0]) != null
-          ? ` · 耗时 ${finalElapsed(job.tasks[0])}`
-          : null}
+        {finalElapsed(task) != null ? ` · 耗时 ${finalElapsed(task)}` : ""}
       </div>
+      {renderTaskDetail(task)}
+      {actions ? <div className="job-actions justify-end">{actions}</div> : null}
+    </div>
+  );
 
-      {job.tasks.length === 1 ? (
-        <div className="flex flex-col gap-1">{renderTaskDetail(job.tasks[0])}</div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {job.tasks.map((task) => (
-            <div key={task.id} className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="shrink-0 text-muted-foreground">{KIND_LABEL[task.kind]}</span>
-                <span className="mono min-w-0 flex-1 truncate">{basename(task.path)}</span>
-                <span className={`job-status ${STATUS_LABEL[task.status]}`}>
-                  {STATUS_LABEL[task.status]}
-                </span>
-                {finalElapsed(task) != null && (
-                  <span className="shrink-0 text-muted-foreground">
-                    耗时 {finalElapsed(task)}
-                  </span>
-                )}
-              </div>
-              {renderTaskDetail(task)}
-            </div>
-          ))}
+  // 单条与批量统一为同一种平铺行；批次只在需要整组操作时出现一条工具条。
+  return (
+    <div className="flex flex-col">
+      {showActions && job.tasks.length > 1 && (
+        <div className="job-row flex-row flex-wrap items-center gap-2">
+          <span className="job-name min-w-0 truncate">{job.name}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {job.tasks.length} 个任务
+          </span>
+          <span className={`job-status ${STATUS_LABEL[job.status]}`}>
+            {STATUS_LABEL[job.status]}
+          </span>
+          <div className="job-actions ml-auto">{actionButtons}</div>
         </div>
       )}
-
-      {(job.status === "queued" ||
-        job.status === "running" ||
-        job.status === "paused" ||
-        failedCount > 0) && (
-        <div className="job-actions justify-end">
-          {job.status === "queued" && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onPriority(job.id, Math.max(0, job.priority - 1))}
-            >
-              提前执行
-            </Button>
-          )}
-          {job.status === "paused" ? (
-            <Button variant="secondary" size="sm" onClick={() => onResume(job.id)}>
-              继续
-            </Button>
-          ) : (
-            (job.status === "queued" || job.status === "running") && (
-              <Button variant="secondary" size="sm" onClick={() => onPause(job.id)}>
-                暂停
-              </Button>
-            )
-          )}
-          {(job.status === "queued" || job.status === "running" || job.status === "paused") && (
-            <Button variant="secondary" size="sm" onClick={() => onCancel(job.id)}>
-              取消
-            </Button>
-          )}
-          {failedCount > 0 && (
-            <Button variant="secondary" size="sm" onClick={() => onRetry(job.id)}>
-              重试
-            </Button>
+      {job.tasks.map((task) => (
+        <div key={task.id}>
+          {renderTaskRow(
+            task,
+            job.tasks.length === 1 && showActions ? actionButtons : null,
           )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

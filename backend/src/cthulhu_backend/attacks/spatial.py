@@ -24,8 +24,8 @@ def gaussian(frames: np.ndarray, sigma: float = 1.0) -> np.ndarray:
 
 
 def wiener_denoise(frames: np.ndarray, size: int = 5) -> np.ndarray:
-    """逐帧 Wiener 去噪（线程并行，详见 transform/parallel）。"""
-    from cthulhu_backend.transform.parallel import map_frames
+    """逐帧 Wiener 去噪（线程并行，详见 cthulhu_backend.parallel）。"""
+    from cthulhu_backend.parallel import map_frames
 
     def filt(frame: np.ndarray) -> np.ndarray:
         if frame.ndim == 3:

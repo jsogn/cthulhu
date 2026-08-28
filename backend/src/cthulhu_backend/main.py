@@ -143,9 +143,10 @@ async def events(ws: WebSocket) -> None:
     if ws.query_params.get("token") != AUTH_TOKEN:
         await ws.close(code=4401, reason="无效的访问令牌")
         return
+    # 先订阅再 accept：避免连接建立与订阅之间漏掉已广播的任务事件。
+    queue = broker.subscribe()
     await ws.accept()
     await ws.send_json({"type": "hello", "version": APP_VERSION})
-    queue = broker.subscribe()
     try:
         while True:
             try:

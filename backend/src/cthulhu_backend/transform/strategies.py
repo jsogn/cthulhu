@@ -137,7 +137,7 @@ def _fast_recrop_u8(frames: np.ndarray, crop_frac: float) -> np.ndarray:
         resized = image.resize((w, h), Image.BILINEAR, box=(crop_x, 0, w, h - crop_y))
         return np.asarray(resized, dtype=np.uint8)
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(resize, frames)
 
@@ -164,7 +164,7 @@ def _fast_regrade_u8(
         fused = np.clip(table + delta * 255.0, 0.0, 255.0).astype(np.uint8)
         return np.take(fused, frame, mode="clip")
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(apply_one, list(zip(tables, frames, deltas)))
 
@@ -175,7 +175,7 @@ def _fast_color_restore_u8(
     ref_std: float,
 ) -> np.ndarray:
     """亮度还原（纯 uint8 整数域）：逐通道均值校准，免 float 往返。"""
-    from cthulhu_backend.transform.parallel import map_chunks
+    from cthulhu_backend.parallel import map_chunks
 
     ref_mean8 = np.asarray(ref_mean) * 255.0
     del ref_std
@@ -202,7 +202,7 @@ def _fast_sharpen_u8(frames: np.ndarray, amount: float = 0.25, radius: float = 1
         out = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=3))
         return np.asarray(out, dtype=np.uint8)
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(unsharp, frames)
 
@@ -226,7 +226,7 @@ def _fast_banner_u8(frames: np.ndarray, text: str, seed: int = 0, margin_frac: f
         draw.text((margin + 12, y0 + (box_h - 16) // 2), text, fill=(255, 255, 255, 220), font=font)
         return np.asarray(image.convert("RGB" if frame.ndim == 3 else "L"), dtype=np.uint8)
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(draw_frame, frames)
 
@@ -245,7 +245,7 @@ def rotate_de_sync(
     高频摆动造成的可见抖动，同时仍逐帧破坏与源片的空间对齐。
     几何去同步对 pHash 类指纹的破坏效率远高于同预算的像素扰动。
     """
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
 

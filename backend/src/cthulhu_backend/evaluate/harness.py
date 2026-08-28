@@ -7,14 +7,14 @@ import tempfile
 
 import numpy as np
 
-from cthulhu_backend import samples, services
+from cthulhu_backend import parallel, samples, services
 from cthulhu_backend.attacks import dct as dct_attacks
 from cthulhu_backend.attacks import geometric, spatial, temporal
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.similarity import embedding
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import parallel, shots
+from cthulhu_backend.transform import shots
 from cthulhu_backend.transform import video as video_transform
 from cthulhu_backend.watermark import common, detect, dwt, echo, lsb, qim, qim_rep, ss
 

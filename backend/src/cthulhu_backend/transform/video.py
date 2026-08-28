@@ -88,7 +88,7 @@ def recrop(frames: np.ndarray, crop_frac: float = 0.04) -> np.ndarray:
         rescaled = zoom(cropped, factors, order=1)
         return np.clip(rescaled, 0, 1)
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(resize, frames)
 
@@ -151,7 +151,7 @@ def overlay_banner(
             return np.asarray(image.convert("RGB"), dtype=np.float64) / 255.0
         return np.asarray(image.convert("L"), dtype=np.float64) / 255.0
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(draw_frame, frames)
 
@@ -170,7 +170,7 @@ def sharpen(
         mask[np.abs(mask) < threshold] = 0.0
         return np.clip(frame + amount * mask, 0, 1)
 
-    from cthulhu_backend.transform.parallel import map_frames
+    from cthulhu_backend.parallel import map_frames
 
     return map_frames(unsharp, frames)
 
@@ -192,7 +192,7 @@ def color_restore(
         means = sub.mean(axis=(1, 2), keepdims=True)
         return np.clip(sub + (ref_mean - means), 0.0, 1.0)
 
-    from cthulhu_backend.transform.parallel import map_chunks
+    from cthulhu_backend.parallel import map_chunks
 
     return map_chunks(frames, restore, workers=4)
 

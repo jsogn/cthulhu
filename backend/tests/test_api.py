@@ -255,7 +255,7 @@ def test_import_stores_file_and_returns_path(tmp_path, monkeypatch):
     """导入接口把视频落盘到素材库目录，供播放与检测复用。"""
     source = _video(tmp_path, "up.mp4", seed=94)
     library = tmp_path / "library"
-    monkeypatch.setattr("cthulhu_backend.api._LIBRARY_DIR", library)
+    monkeypatch.setattr("cthulhu_backend.services.LIBRARY_DIR", library)
     with source.open("rb") as handle:
         response = client.post(
             "/api/import",
@@ -271,11 +271,11 @@ def test_import_stores_file_and_returns_path(tmp_path, monkeypatch):
 @needs_ffmpeg
 def test_import_deduplicates_content_and_reuses_cached_hash(tmp_path, monkeypatch):
     """相同内容不重复落盘；第二次导入复用库中缓存的哈希，不再整文件重算。"""
-    from cthulhu_backend import api as api_module
+    from cthulhu_backend import services as services_module
 
     source = _video(tmp_path, "dup.mp4", seed=95)
     library = tmp_path / "library"
-    monkeypatch.setattr(api_module, "_LIBRARY_DIR", library)
+    monkeypatch.setattr(services_module, "LIBRARY_DIR", library)
 
     def import_named(name: str) -> dict:
         with source.open("rb") as handle:
@@ -290,13 +290,13 @@ def test_import_deduplicates_content_and_reuses_cached_hash(tmp_path, monkeypatc
     assert first["duplicate"] is False
 
     hash_calls: list[str] = []
-    original_hash = api_module._content_hash
+    original_hash = services_module.content_hash
 
     def counting_hash(path: str) -> str:
         hash_calls.append(path)
         return original_hash(path)
 
-    monkeypatch.setattr(api_module, "_content_hash", counting_hash)
+    monkeypatch.setattr(services_module, "content_hash", counting_hash)
     second = import_named("dup_copy.mp4")
     assert second["duplicate"] is True
     assert Path(second["path"]).name == "dup.mp4"
@@ -429,3 +429,30 @@ def test_repair_delogo_stops_before_start(tmp_path):
             [{"x": 0.2, "y": 0.2, "w": 0.3, "h": 0.2}],
             stop=lambda: True,
         )
+
+
+def test_desensitize_rejects_camel_case_alias():
+    """camelCase 别名已下线：直接端点只接受 snake_case。"""
+    response = client.post(
+        "/api/desensitize",
+        json={"path": "/nope.mp4", "output": "/out.mp4", "audioRemix": False},
+    )
+    assert response.status_code == 422
+
+
+def test_create_job_rejects_unknown_desensitize_option():
+    """清洗任务的未知选项字段在入队时即 422，而不是进后台慢慢失败。"""
+    response = client.post(
+        "/api/jobs",
+        json={
+            "name": "bad-job",
+            "tasks": [
+                {
+                    "kind": "desensitize",
+                    "path": "/nope.mp4",
+                    "options": {"output": "/out.mp4", "audioRemix": False},
+                },
+            ],
+        },
+    )
+    assert response.status_code == 422

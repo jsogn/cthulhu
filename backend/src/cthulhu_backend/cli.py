@@ -11,7 +11,7 @@ import numpy as np
 import typer
 from scipy.io import wavfile
 
-from cthulhu_backend import samples
+from cthulhu_backend import parallel, samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
 from cthulhu_backend.evaluate import (
     attack_matrix,
@@ -22,7 +22,6 @@ from cthulhu_backend.evaluate import (
 )
 from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
-from cthulhu_backend.transform import parallel
 from cthulhu_backend.watermark import common, detect, dwt, lsb, qim, qim_rep, ss, temporal
 
 app = typer.Typer(help="暗水印研究工具：样本生成与对抗评估")

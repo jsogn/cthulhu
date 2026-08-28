@@ -1,0 +1,2318 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "暗水印清洗台后端",
+    "version": "0.2.1"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "description": "健康检查，Electron 主进程据此判断后端是否就绪。",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Api Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/detect": {
+      "post": {
+        "summary": "Detect",
+        "operationId": "detect_api_detect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Detect Api Detect Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/similarity": {
+      "post": {
+        "summary": "Similarity",
+        "operationId": "similarity_api_similarity_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Similarity Api Similarity Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/import/scan": {
+      "post": {
+        "summary": "Import Scan",
+        "operationId": "import_scan_api_import_scan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Import Scan Api Import Scan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/library": {
+      "get": {
+        "summary": "Demo Library",
+        "operationId": "demo_library_api_demo_library_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Demo Library Api Demo Library Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/frame": {
+      "get": {
+        "summary": "Frame",
+        "description": "抽取视频指定时间点的帧（PNG），供预览与前后对比渲染。",
+        "operationId": "frame_api_frame_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "default": 0.0,
+              "title": "T"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/thumb": {
+      "get": {
+        "summary": "Thumb",
+        "description": "返回等比缩放的首帧缩略图（JPEG），带磁盘缓存，供素材封面使用。",
+        "operationId": "thumb_api_thumb_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1920,
+              "minimum": 16,
+              "default": 320,
+              "title": "Width"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library": {
+      "get": {
+        "summary": "Library List",
+        "description": "返回持久化素材库（最新导入在前），并标记内容完全相同的重复副本。",
+        "operationId": "library_list_api_library_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Library List Api Library Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Library Add",
+        "description": "登记一个本地视频到素材库；内容完全相同的文件不重复导入。",
+        "operationId": "library_add_api_library_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Library Add Api Library Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Library Remove",
+        "description": "从素材库移除记录与对应产物；源视频文件一律保留，由用户手动管理。",
+        "operationId": "library_remove_api_library_delete",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Library Remove Api Library Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/all": {
+      "delete": {
+        "summary": "Library Clear",
+        "description": "清空素材库：移除全部素材记录并删除对应产物文件与记录。\n\n源视频文件一律保留（无论位于何处），由用户手动管理。",
+        "operationId": "library_clear_api_library_all_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Library Clear Api Library All Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media": {
+      "get": {
+        "summary": "Media",
+        "description": "流式返回视频文件，支持 HTTP Range，播放器可随时拖动定位。",
+        "operationId": "media_api_media_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/import": {
+      "post": {
+        "summary": "Import Video",
+        "description": "接收网页端导入的视频：流式落盘，去重与入库交给服务层。",
+        "operationId": "import_video_api_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_video_api_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Import Video Api Import Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audio/analyze": {
+      "post": {
+        "summary": "Audio Analyze",
+        "description": "音频分析：波形、对数频谱与回声隐藏置信度。",
+        "operationId": "audio_analyze_api_audio_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Audio Analyze Api Audio Analyze Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desensitize": {
+      "post": {
+        "summary": "Desensitize",
+        "operationId": "desensitize_api_desensitize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesensitizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Desensitize Api Desensitize Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repair": {
+      "post": {
+        "summary": "Repair",
+        "operationId": "repair_api_repair_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Repair Api Repair Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export": {
+      "post": {
+        "summary": "Export Videos",
+        "description": "把已处理素材的产物复制到设置中的导出目录。",
+        "operationId": "export_videos_api_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Export Videos Api Export Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/outputs": {
+      "get": {
+        "summary": "Outputs",
+        "description": "列出源素材的全部处理产物（清洗/修复/候选），最新在前。",
+        "operationId": "outputs_api_outputs_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Outputs Api Outputs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Output",
+        "description": "删除指定处理产物（仅限清洗/修复/候选命名）。",
+        "operationId": "delete_output_api_outputs_delete",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Output Api Outputs Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/outputs/counts": {
+      "get": {
+        "summary": "Outputs Counts",
+        "description": "素材库各源素材的产物数量汇总。",
+        "operationId": "outputs_counts_api_outputs_counts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Outputs Counts Api Outputs Counts Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products": {
+      "get": {
+        "summary": "Products List",
+        "description": "全部处理产物的全局清单，用于产物管理页查看占用与清理。",
+        "operationId": "products_list_api_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Products List Api Products Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/delete": {
+      "post": {
+        "summary": "Products Delete",
+        "description": "批量删除产物文件与记录；仅允许清洗/修复/候选命名，绝不触碰源视频。",
+        "operationId": "products_delete_api_products_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Products Delete Api Products Delete Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ffmpeg/select": {
+      "post": {
+        "summary": "Select Ffmpeg",
+        "description": "用户手动指定本机已有的 ffmpeg 可执行文件。",
+        "operationId": "select_ffmpeg_api_ffmpeg_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Select Ffmpeg Api Ffmpeg Select Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ffmpeg/install": {
+      "get": {
+        "summary": "Ffmpeg Install Status",
+        "description": "查询视频处理引擎一键安装进度。",
+        "operationId": "ffmpeg_install_status_api_ffmpeg_install_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Ffmpeg Install Status Api Ffmpeg Install Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Install Ffmpeg",
+        "description": "后台下载静态视频处理引擎，前端轮询状态直到完成。",
+        "operationId": "install_ffmpeg_api_ffmpeg_install_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Install Ffmpeg Api Ffmpeg Install Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "summary": "Create Job",
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Job Api Jobs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Jobs",
+        "operationId": "remove_jobs_api_jobs_delete",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(finished|all)$",
+              "default": "finished",
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Remove Jobs Api Jobs Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Job Api Jobs  Job Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel Job",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Cancel Job Api Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/retry": {
+      "post": {
+        "summary": "Retry Job",
+        "operationId": "retry_job_api_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Job Api Jobs  Job Id  Retry Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/pause": {
+      "post": {
+        "summary": "Pause Job",
+        "operationId": "pause_job_api_jobs__job_id__pause_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Pause Job Api Jobs  Job Id  Pause Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/resume": {
+      "post": {
+        "summary": "Resume Job",
+        "operationId": "resume_job_api_jobs__job_id__resume_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Resume Job Api Jobs  Job Id  Resume Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/priority": {
+      "post": {
+        "summary": "Set Job Priority",
+        "operationId": "set_job_priority_api_jobs__job_id__priority_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriorityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Set Job Priority Api Jobs  Job Id  Priority Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "Get Settings",
+        "operationId": "get_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Settings Api Settings Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Put Settings Api Settings Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates": {
+      "get": {
+        "summary": "Get Templates",
+        "operationId": "get_templates_api_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Templates Api Templates Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Post Template",
+        "operationId": "post_template_api_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Template Api Templates Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/{template_id}": {
+      "put": {
+        "summary": "Put Template",
+        "operationId": "put_template_api_templates__template_id__put",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Template Api Templates  Template Id  Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Template",
+        "operationId": "remove_template_api_templates__template_id__delete",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Remove Template Api Templates  Template Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/variants": {
+      "get": {
+        "summary": "List Variants",
+        "description": "产物记录清单：按源文件过滤，返回完整参数与指标快照。",
+        "operationId": "list_variants_api_variants_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Variants Api Variants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_import_video_api_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_video_api_import_post"
+      },
+      "DesensitizeRequest": {
+        "properties": {
+          "output_mode": {
+            "type": "string",
+            "title": "Output Mode",
+            "default": "reencode"
+          },
+          "reorder": {
+            "type": "boolean",
+            "title": "Reorder",
+            "default": false
+          },
+          "speed": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Speed",
+            "default": 1.0
+          },
+          "recrop": {
+            "type": "number",
+            "maximum": 0.2,
+            "minimum": 0.0,
+            "title": "Recrop",
+            "default": 0.0
+          },
+          "regrade": {
+            "type": "boolean",
+            "title": "Regrade",
+            "default": true
+          },
+          "perturb": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Perturb",
+            "default": 0.0
+          },
+          "audio_remix": {
+            "type": "boolean",
+            "title": "Audio Remix",
+            "default": true
+          },
+          "sharpness": {
+            "type": "boolean",
+            "title": "Sharpness",
+            "default": true
+          },
+          "color_restore": {
+            "type": "boolean",
+            "title": "Color Restore",
+            "default": true
+          },
+          "denoise": {
+            "type": "boolean",
+            "title": "Denoise",
+            "default": false
+          },
+          "anti_reembed": {
+            "type": "boolean",
+            "title": "Anti Reembed",
+            "default": false
+          },
+          "banner": {
+            "type": "string",
+            "title": "Banner",
+            "default": ""
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "codec": {
+            "type": "string",
+            "title": "Codec",
+            "default": "libx264"
+          },
+          "lossless": {
+            "type": "boolean",
+            "title": "Lossless",
+            "default": false
+          },
+          "preset": {
+            "type": "string",
+            "title": "Preset",
+            "default": "veryfast"
+          },
+          "spoof": {
+            "type": "boolean",
+            "title": "Spoof",
+            "default": false
+          },
+          "bitrate_kbps": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bitrate Kbps"
+          },
+          "gop": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 600.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gop"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "fps_out": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 240.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Out"
+          },
+          "hardware": {
+            "type": "boolean",
+            "title": "Hardware",
+            "default": false
+          },
+          "transform_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transform Strategy"
+          },
+          "phash_attack": {
+            "type": "boolean",
+            "title": "Phash Attack",
+            "default": false
+          },
+          "phash_epsilon": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Phash Epsilon",
+            "default": 0.03
+          },
+          "phash_iters": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Phash Iters",
+            "default": 120
+          },
+          "multi_hash_attack": {
+            "type": "boolean",
+            "title": "Multi Hash Attack",
+            "default": false
+          },
+          "shot_retime": {
+            "type": "boolean",
+            "title": "Shot Retime",
+            "default": false
+          },
+          "shot_retime_min": {
+            "type": "number",
+            "title": "Shot Retime Min",
+            "default": 0.98
+          },
+          "shot_retime_max": {
+            "type": "number",
+            "title": "Shot Retime Max",
+            "default": 1.04
+          },
+          "cut_jitter": {
+            "type": "integer",
+            "title": "Cut Jitter",
+            "default": 0
+          },
+          "audio_strong": {
+            "type": "boolean",
+            "title": "Audio Strong",
+            "default": false
+          },
+          "echo_defeat": {
+            "type": "boolean",
+            "title": "Echo Defeat",
+            "default": false
+          },
+          "skip_vmaf": {
+            "type": "boolean",
+            "title": "Skip Vmaf",
+            "default": false
+          },
+          "filter_scale": {
+            "type": "integer",
+            "maximum": 1080.0,
+            "minimum": 0.0,
+            "title": "Filter Scale",
+            "default": 0
+          },
+          "rotate": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Rotate",
+            "default": 0.0
+          },
+          "transcode_chain": {
+            "type": "boolean",
+            "title": "Transcode Chain",
+            "default": false
+          },
+          "median": {
+            "type": "integer",
+            "maximum": 9.0,
+            "minimum": 0.0,
+            "title": "Median",
+            "default": 0
+          },
+          "noise": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Noise",
+            "default": 0.0
+          },
+          "requant": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 0.0,
+            "title": "Requant",
+            "default": 0
+          },
+          "dct_step": {
+            "type": "number",
+            "maximum": 256.0,
+            "minimum": 0.0,
+            "title": "Dct Step",
+            "default": 0.0
+          },
+          "drop_every": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Drop Every",
+            "default": 0
+          },
+          "jitter": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Jitter",
+            "default": 0.0
+          },
+          "perspective": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Perspective",
+            "default": 0.0
+          },
+          "warp": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Warp",
+            "default": 0.0
+          },
+          "mirror": {
+            "type": "boolean",
+            "title": "Mirror",
+            "default": false
+          },
+          "subtract_beta": {
+            "type": "number",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Subtract Beta",
+            "default": 0.0
+          },
+          "saliency": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Saliency",
+            "default": 0
+          },
+          "chroma_levels": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 0.0,
+            "title": "Chroma Levels",
+            "default": 0
+          },
+          "native_filters": {
+            "type": "boolean",
+            "title": "Native Filters",
+            "default": false
+          },
+          "detail_protect": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Detail Protect",
+            "default": 0.0
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "output"
+        ],
+        "title": "DesensitizeRequest",
+        "description": "直接调用 /api/desensitize 的请求体：在选项集之上补充路径。"
+      },
+      "ExportRequest": {
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paths"
+          },
+          "export_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Dir"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paths"
+        ],
+        "title": "ExportRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JobRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "parallelism": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 8.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parallelism"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskSpec"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "tasks"
+        ],
+        "title": "JobRequest"
+      },
+      "PairRequest": {
+        "properties": {
+          "a": {
+            "type": "string",
+            "title": "A"
+          },
+          "b": {
+            "type": "string",
+            "title": "B"
+          }
+        },
+        "type": "object",
+        "required": [
+          "a",
+          "b"
+        ],
+        "title": "PairRequest"
+      },
+      "PathRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "PathRequest"
+      },
+      "PriorityRequest": {
+        "properties": {
+          "priority": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "PriorityRequest"
+      },
+      "ProductsRequest": {
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paths"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paths"
+        ],
+        "title": "ProductsRequest"
+      },
+      "RegionSpec": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "title": "Y"
+          },
+          "w": {
+            "type": "number",
+            "title": "W"
+          },
+          "h": {
+            "type": "number",
+            "title": "H"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "RegionSpec"
+      },
+      "RepairRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/RegionSpec"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "crf": {
+            "type": "integer",
+            "maximum": 51.0,
+            "minimum": 0.0,
+            "title": "Crf",
+            "default": 23
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "output",
+          "regions"
+        ],
+        "title": "RepairRequest"
+      },
+      "ScanRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ScanRequest"
+      },
+      "TaskSpec": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "detect",
+              "desensitize",
+              "repair"
+            ],
+            "title": "Kind"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "path"
+        ],
+        "title": "TaskSpec"
+      },
+      "TemplateCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TemplatePayload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "payload"
+        ],
+        "title": "TemplateCreate"
+      },
+      "TemplatePayload": {
+        "properties": {
+          "audioRemix": {
+            "type": "boolean",
+            "title": "Audioremix",
+            "default": false
+          },
+          "echoDefeat": {
+            "type": "boolean",
+            "title": "Echodefeat",
+            "default": false
+          },
+          "antiReembed": {
+            "type": "boolean",
+            "title": "Antireembed",
+            "default": false
+          },
+          "anti": {
+            "type": "string",
+            "enum": [
+              "关闭",
+              "轻度",
+              "标准",
+              "强力",
+              "全兵器"
+            ],
+            "title": "Anti",
+            "default": "关闭"
+          },
+          "regradeOn": {
+            "type": "boolean",
+            "title": "Regradeon",
+            "default": false
+          },
+          "recropOn": {
+            "type": "boolean",
+            "title": "Recropon",
+            "default": false
+          },
+          "detailProtectOn": {
+            "type": "boolean",
+            "title": "Detailprotecton",
+            "default": false
+          },
+          "sharpness": {
+            "type": "boolean",
+            "title": "Sharpness",
+            "default": false
+          },
+          "colorRestore": {
+            "type": "boolean",
+            "title": "Colorrestore",
+            "default": false
+          },
+          "denoise": {
+            "type": "boolean",
+            "title": "Denoise",
+            "default": false
+          },
+          "spoof": {
+            "type": "boolean",
+            "title": "Spoof",
+            "default": false
+          },
+          "codec": {
+            "type": "string",
+            "enum": [
+              "H.264",
+              "H.265"
+            ],
+            "title": "Codec",
+            "default": "H.264"
+          },
+          "lossless": {
+            "type": "boolean",
+            "title": "Lossless",
+            "default": false
+          },
+          "resolution": {
+            "type": "string",
+            "title": "Resolution",
+            "default": "保持原始分辨率"
+          },
+          "bitrate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bitrate"
+          },
+          "gop": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gop"
+          },
+          "fpsOut": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fpsout"
+          }
+        },
+        "type": "object",
+        "title": "TemplatePayload",
+        "description": "模板持久化 payload：camelCase 是 UI/DB 既有线格式。\n\nextra=ignore 容忍旧版本迁移遗留字段（level/restruct/perturb/audio 等），\n只约束与校验当前面板真实使用的字段。"
+      },
+      "TemplateUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TemplatePayload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "payload"
+        ],
+        "title": "TemplateUpdate"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

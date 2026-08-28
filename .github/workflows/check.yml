@@ -1,0 +1,68 @@
+name: Check
+
+# 每次 push 到 main 与每个 PR 都跑轻量校验；
+# 完整打包仍只在打 tag 或手动触发时执行（package.yml）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装 uv（Python 工具链）
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: 安装前端依赖
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir ui install --frozen-lockfile
+
+      - name: 安装 Python 依赖
+        working-directory: backend
+        run: uv sync
+        env:
+          # 云端走官方 PyPI；本地配置的清华镜像仅用于国内开发环境。
+          UV_DEFAULT_INDEX: https://pypi.org/simple
+
+      - name: 安装 FFmpeg（后端媒体测试依赖）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: 校验（类型 / lint / 测试）
+        run: |
+          pnpm typecheck
+          pnpm test
+          cd backend
+          uv run ruff check src tests
+          uv run pytest tests -q
+
+      - name: 校验 API 契约同步（OpenAPI 与前端类型）
+        run: |
+          cd backend
+          uv run python scripts/export_openapi.py
+          git diff --exit-code -- openapi.json
+          cd ../ui
+          pnpm run generate-api
+          git diff --exit-code -- src/lib/api-types.ts

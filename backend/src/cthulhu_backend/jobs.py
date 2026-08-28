@@ -18,7 +18,7 @@ from cthulhu_backend.version import APP_VERSION
 
 def _run_detect(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
     """暗水印检测：按阶段汇报进度，并支持在阶段边界及时响应取消。"""
-    return services.run_detect(path, progress_cb=progress, should_stop=stop)
+    return services.run_detect(path, progress_cb=progress, should_stop=stop, pause=pause)
 
 
 def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
@@ -54,6 +54,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         hardware=hardware,
         transform_strategy=strategy_name,
         preset=preset_name,
+        pause=pause,
         **params,
     )
     # 自动复检：对清洗产物跑盲检测，量化残留风险供界面反馈。
@@ -131,14 +132,20 @@ RUNNERS = {
 
 
 class JobQueue:
-    """进程内任务队列：单消费者分发 + 每任务信号量控制并行。"""
+    """进程内任务队列：单消费者分发 + 全局并发闸门统一调度。
+
+    所有任务（检测/清洗/修复、单条/批量）共用同一并发额度，按系统资源
+    （设置里的「同时处理任务数」）统一调度，避免批量任务互相抢占资源。
+    """
 
     def __init__(self, default_parallelism: int | None = None) -> None:
         if default_parallelism is None:
-            default_parallelism = min(4, max(2, os.cpu_count() or 2))
+            default_parallelism = 2
         self.default_parallelism = default_parallelism
         self._jobs: dict[str, dict[str, Any]] = {}
         self._inbox: asyncio.PriorityQueue = asyncio.PriorityQueue()
+        self._gate: asyncio.Condition | None = None
+        self._active_slots = 0
         self._cancelled: set[str] = set()
         self._paused: set[str] = set()
         self._task_stop: dict[str, threading.Event] = {}
@@ -150,7 +157,34 @@ class JobQueue:
         # worker 缺失或已随旧事件循环结束（如测试的多 portal 场景）时，重建队列与任务。
         if self._worker is None or self._worker.done():
             self._inbox = asyncio.PriorityQueue()
+            self._gate = asyncio.Condition()
+            self._active_slots = 0
             self._worker = asyncio.create_task(self._run_worker())
+
+    def _slot_capacity(self) -> int:
+        """全局并发额度：读取设置（1~4），未配置时取默认值。"""
+        try:
+            value = int(db.load_settings().get("parallelism", self.default_parallelism))
+        except (TypeError, ValueError):
+            value = self.default_parallelism
+        return min(4, max(1, value))
+
+    async def _acquire_slot(self) -> None:
+        gate = self._gate
+        if gate is None:
+            return
+        async with gate:
+            while self._active_slots >= self._slot_capacity():
+                await gate.wait()
+            self._active_slots += 1
+
+    async def _release_slot(self) -> None:
+        gate = self._gate
+        if gate is None:
+            return
+        async with gate:
+            self._active_slots = max(0, self._active_slots - 1)
+            gate.notify_all()
 
     def _enqueue(self, job: dict) -> None:
         self._seq += 1
@@ -225,20 +259,19 @@ class JobQueue:
         return job
 
     def pause(self, job_id: str) -> dict | None:
-        """暂停任务：运行中的任务停止当前视频处理后不再分发新项。"""
+        """暂停任务：运行中的任务在下一个分块边界停住，排队项不再分发。"""
         job = self._jobs.get(job_id)
         if not job:
             return None
         if job["status"] in {"queued", "running", "paused"}:
             self._paused.add(job_id)
-            if job["status"] == "queued":
+            if job["status"] in {"queued", "running"}:
                 job["status"] = "paused"
                 db.save_job(self.public_view(job))
-            else:
-                for task in job["tasks"]:
-                    event = self._task_pause.get(task["id"])
-                    if event is not None:
-                        event.set()
+            for task in job["tasks"]:
+                event = self._task_pause.get(task["id"])
+                if event is not None:
+                    event.set()
         return job
 
     def resume(self, job_id: str) -> dict | None:
@@ -251,7 +284,12 @@ class JobQueue:
             event = self._task_pause.get(task["id"])
             if event is not None:
                 event.clear()
-        if job["status"] == "paused":
+        # 仍有运行中的任务说明处理协程还活着，只需解除阻塞、恢复运行态；
+        # 完全排队的任务才需要重新入队分发。
+        if any(task.get("status") == "running" for task in job["tasks"]):
+            job["status"] = "running"
+            db.save_job(self.public_view(job))
+        elif job["status"] == "paused":
             job["status"] = "queued"
             db.save_job(self.public_view(job))
             self._enqueue(job)
@@ -333,7 +371,8 @@ class JobQueue:
             job = self._jobs.get(job_id)
             if job is None or job.get("enqueue_seq") != seq:
                 continue
-            await self._process(job_id)
+            # 并发处理多个 job：真正的并行度由全局闸门统一控制。
+            asyncio.create_task(self._process(job_id))
 
     async def _process(self, job_id: str) -> None:
         job = self._jobs[job_id]
@@ -351,7 +390,6 @@ class JobQueue:
         await self._publish_job(job)
         db.save_job(self.public_view(job))
 
-        semaphore = asyncio.Semaphore(job["parallelism"])
         loop = asyncio.get_running_loop()
 
         async def run_task(task: dict) -> None:
@@ -360,7 +398,8 @@ class JobQueue:
             self._task_stop[task["id"]] = stop
             self._task_pause[task["id"]] = pause
             try:
-                async with semaphore:
+                await self._acquire_slot()
+                try:
                     if job_id in self._paused:
                         return
                     if job_id in self._cancelled or task["status"] != "queued":
@@ -396,6 +435,8 @@ class JobQueue:
                             task["error"] = str(exc)
                     task["elapsed"] = round(time.time() - task.get("started_at", time.time()), 1)
                     await self._publish_task(job, task)
+                finally:
+                    await self._release_slot()
             finally:
                 self._task_stop.pop(task["id"], None)
                 self._task_pause.pop(task["id"], None)

@@ -137,7 +137,7 @@ def test_aligned_vmaf_recovers_spatial_shift(tmp_path):
     ffmpeg.encode_video(shifted, str(distorted), fps=30)
 
     naive = ffmpeg.vmaf_score(str(distorted), str(reference))
-    aligned = ffmpeg.aligned_vmaf(str(distorted), str(reference))
+    aligned = metrics.aligned_vmaf(str(distorted), str(reference))
     assert naive is not None and aligned is not None
     assert aligned > naive + 10
     assert aligned > 70
@@ -276,8 +276,8 @@ def test_echo_defeat_destroys_audio_echo_watermark(tmp_path):
 
 
 @needs_ffmpeg
-def test_desensitize_accepts_camel_case_anti_options(tmp_path):
-    """camelCase 参数应经别名映射生效，含指纹对抗与旋转。"""
+def test_desensitize_accepts_snake_case_anti_options(tmp_path):
+    """snake_case 参数生效，含指纹对抗与旋转。"""
     video = samples.make_cut_video(2, 8, 160, 120, seed=35)
     source = tmp_path / "src.mp4"
     output = tmp_path / "out.mp4"
@@ -287,19 +287,19 @@ def test_desensitize_accepts_camel_case_anti_options(tmp_path):
         json={
             "path": str(source),
             "output": str(output),
-            "audioRemix": False,
-            "colorRestore": False,
+            "audio_remix": False,
+            "color_restore": False,
             "sharpness": False,
             "rotate": 1.2,
-            "phashAttack": True,
-            "phashEpsilon": 0.03,
-            "dctStep": 12,
+            "phash_attack": True,
+            "phash_epsilon": 0.03,
+            "dct_step": 12,
             "requant": 32,
-            "chromaLevels": 32,
-            "dropEvery": 7,
-            "subtractBeta": 1.2,
-            "detailProtect": 0.5,
-            "audioStrong": True,
+            "chroma_levels": 32,
+            "drop_every": 7,
+            "subtract_beta": 1.2,
+            "detail_protect": 0.5,
+            "audio_strong": True,
         },
     )
     assert response.status_code == 200, response.text

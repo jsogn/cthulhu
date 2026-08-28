@@ -1,5 +1,7 @@
 // Python 后端的连接封装：REST 用于命令，WebSocket 用于进度事件。
 
+import type { components } from "@/lib/api-types";
+
 export const backendUrl = window.appEnv?.backendUrl ?? "http://127.0.0.1:57173";
 
 /** 本地引擎访问令牌：Electron 注入优先，开发环境回退 Vite 注入的固定值。 */
@@ -186,54 +188,10 @@ export interface DetectReport {
   hits?: string[];
 }
 
-export interface DesensitizeOptions {
-  reorder: boolean;
-  speed: number;
-  recrop: number;
-  perturb: number;
-  regrade: boolean;
-  audioRemix: boolean;
-  sharpness: boolean;
-  colorRestore: boolean;
-  denoise: boolean;
-  antiReembed: boolean;
-  seed: number;
-  codec?: "libx264" | "libx265";
-  lossless?: boolean;
-  spoof?: boolean;
-  bitrateKbps?: number;
-  gop?: number;
-  resolution?: string;
-  fpsOut?: number;
-  rotate?: number;
-  phashAttack?: boolean;
-  phashEpsilon?: number;
-  phashIters?: number;
-  multiHashAttack?: boolean;
-  median?: number;
-  noise?: number;
-  requant?: number;
-  dctStep?: number;
-  dropEvery?: number;
-  jitter?: number;
-  perspective?: number;
-  warp?: number;
-  mirror?: boolean;
-  chromaLevels?: number;
-  subtractBeta?: number;
-  transcodeChain?: boolean;
-  saliency?: number;
-  nativeFilters?: boolean;
-  detailProtect?: number;
-  shotRetime?: boolean;
-  shotRetimeMin?: number;
-  shotRetimeMax?: number;
-  cutJitter?: number;
-  audioStrong?: boolean;
-  echoDefeat?: boolean;
-  skipVmaf?: boolean;
-  filterScale?: number;
-}
+/** 清洗选项：由 OpenAPI 生成的请求契约派生（path/output 之外的字段）。 */
+export type DesensitizeOptions = Partial<
+  Omit<components["schemas"]["DesensitizeRequest"], "path" | "output">
+>;
 
 export interface AudioAnalysis {
   sample_rate: number;
