@@ -1,9 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Rail from "@/components/Rail";
 import TopBar from "@/components/TopBar";
 import Toaster from "@/components/Toaster";
 import ImportDialog from "@/components/ImportDialog";
 import StatusBar from "@/components/StatusBar";
+import JobsView from "@/views/JobsView";
+import ProductsView from "@/views/ProductsView";
+import SettingsView from "@/views/SettingsView";
+import TemplatesView from "@/views/TemplatesView";
 import Workbench from "@/views/Workbench";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { connectEvents, getHealth } from "@/lib/backend";
@@ -11,12 +15,6 @@ import { useAppStore } from "@/stores/app";
 import { useQueueStore } from "@/stores/queue";
 import { useMaterialsStore } from "@/stores/materials";
 import { toast } from "@/stores/toasts";
-
-// 非首屏视图按需加载：任务中心 / 模板 / 产物 / 设置只在切到对应页时下载。
-const JobsView = lazy(() => import("@/views/JobsView"));
-const TemplatesView = lazy(() => import("@/views/TemplatesView"));
-const ProductsView = lazy(() => import("@/views/ProductsView"));
-const SettingsView = lazy(() => import("@/views/SettingsView"));
 
 export default function App() {
   const view = useAppStore((state) => state.view);
@@ -40,20 +38,6 @@ export default function App() {
     document.documentElement.classList.toggle("dark", effective === "dark");
     localStorage.setItem("theme", themePref);
   }, [effective, themePref]);
-
-  // 首屏稳定后闲时预热其余视图：启动仍保持代码分割，
-  // 预热完成后点菜单即为零等待切换，不再出现懒加载占位闪烁。
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void Promise.all([
-        import("@/views/JobsView"),
-        import("@/views/TemplatesView"),
-        import("@/views/ProductsView"),
-        import("@/views/SettingsView"),
-      ]);
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     return connectEvents((msg) => {
@@ -143,19 +127,11 @@ export default function App() {
         <div className="layout">
           <Rail />
           <main className="view">
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  加载中…
-                </div>
-              }
-            >
-              {view === "workbench" && <Workbench />}
-              {view === "jobs" && <JobsView />}
-              {view === "templates" && <TemplatesView />}
-              {view === "products" && <ProductsView />}
-              {view === "settings" && <SettingsView />}
-            </Suspense>
+            {view === "workbench" && <Workbench />}
+            {view === "jobs" && <JobsView />}
+            {view === "templates" && <TemplatesView />}
+            {view === "products" && <ProductsView />}
+            {view === "settings" && <SettingsView />}
           </main>
         </div>
         <StatusBar />
