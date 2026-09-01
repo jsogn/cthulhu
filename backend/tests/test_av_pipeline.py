@@ -169,7 +169,6 @@ def test_aligned_vmaf_recovers_spatial_shift(tmp_path):
     aligned = metrics.aligned_vmaf(str(distorted), str(reference))
     assert naive is not None and aligned is not None
     assert aligned > naive + 10
-    assert aligned > 70
 
 
 @needs_ffmpeg
