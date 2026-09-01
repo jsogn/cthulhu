@@ -648,13 +648,15 @@ def encode_video_with_audio(
     # 视频/音频字节的分界（Linux 默认 64KiB 管道下，小样本一次写满时视频
     # demuxer 会吞掉音频字节，输出文件丢失视频流）。各自写临时文件彻底消除
     # 对平台管道行为与进程调度的依赖。
-    with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as video_tmp_file:
-        video_tmp_file.write(video_payload)
-        video_tmp = video_tmp_file.name
-    with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as audio_tmp_file:
-        audio_tmp_file.write(audio_payload)
-        audio_tmp = audio_tmp_file.name
+    video_tmp: str | None = None
+    audio_tmp: str | None = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as video_tmp_file:
+            video_tmp = video_tmp_file.name
+            video_tmp_file.write(video_payload)
+        with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as audio_tmp_file:
+            audio_tmp = audio_tmp_file.name
+            audio_tmp_file.write(audio_payload)
         cmd = [
             FFMPEG_BIN, "-y", "-v", "error",
             "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{width}x{height}", "-r", str(fps),
@@ -688,6 +690,8 @@ def encode_video_with_audio(
         )
     finally:
         for tmp_path in (video_tmp, audio_tmp):
+            if tmp_path is None:
+                continue
             try:
                 os.unlink(tmp_path)
             except OSError:

@@ -47,7 +47,7 @@ jobs:
 
       - name: 下载静态 FFmpeg（与打包同源，含 libvmaf）
         run: |
-          curl -L --fail --retry 3 -o /tmp/ffmpeg.tar.xz \
+          curl -L --fail --connect-timeout 15 --max-time 300 --retry 3 -o /tmp/ffmpeg.tar.xz \
             https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz
           tar -xJf /tmp/ffmpeg.tar.xz -C /tmp
           sudo install -m 755 /tmp/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg
