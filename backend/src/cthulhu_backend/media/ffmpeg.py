@@ -644,38 +644,54 @@ def encode_video_with_audio(
     audio_payload = (np.clip(audio, -1, 1) * 32767).round().astype(np.int16).tobytes()
     if hardware and sys.platform == "darwin":
         codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
-    cmd = [
-        FFMPEG_BIN, "-y", "-v", "error",
-        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{width}x{height}", "-r", str(fps),
-        "-i", "-",
-        "-f", "s16le", "-ar", str(sample_rate), "-ac", "1",
-        "-i", "-",
-        "-c:v", codec,
-    ]
-    if hardware and sys.platform == "darwin":
-        if bitrate_kbps:
-            cmd += ["-b:v", f"{bitrate_kbps}k"]
-        else:
-            cmd += ["-q:v", str(hw_quality)]
-    elif bitrate_kbps:
-        cmd += [
-            "-b:v", f"{bitrate_kbps}k",
-            "-maxrate", f"{bitrate_kbps}k",
-            "-bufsize", f"{bitrate_kbps * 2}k",
+    # 两个 raw 流都从 stdin 读取会共享同一管道：管道容量与读写时序会决定
+    # 视频/音频字节的分界（Linux 默认 64KiB 管道下，小样本一次写满时视频
+    # demuxer 会吞掉音频字节，输出文件丢失视频流）。各自写临时文件彻底消除
+    # 对平台管道行为与进程调度的依赖。
+    with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as video_tmp_file:
+        video_tmp_file.write(video_payload)
+        video_tmp = video_tmp_file.name
+    with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as audio_tmp_file:
+        audio_tmp_file.write(audio_payload)
+        audio_tmp = audio_tmp_file.name
+    try:
+        cmd = [
+            FFMPEG_BIN, "-y", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{width}x{height}", "-r", str(fps),
+            "-i", video_tmp,
+            "-f", "s16le", "-ar", str(sample_rate), "-ac", "1",
+            "-i", audio_tmp,
+            "-c:v", codec,
         ]
-    else:
-        cmd += ["-preset", "medium", "-crf", str(crf)]
-    if gop:
-        cmd += ["-g", str(gop)]
-    if out_size:
-        cmd += ["-vf", f"scale={out_size[0]}:{out_size[1]}"]
-    cmd += ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-shortest", path]
-    subprocess.run(
-        cmd,
-        input=video_payload + audio_payload,
-        capture_output=True,
-        check=True,
-    )
+        if hardware and sys.platform == "darwin":
+            if bitrate_kbps:
+                cmd += ["-b:v", f"{bitrate_kbps}k"]
+            else:
+                cmd += ["-q:v", str(hw_quality)]
+        elif bitrate_kbps:
+            cmd += [
+                "-b:v", f"{bitrate_kbps}k",
+                "-maxrate", f"{bitrate_kbps}k",
+                "-bufsize", f"{bitrate_kbps * 2}k",
+            ]
+        else:
+            cmd += ["-preset", "medium", "-crf", str(crf)]
+        if gop:
+            cmd += ["-g", str(gop)]
+        if out_size:
+            cmd += ["-vf", f"scale={out_size[0]}:{out_size[1]}"]
+        cmd += ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-shortest", path]
+        subprocess.run(
+            cmd,
+            capture_output=True,
+            check=True,
+        )
+    finally:
+        for tmp_path in (video_tmp, audio_tmp):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def vmaf_score(distorted: str, reference: str, subsample: int | None = None) -> float | None:
@@ -772,7 +788,11 @@ def repair_delogo(
                 progress_cb(last_percent, "已恢复")
         line = raw_line.decode(errors="ignore").strip()
         if line.startswith("out_time_us=") and total > 0:
-            elapsed = int(line.split("=", 1)[1]) / 1_000_000
+            raw_time = line.split("=", 1)[1]
+            # 部分 FFmpeg 版本（如 6.1）在输出时间戳未知时会写 out_time_us=N/A。
+            if not raw_time.isdigit():
+                continue
+            elapsed = int(raw_time) / 1_000_000
             percent = min(92, max(0, round(elapsed / total * 100)))
             if progress_cb and percent != last_percent:
                 last_percent = percent

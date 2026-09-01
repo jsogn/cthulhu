@@ -16,6 +16,9 @@ from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
 
 needs_ffmpeg = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="需要 ffmpeg/ffprobe")
+needs_libvmaf = pytest.mark.skipif(
+    not ffmpeg.has_filter("libvmaf"), reason="当前 FFmpeg 未编译 libvmaf 滤镜"
+)
 
 client = TestClient(app, headers={"X-CTHULHU-Token": "test-token"})
 
@@ -157,6 +160,7 @@ def test_desensitize_fps_out(tmp_path):
 
 
 @needs_ffmpeg
+@needs_libvmaf
 def test_aligned_vmaf_recovers_spatial_shift(tmp_path):
     frames = samples.make_video_frames(16, 160, 120, seed=33)
     shifted = np.stack([np.roll(np.roll(frame, 2, axis=0), -3, axis=1) for frame in frames])
