@@ -788,11 +788,7 @@ def repair_delogo(
                 progress_cb(last_percent, "已恢复")
         line = raw_line.decode(errors="ignore").strip()
         if line.startswith("out_time_us=") and total > 0:
-            raw_time = line.split("=", 1)[1]
-            # 部分 FFmpeg 版本（如 6.1）在输出时间戳未知时会写 out_time_us=N/A。
-            if not raw_time.isdigit():
-                continue
-            elapsed = int(raw_time) / 1_000_000
+            elapsed = int(line.split("=", 1)[1]) / 1_000_000
             percent = min(92, max(0, round(elapsed / total * 100)))
             if progress_cb and percent != last_percent:
                 last_percent = percent

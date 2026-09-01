@@ -45,10 +45,15 @@ jobs:
           # 云端走官方 PyPI；本地配置的清华镜像仅用于国内开发环境。
           UV_DEFAULT_INDEX: https://pypi.org/simple
 
-      - name: 安装 FFmpeg（后端媒体测试依赖）
+      - name: 下载静态 FFmpeg（与打包同源，含 libvmaf）
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          curl -L --fail --retry 3 -o /tmp/ffmpeg.tar.xz \
+            https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz
+          tar -xJf /tmp/ffmpeg.tar.xz -C /tmp
+          sudo install -m 755 /tmp/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg
+          sudo install -m 755 /tmp/ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe
+          ffmpeg -version | head -1
+          ffmpeg -hide_banner -filters 2>/dev/null | grep -c libvmaf
 
       - name: 校验（类型 / lint / 测试）
         run: |
