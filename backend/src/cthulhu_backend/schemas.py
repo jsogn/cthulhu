@@ -41,8 +41,9 @@ class DesensitizeOptions(BaseModel):
     transform_strategy: str | None = None
     phash_attack: bool = False
     phash_epsilon: float = Field(0.03, gt=0, le=1)
-    phash_iters: int = Field(120, ge=1, le=1000)
+    phash_iters: int = Field(40, ge=1, le=1000)
     multi_hash_attack: bool = False
+    dhash_attack: bool = False
     shot_retime: bool = False
     shot_retime_min: float = 0.98
     shot_retime_max: float = 1.04
@@ -52,21 +53,36 @@ class DesensitizeOptions(BaseModel):
     skip_vmaf: bool = False
     filter_scale: int = Field(0, ge=0, le=1080)
     rotate: float = Field(0.0, ge=0, le=10)
-    transcode_chain: bool = False
     median: int = Field(0, ge=0, le=9)
     noise: float = Field(0.0, ge=0, le=1)
     requant: int = Field(0, ge=0, le=256)
     dct_step: float = Field(0.0, ge=0, le=256)
     drop_every: int = Field(0, ge=0, le=1000)
+    temporal_sub: float = Field(0.0, ge=0, le=4)
+    fft_phase: float = Field(0.0, ge=0, le=1)
+    fft_mag: float = Field(0.0, ge=0, le=1)
+    dwt_detail: float = Field(0.0, ge=0, le=1)
+    hsv_jitter: float = Field(0.0, ge=0, le=30)
+    nonint_ratio: float = Field(0.0, ge=0, le=0.1)
+    flow_disturb: float = Field(0.0, ge=0, le=3)
+    texture_inject: float = Field(0.0, ge=0, le=0.1)
+    multiscale: float = Field(0.0, ge=0, le=0.1)
+    complexity_trap: float = Field(0.0, ge=0, le=0.2)
+    face_perturb: float = Field(0.0, ge=0, le=0.2)
+    temporal_blur: float = Field(0.0, ge=0, le=0.5)
+    lpc_attack: float = Field(0.0, ge=0, le=1)
+    copy_attack: float = Field(0.0, ge=0, le=0.2)
+    native_temporal: bool = False
+    quality_protect: bool = False
+    psnr_target: float = Field(38.0, ge=10, le=60)
+    ssim_target: float = Field(0.94, ge=0, le=1)
     jitter: float = Field(0.0, ge=0, le=1)
     perspective: float = Field(0.0, ge=0, le=1)
     warp: float = Field(0.0, ge=0, le=1)
-    mirror: bool = False
     subtract_beta: float = Field(0.0, ge=0, le=4)
     saliency: int = Field(0, ge=0, le=4)
     chroma_levels: int = Field(0, ge=0, le=256)
     native_filters: bool = False
-    detail_protect: float = Field(0.0, ge=0, le=1)
 
 
 class DesensitizeRequest(DesensitizeOptions):
@@ -76,7 +92,6 @@ class DesensitizeRequest(DesensitizeOptions):
     output: str
 
 
-AntiLevel = Literal["关闭", "轻度", "标准", "强力", "全兵器"]
 TemplateCodec = Literal["H.264", "H.265"]
 
 
@@ -92,10 +107,37 @@ class TemplatePayload(BaseModel):
     audioRemix: bool = False
     echoDefeat: bool = False
     antiReembed: bool = False
-    anti: AntiLevel = "关闭"
+    rotate: float = 0.0
+    hashAttack: bool = False
+    hashEpsilon: float = 0.045
+    hashMode: str = "joint"
+    requant: int = 0
+    noise: float = 0.0
+    dctStep: float = 0.0
+    audioStrong: bool = False
     regradeOn: bool = False
     recropOn: bool = False
-    detailProtectOn: bool = False
+    temporalSub: float = 0.0
+    fftPhase: float = 0.0
+    dwtDetail: float = 0.0
+    fftMag: float = 0.0
+    hsvJitter: float = 0.0
+    nonintRatio: float = 0.0
+    jitter: float = 0.0
+    perspective: float = 0.0
+    warp: float = 0.0
+    flowDisturb: float = 0.0
+    textureInject: float = 0.0
+    multiscale: float = 0.0
+    complexityTrap: float = 0.0
+    facePerturb: float = 0.0
+    temporalBlur: float = 0.0
+    lpcAttack: float = 0.0
+    copyAttack: float = 0.0
+    nativeTemporal: bool = False
+    qualityProtect: bool = False
+    psnrTarget: float = 38.0
+    ssimTarget: float = 0.94
     sharpness: bool = False
     colorRestore: bool = False
     denoise: bool = False

@@ -312,7 +312,7 @@ def test_products_list_and_batch_delete(tmp_path):
     db.create_variant(
         source=str(tmp_path / "src.mp4"),
         output=str(product),
-        options={"anti": "标准"},
+        options={"rotate": 0.2, "requant": 96, "noise": 0.003},
         seed=1,
     )
 

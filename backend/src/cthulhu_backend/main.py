@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import os
 import platform
 import secrets
@@ -51,6 +52,42 @@ if not _ENV_TOKEN:
     print(f"[auth] 未提供 CTHULHU_AUTH_TOKEN，已生成一次性令牌：{AUTH_TOKEN}")
 
 
+def _enable_faulthandler() -> None:
+    """原生崩溃（段错误/中止）时落一份 Python 栈，便于定位引擎掉线原因。"""
+    path = os.environ.get("CTHULHU_CRASH_LOG")
+    if path:
+        try:
+            handle = open(path, "a", buffering=1, encoding="utf-8")  # noqa: SIM115 - 进程级句柄，随退出关闭
+            handle.write(f"\n===== cthulhu-backend {APP_VERSION} pid={os.getpid()} 启动 =====\n")
+            faulthandler.enable(file=handle)
+            return
+        except OSError as exc:
+            print(f"[crash-log] 无法打开崩溃日志，回退 stderr：{exc}")
+    faulthandler.enable()
+
+
+_enable_faulthandler()
+
+
+def _ws_send_timeout() -> float:
+    try:
+        value = float(os.environ.get("CTHULHU_WS_SEND_TIMEOUT", "10"))
+    except ValueError:
+        value = 10.0
+    return max(1.0, value)
+
+
+_WS_SEND_TIMEOUT = _ws_send_timeout()
+
+
+async def _close_ws(ws: WebSocket, code: int = 1011, reason: str = "") -> None:
+    """尽力关闭 WebSocket，连接状态未知时忽略一切关闭失败。"""
+    try:
+        await asyncio.wait_for(ws.close(code=code, reason=reason), timeout=2)
+    except (TimeoutError, RuntimeError, WebSocketDisconnect):
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
@@ -71,8 +108,8 @@ async def lifespan(_: FastAPI):
         services.ensure_demo_library()
     except Exception as exc:  # noqa: BLE001 - ffmpeg 缺失时不阻塞启动
         print(f"[demo-library] 初始化失败（可忽略）：{exc}")
-    job_queue.restore()
     job_queue.start()
+    job_queue.restore()
     thumb_sweep_stop = threading.Event()
     threading.Thread(
         target=_periodic_thumb_sweep,
@@ -145,16 +182,22 @@ async def events(ws: WebSocket) -> None:
         return
     # 先订阅再 accept：避免连接建立与订阅之间漏掉已广播的任务事件。
     queue = broker.subscribe()
-    await ws.accept()
-    await ws.send_json({"type": "hello", "version": APP_VERSION})
     try:
+        await ws.accept()
+        await ws.send_json({"type": "hello", "version": APP_VERSION})
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=5)
             except TimeoutError:
                 event = {"type": "heartbeat"}
-            await ws.send_json(event)
-    except WebSocketDisconnect:
+            try:
+                await asyncio.wait_for(ws.send_json(event), timeout=_WS_SEND_TIMEOUT)
+            except TimeoutError:
+                # 客户端长时间不消费（休眠/半开连接）：断开并释放资源，
+                # 避免一个卡死的连接拖住事件循环协程或无限堆积事件。
+                await _close_ws(ws, 1011, "发送超时")
+                return
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         broker.unsubscribe(queue)

@@ -30,6 +30,12 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+  WeaponTags,
+  type CostKind,
+  type LayerKind,
+  type QualityKind,
+} from "@/components/workbench/WeaponTags";
+import {
   createTemplate,
   deleteTemplate,
   listTemplates,
@@ -39,7 +45,6 @@ import {
 import {
   DEFAULT_TEMPLATE,
   payloadOf,
-  type AntiLevel,
   type Codec,
   type TemplatePayload,
 } from "@/lib/templates";
@@ -140,23 +145,112 @@ export default function TemplatesView() {
     TemplatePayload,
     | "audioRemix"
     | "echoDefeat"
-    | "antiReembed"
+    | "hashAttack"
+    | "audioStrong"
+    | "nativeTemporal"
     | "recropOn"
-    | "detailProtectOn"
     | "sharpness"
     | "colorRestore"
     | "denoise"
     | "spoof"
+    | "qualityProtect"
     | "lossless"
   >;
 
-  const switchRow = (label: string, desc: string, key: SwitchKey) => (
+  const switchRow = (
+    label: string,
+    desc: string,
+    layer: LayerKind,
+    cost: CostKind,
+    quality: QualityKind,
+    key: SwitchKey,
+  ) => (
     <div className="switch">
       <div>
         <div className="switch-label">{label}</div>
         <div className="switch-desc">{desc}</div>
+        <WeaponTags layer={layer} cost={cost} quality={quality} />
       </div>
       <Switch checked={form[key]} onCheckedChange={(value) => setField(key, value)} />
+    </div>
+  );
+
+  const regenRow = (
+    label: string,
+    desc: string,
+    layer: LayerKind,
+    cost: CostKind,
+    quality: QualityKind,
+    key:
+      | "temporalSub"
+      | "rotate"
+      | "hashEpsilon"
+      | "requant"
+      | "noise"
+      | "dctStep"
+      | "dwtDetail"
+      | "nonintRatio"
+      | "warp"
+      | "perspective"
+      | "jitter"
+      | "flowDisturb"
+      | "multiscale"
+      | "facePerturb"
+      | "temporalBlur"
+      | "lpcAttack"
+      | "copyAttack",
+    onValue: number,
+  ) => (
+    <div className="switch">
+      <div>
+        <div className="switch-label">{label}</div>
+        <div className="switch-desc">{desc}</div>
+        <WeaponTags layer={layer} cost={cost} quality={quality} />
+      </div>
+      <Switch
+        checked={(form[key] ?? 0) > 0}
+        onCheckedChange={(value) => setField(key, value ? onValue : 0)}
+      />
+    </div>
+  );
+
+  const fftRow = (
+    <div className="switch">
+      <div>
+        <div className="switch-label">FFT 扰动（相位+幅度）</div>
+        <div className="switch-desc">打散中高频相位并随机缩放幅值</div>
+        <WeaponTags layer="wm" cost="mid" quality="heavy" />
+      </div>
+      <Switch
+        checked={(form.fftPhase ?? 0) > 0 || (form.fftMag ?? 0) > 0}
+        onCheckedChange={(value) =>
+          setForm((current) => ({
+            ...current,
+            fftPhase: value ? 0.5 : 0,
+            fftMag: value ? 0.1 : 0,
+          }))
+        }
+      />
+    </div>
+  );
+
+  const textureRow = (
+    <div className="switch">
+      <div>
+        <div className="switch-label">纹理/复杂度注入</div>
+        <div className="switch-desc">向低纹理区注入纹理并拉平复杂度分布</div>
+        <WeaponTags layer="fp" cost="slow" quality="heavy" />
+      </div>
+      <Switch
+        checked={(form.textureInject ?? 0) > 0 || (form.complexityTrap ?? 0) > 0}
+        onCheckedChange={(value) =>
+          setForm((current) => ({
+            ...current,
+            textureInject: value ? 0.04 : 0,
+            complexityTrap: value ? 0.1 : 0,
+          }))
+        }
+      />
     </div>
   );
 
@@ -178,10 +272,33 @@ export default function TemplatesView() {
               <Card key={template.id} className="flex flex-col gap-3 p-4">
                 <div className="tpl-name">{template.name}</div>
                 <div className="tpl-rows">
-                  <div className="tpl-row"><span>指纹对抗</span><b>{payload.anti}</b></div>
+                  <div className="tpl-row">
+                    <span>经典指纹</span>
+                    <b>
+                      {[
+                        payload.rotate,
+                        payload.hashAttack ? 1 : 0,
+                        payload.requant,
+                        payload.noise,
+                        payload.dctStep,
+                      ].filter((value) => (value ?? 0) > 0).length}{" "}
+                      项
+                    </b>
+                  </div>
                   <div className="tpl-row">
                     <span>空间降噪 / 音频重混</span>
                     <b>{payload.denoise ? "开" : "关"} / {payload.audioRemix ? "开" : "关"}</b>
+                  </div>
+                  <div className="tpl-row">
+                    <span>再生重写</span>
+                    <b>
+                      {[
+                        payload.temporalSub,
+                        payload.fftPhase,
+                        payload.dwtDetail,
+                      ].filter((value) => (value ?? 0) > 0).length}{" "}
+                      项
+                    </b>
                   </div>
                   <div className="tpl-row">
                     <span>输出编码</span>
@@ -232,30 +349,50 @@ export default function TemplatesView() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              {switchRow("同步处理音频指纹", "对音轨做等长频谱轻处理，不影响音画同步", "audioRemix")}
-              {switchRow("音频回声扰动", "同步放慢约 3% 并保音调，平台效果需实测", "echoDefeat")}
-              {switchRow("抗二次检测增强", "扰动中频 DCT 系数，破坏二次嵌入", "antiReembed")}
-              {switchRow("重新构图（裁剪回缩）", "对抗内容指纹，静态缩放微模糊", "recropOn")}
-              {switchRow("细节保护（人脸/字幕/纹理）", "保护区域回退原帧，保留部分水印特征", "detailProtectOn")}
+              {switchRow("同步处理音频指纹", "对音轨做等长频谱轻处理，不影响音画同步", "audio", "fast", "none", "audioRemix")}
+              {switchRow("音频回声扰动", "同步放慢约 3% 并保音调，平台效果需实测", "audio", "fast", "mild", "echoDefeat")}
+              {switchRow("强音频重混", "变调+EQ 倾斜+底噪，配合音频指纹开关生效", "audio", "fast", "heavy", "audioStrong")}
+              {switchRow("重新构图（裁剪回缩）", "对暗水印无效，用于判重指纹；文字位置不固定，可能裁到字幕，仅确认边缘无文字时使用", "fp", "fast", "heavy", "recropOn")}
 
+              {switchRow("画质保护（PSNR/SSIM 门控）", "对攻击/重武器层按目标自动回退（原生滤镜链除外）", "quality", "mid", "none", "qualityProtect")}
+              {switchRow("锐度补偿", "抵消清除算法带来的轻微模糊", "quality", "fast", "none", "sharpness")}
+              {switchRow("色彩还原", "把处理后亮度均值校准回原片统计", "quality", "fast", "none", "colorRestore")}
+              {switchRow("空间降噪", "removegrain 轻降噪，破坏扩频/QIM/DWT 水印", "wm", "fast", "none", "denoise")}
+              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测", "wm", "mid", "mild", "spoof")}
+              {regenRow("几何微旋转", "低频小幅旋转去同步", "dual", "fast", "mild", "rotate", 0.4)}
+              {switchRow("哈希签名对抗（pHash/dHash）", "签名域可微扰动，翻转哈希符号位", "fp", "mid", "heavy", "hashAttack")}
+              {regenRow("局部平滑扭曲", "粗网格位移场上采样成平滑光流，破坏空间对齐", "wm", "mid", "mild", "warp", 0.005)}
+              {regenRow("透视剪切", "逐帧轻微梯形畸变，破坏块对齐与几何同步", "wm", "mid", "mild", "perspective", 0.01)}
+              {regenRow("平移抖动", "逐帧随机平移后回缩，破坏逐帧对齐", "wm", "fast", "heavy", "jitter", 0.005)}
               <div className="field">
-                <span className="field-label">指纹对抗强度</span>
-                <Select value={form.anti} onValueChange={(value) => setField("anti", value as AntiLevel)}>
+                <span className="field-label">哈希目标模式</span>
+                <Select
+                  value={form.hashMode}
+                  onValueChange={(value) => setField("hashMode", value)}
+                >
                   <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="关闭">关闭 · 仅基础清洗，判重风险高</SelectItem>
-                    <SelectItem value="轻度">轻度 · 低成本近无损</SelectItem>
-                    <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
-                    <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
-                    <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
+                    <SelectItem value="phash">pHash 专攻（推荐）</SelectItem>
+                    <SelectItem value="dhash">dHash 专攻</SelectItem>
+                    <SelectItem value="joint">联合（pHash+dHash）</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              {switchRow("锐度补偿", "抵消清除算法带来的轻微模糊", "sharpness")}
-              {switchRow("色彩还原", "把处理后亮度均值校准回原片统计", "colorRestore")}
-              {switchRow("空间降噪", "破坏空域扩频水印", "denoise")}
-              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，轻微损失画质", "spoof")}
+              {regenRow("像素重量化", "把像素压缩到有限级数", "wm", "fast", "none", "requant", 64)}
+              {regenRow("微噪声", "加性微高斯噪声", "wm", "fast", "none", "noise", 0.004)}
+              {regenRow("DCT 系数扰动", "8×8 DCT 重量化并扰动中频系数", "wm", "mid", "mild", "dctStep", 12)}
+              {regenRow("非整缩重采样", "先放大再回压，打散像素网格与块对齐", "dual", "fast", "mild", "nonintRatio", 0.01)}
+              {regenRow("跨帧估计相减", "估计帧间固定水印并过减，会削弱静态字幕边缘", "wm", "mid", "heavy", "temporalSub", 0.6)}
+              {switchRow("跨帧估计原生加速", "ffmpeg 原生链，更快且破坏力更强", "wm", "fast", "none", "nativeTemporal")}
+              {fftRow}
+              {regenRow("小波细节带随机化", "随机化 Haar 对角线细节子带", "wm", "fast", "none", "dwtDetail", 0.8)}
+              {regenRow("光流一致性破坏", "按运动加权扰动重采样，改运动指纹", "fp", "fast", "heavy", "flowDisturb", 1.5)}
+              {textureRow}
+              {regenRow("多尺度特征扰动（DMFF）", "金字塔各尺度带限扰动", "fp", "slow", "heavy", "multiscale", 0.02)}
+              {regenRow("人脸抗AI扰动", "仅在脸部区域注入扰动", "face", "mid", "none", "facePerturb", 0.04)}
+              {regenRow("时序模糊", "帧间时域平滑", "dual", "mid", "heavy", "temporalBlur", 0.25)}
+              {regenRow("LPCAA 音频攻击", "LPC 残差白化，破坏语音类指纹", "audio", "fast", "heavy", "lpcAttack", 0.5)}
+              {regenRow("神经对抗（DINOv2 判重代理）", "黑盒攻击拷贝检测描述子", "fp", "slow", "heavy", "copyAttack", 0.05)}
 
               <div className="field">
                 <Label>输出编码</Label>
@@ -267,7 +404,7 @@ export default function TemplatesView() {
                   </SelectContent>
                 </Select>
               </div>
-              {switchRow("无损输出", "极致保留画质，文件体积增大", "lossless")}
+              {switchRow("无损输出", "极致保留画质，文件体积增大", "quality", "fast", "none", "lossless")}
 
               <div className="field">
                 <span className="field-label">分辨率策略</span>

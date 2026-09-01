@@ -66,6 +66,19 @@ def test_multi_hash_attack_flips_bits_within_budget():
     assert float(np.abs(out).max()) <= 1.0 and float(np.abs(out).min()) >= 0.0
 
 
+def test_dhash_attack_flips_bits_within_budget():
+    from scipy.ndimage import gaussian_filter
+
+    from cthulhu_backend.similarity import embedding
+
+    frame = gaussian_filter(np.random.default_rng(20).random((256, 128)), sigma=8)
+    out = adversarial.dhash_attack(frame, epsilon=0.08, inner=60)
+    before = embedding.dhash(frame, size=8)
+    after = embedding.dhash(out, size=8)
+    assert int(np.sum(before != after)) >= 4
+    assert float(np.abs(out - frame).max()) <= 0.08 + 1e-6
+
+
 def test_video_compare_identity_is_high_risk():
     frames = samples.make_cut_video(3, 8, 160, 120, seed=12)
     report = proxy.video_compare(frames, frames)

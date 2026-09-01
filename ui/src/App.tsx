@@ -54,6 +54,7 @@ export default function App() {
   // 事件推送可能因断线重连窗口漏掉终态；只要还有活动任务，
   // 每 5 秒向服务端校准一次队列，保证按钮与任务列表最终一致。
   useEffect(() => {
+    let wasActive = false;
     const timer = window.setInterval(() => {
       const { jobs } = useQueueStore.getState();
       const hasActive = jobs.some((job) =>
@@ -64,7 +65,14 @@ export default function App() {
             task.status === "paused",
         ),
       );
-      if (hasActive) void useQueueStore.getState().refresh();
+      if (hasActive) {
+        wasActive = true;
+        void useQueueStore.getState().refresh();
+      } else if (wasActive) {
+        // 活动任务清零后最后校准一次，兜住断线期间错过的终态事件。
+        wasActive = false;
+        void useQueueStore.getState().refresh();
+      }
     }, 5000);
     return () => window.clearInterval(timer);
   }, []);

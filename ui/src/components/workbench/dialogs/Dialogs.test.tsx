@@ -36,7 +36,7 @@ describe("VariantDetailDialog", () => {
     expect(screen.getByText("产物参数")).toBeInTheDocument();
     expect(screen.getByText("/src/素材.mp4")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText("标准")).toBeInTheDocument();
+    expect(screen.getByText("噪声扰动 · 像素重量化")).toBeInTheDocument();
   });
 });
 

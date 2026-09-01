@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS templates (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     payload TEXT NOT NULL,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    builtin INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -69,52 +70,135 @@ def _preset_payload(**overrides) -> dict:
     return TemplatePayload(**overrides).model_dump(mode="json")
 
 
+PRESET_VERSION = 21
+
+
 PRESET_TEMPLATES = [
     {
-        "name": "快速 · 轻度",
-        "payload": _preset_payload(anti="轻度"),
-    },
-    {
-        "name": "标准 · 均衡",
+        "name": "极速",
         "payload": _preset_payload(
             audioRemix=True,
-            anti="标准",
+            echoDefeat=True,
+            audioStrong=True,
+            rotate=0.2,
+            requant=64,
+            noise=0.003,
             regradeOn=True,
-            recropOn=True,
             sharpness=True,
-            colorRestore=True,
             denoise=True,
         ),
     },
     {
-        "name": "强力 · 重对抗",
+        "name": "清除推荐",
         "payload": _preset_payload(
             audioRemix=True,
             echoDefeat=True,
-            antiReembed=True,
-            anti="强力",
-            regradeOn=True,
-            recropOn=True,
-            detailProtectOn=True,
+            audioStrong=True,
+            requant=64,
+            noise=0.003,
+            dctStep=12.0,
+            temporalSub=0.6,
+            nativeTemporal=True,
+            fftPhase=0.5,
+            dwtDetail=0.8,
             sharpness=True,
             colorRestore=True,
             denoise=True,
+            qualityProtect=True,
+            psnrTarget=40.0,
+            ssimTarget=0.95,
         ),
     },
     {
-        "name": "全兵器 · 研究",
+        "name": "防重复清除",
+        "payload": _preset_payload(
+            audioRemix=True,
+            echoDefeat=True,
+            audioStrong=True,
+            rotate=0.5,
+            requant=64,
+            noise=0.003,
+            dctStep=12.0,
+            hashAttack=True,
+            hashEpsilon=0.08,
+            hashMode="phash",
+            temporalSub=0.6,
+            nativeTemporal=True,
+            fftPhase=0.5,
+            dwtDetail=0.8,
+            facePerturb=0.04,
+            copyAttack=0.05,
+            regradeOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+            qualityProtect=True,
+            psnrTarget=38.0,
+            ssimTarget=0.94,
+        ),
+    },
+    {
+        "name": "深度清除",
+        "payload": _preset_payload(
+            audioRemix=True,
+            echoDefeat=True,
+            audioStrong=True,
+            rotate=1.2,
+            hashAttack=True,
+            hashEpsilon=0.05,
+            requant=48,
+            noise=0.004,
+            dctStep=12.0,
+            temporalSub=1.2,
+            nativeTemporal=True,
+            fftPhase=0.7,
+            dwtDetail=1.0,
+            facePerturb=0.05,
+            lpcAttack=0.85,
+            copyAttack=0.06,
+            regradeOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+            qualityProtect=True,
+            psnrTarget=36.0,
+            ssimTarget=0.92,
+        ),
+    },
+    {
+        "name": "全部武器（实验）",
         "payload": _preset_payload(
             audioRemix=True,
             echoDefeat=True,
             antiReembed=True,
-            anti="全兵器",
-            regradeOn=True,
-            recropOn=True,
-            detailProtectOn=True,
-            sharpness=True,
-            colorRestore=True,
-            denoise=True,
+            audioStrong=True,
+            rotate=2.5,
+            hashAttack=True,
+            hashEpsilon=0.05,
+            requant=32,
+            noise=0.008,
+            dctStep=12.0,
+            temporalSub=1.2,
+            nativeTemporal=True,
+            fftPhase=1.0,
+            fftMag=1.0,
+            dwtDetail=1.0,
+            nonintRatio=0.02,
+            flowDisturb=2.0,
+            textureInject=0.05,
+            multiscale=0.04,
+            facePerturb=0.06,
+            temporalBlur=0.3,
+            lpcAttack=1.0,
+            copyAttack=0.08,
             spoof=True,
+            regradeOn=True,
+            sharpness=True,
+            colorRestore=True,
+            denoise=True,
+            qualityProtect=True,
+            psnrTarget=28.0,
+            ssimTarget=0.85,
         ),
     },
 ]
@@ -221,13 +305,38 @@ def init_db() -> None:
                 ),
             )
         # 预置默认模板：首次初始化（或升级旧库）时写入一次，用户可自由删除；
-        # 用设置标记保证只种一次，删除后不会自动复活。
+        # 按版本迁移：版本变化时重建内置预置（保留用户自建模板），版本一致
+        # 不重写，用户删除内置预置后不会自动复活。
+        template_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(templates)").fetchall()
+        }
+        if "builtin" not in template_columns:
+            connection.execute(
+                "ALTER TABLE templates ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0"
+            )
+        known_names = tuple(
+            preset["name"] for preset in PRESET_TEMPLATES
+        ) + ("快速 · 轻度", "标准 · 均衡", "强力 · 重对抗", "全兵器 · 研究")
+        placeholders = ",".join("?" for _ in known_names)
+        connection.execute(
+            f"UPDATE templates SET builtin = 1 WHERE name IN ({placeholders})",
+            known_names,
+        )
         settings_rows = connection.execute("SELECT key, value FROM settings").fetchall()
         settings = {row["key"]: json.loads(row["value"]) for row in settings_rows}
-        if settings.get("preset_templates_seeded") != 1:
+        preset_version = int(
+            settings.get(
+                "preset_version",
+                1 if settings.get("preset_templates_seeded") == 1 else 0,
+            )
+        )
+        if preset_version < PRESET_VERSION:
+            connection.execute("DELETE FROM templates WHERE builtin = 1")
             for preset in PRESET_TEMPLATES:
                 connection.execute(
-                    "INSERT INTO templates (id, name, payload, created_at) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO templates (id, name, payload, created_at, builtin) "
+                    "VALUES (?, ?, ?, ?, 1)",
                     (
                         uuid.uuid4().hex[:12],
                         preset["name"],
@@ -237,8 +346,9 @@ def init_db() -> None:
                 )
             connection.execute(
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                ("preset_templates_seeded", json.dumps(1)),
+                ("preset_version", json.dumps(PRESET_VERSION)),
             )
+        connection.execute("DELETE FROM settings WHERE key = 'preset_templates_seeded'")
         # 启动迁移直接写设置表，重置进程内缓存避免读到旧值。
         global _settings_cache
         _settings_cache = None
@@ -279,7 +389,7 @@ def list_templates() -> list[dict]:
         # 正序排列：最早创建的在前，预置模板保持「快速/标准/强力/全兵器」顺序。
         rows = connection.execute(
             "SELECT id, name, payload, created_at FROM templates "
-            "ORDER BY created_at ASC, rowid ASC"
+            "ORDER BY builtin DESC, created_at ASC, rowid ASC"
         ).fetchall()
     return [
         {"id": row["id"], "name": row["name"], "payload": json.loads(row["payload"]), "created_at": row["created_at"]}

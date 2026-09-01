@@ -745,7 +745,7 @@ export interface components {
             phash_epsilon: number;
             /**
              * Phash Iters
-             * @default 120
+             * @default 40
              */
             phash_iters: number;
             /**
@@ -753,6 +753,11 @@ export interface components {
              * @default false
              */
             multi_hash_attack: boolean;
+            /**
+             * Dhash Attack
+             * @default false
+             */
+            dhash_attack: boolean;
             /**
              * Shot Retime
              * @default false
@@ -799,11 +804,6 @@ export interface components {
              */
             rotate: number;
             /**
-             * Transcode Chain
-             * @default false
-             */
-            transcode_chain: boolean;
-            /**
              * Median
              * @default 0
              */
@@ -829,6 +829,96 @@ export interface components {
              */
             drop_every: number;
             /**
+             * Temporal Sub
+             * @default 0
+             */
+            temporal_sub: number;
+            /**
+             * Fft Phase
+             * @default 0
+             */
+            fft_phase: number;
+            /**
+             * Fft Mag
+             * @default 0
+             */
+            fft_mag: number;
+            /**
+             * Dwt Detail
+             * @default 0
+             */
+            dwt_detail: number;
+            /**
+             * Hsv Jitter
+             * @default 0
+             */
+            hsv_jitter: number;
+            /**
+             * Nonint Ratio
+             * @default 0
+             */
+            nonint_ratio: number;
+            /**
+             * Flow Disturb
+             * @default 0
+             */
+            flow_disturb: number;
+            /**
+             * Texture Inject
+             * @default 0
+             */
+            texture_inject: number;
+            /**
+             * Multiscale
+             * @default 0
+             */
+            multiscale: number;
+            /**
+             * Complexity Trap
+             * @default 0
+             */
+            complexity_trap: number;
+            /**
+             * Face Perturb
+             * @default 0
+             */
+            face_perturb: number;
+            /**
+             * Temporal Blur
+             * @default 0
+             */
+            temporal_blur: number;
+            /**
+             * Lpc Attack
+             * @default 0
+             */
+            lpc_attack: number;
+            /**
+             * Copy Attack
+             * @default 0
+             */
+            copy_attack: number;
+            /**
+             * Native Temporal
+             * @default false
+             */
+            native_temporal: boolean;
+            /**
+             * Quality Protect
+             * @default false
+             */
+            quality_protect: boolean;
+            /**
+             * Psnr Target
+             * @default 38
+             */
+            psnr_target: number;
+            /**
+             * Ssim Target
+             * @default 0.94
+             */
+            ssim_target: number;
+            /**
              * Jitter
              * @default 0
              */
@@ -843,11 +933,6 @@ export interface components {
              * @default 0
              */
             warp: number;
-            /**
-             * Mirror
-             * @default false
-             */
-            mirror: boolean;
             /**
              * Subtract Beta
              * @default 0
@@ -868,11 +953,6 @@ export interface components {
              * @default false
              */
             native_filters: boolean;
-            /**
-             * Detail Protect
-             * @default 0
-             */
-            detail_protect: number;
             /** Path */
             path: string;
             /** Output */
@@ -1005,11 +1085,45 @@ export interface components {
              */
             antiReembed: boolean;
             /**
-             * Anti
-             * @default 关闭
-             * @enum {string}
+             * Rotate
+             * @default 0
              */
-            anti: "关闭" | "轻度" | "标准" | "强力" | "全兵器";
+            rotate: number;
+            /**
+             * Hashattack
+             * @default false
+             */
+            hashAttack: boolean;
+            /**
+             * Hashepsilon
+             * @default 0.045
+             */
+            hashEpsilon: number;
+            /**
+             * Hashmode
+             * @default joint
+             */
+            hashMode: string;
+            /**
+             * Requant
+             * @default 0
+             */
+            requant: number;
+            /**
+             * Noise
+             * @default 0
+             */
+            noise: number;
+            /**
+             * Dctstep
+             * @default 0
+             */
+            dctStep: number;
+            /**
+             * Audiostrong
+             * @default false
+             */
+            audioStrong: boolean;
             /**
              * Regradeon
              * @default false
@@ -1021,10 +1135,110 @@ export interface components {
              */
             recropOn: boolean;
             /**
-             * Detailprotecton
+             * Temporalsub
+             * @default 0
+             */
+            temporalSub: number;
+            /**
+             * Fftphase
+             * @default 0
+             */
+            fftPhase: number;
+            /**
+             * Dwtdetail
+             * @default 0
+             */
+            dwtDetail: number;
+            /**
+             * Fftmag
+             * @default 0
+             */
+            fftMag: number;
+            /**
+             * Hsvjitter
+             * @default 0
+             */
+            hsvJitter: number;
+            /**
+             * Nonintratio
+             * @default 0
+             */
+            nonintRatio: number;
+            /**
+             * Jitter
+             * @default 0
+             */
+            jitter: number;
+            /**
+             * Perspective
+             * @default 0
+             */
+            perspective: number;
+            /**
+             * Warp
+             * @default 0
+             */
+            warp: number;
+            /**
+             * Flowdisturb
+             * @default 0
+             */
+            flowDisturb: number;
+            /**
+             * Textureinject
+             * @default 0
+             */
+            textureInject: number;
+            /**
+             * Multiscale
+             * @default 0
+             */
+            multiscale: number;
+            /**
+             * Complexitytrap
+             * @default 0
+             */
+            complexityTrap: number;
+            /**
+             * Faceperturb
+             * @default 0
+             */
+            facePerturb: number;
+            /**
+             * Temporalblur
+             * @default 0
+             */
+            temporalBlur: number;
+            /**
+             * Lpcattack
+             * @default 0
+             */
+            lpcAttack: number;
+            /**
+             * Copyattack
+             * @default 0
+             */
+            copyAttack: number;
+            /**
+             * Nativetemporal
              * @default false
              */
-            detailProtectOn: boolean;
+            nativeTemporal: boolean;
+            /**
+             * Qualityprotect
+             * @default false
+             */
+            qualityProtect: boolean;
+            /**
+             * Psnrtarget
+             * @default 38
+             */
+            psnrTarget: number;
+            /**
+             * Ssimtarget
+             * @default 0.94
+             */
+            ssimTarget: number;
             /**
              * Sharpness
              * @default false

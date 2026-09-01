@@ -47,7 +47,7 @@ describe("useTemplateFlow", () => {
     const tpl: TemplateInfo = {
       id: "t1",
       name: "标准 · 均衡",
-      payload: { anti: "标准" },
+      payload: { rotate: 0.2, requant: 96, noise: 0.003 },
       created_at: 1,
     };
     vi.mocked(listTemplates).mockResolvedValue([tpl]);
@@ -55,7 +55,6 @@ describe("useTemplateFlow", () => {
     await waitFor(() => expect(result.current.templateList).toEqual([tpl]));
 
     result.current.applyTemplateById("t1");
-    expect(useCleanPanel.getState().antiLevel).toBe("标准");
     expect(useCleanPanel.getState().templateId).toBe("t1");
   });
 
@@ -63,9 +62,9 @@ describe("useTemplateFlow", () => {
     vi.mocked(listTemplates).mockResolvedValue([]);
     const { result } = renderHook(() => useTemplateFlow());
     await waitFor(() => expect(result.current.templateList).toEqual([]));
-    useCleanPanel.getState().setAntiLevel("全兵器");
+    useCleanPanel.getState().setHashOn(true);
     result.current.applyTemplateById("manual");
-    expect(useCleanPanel.getState().antiLevel).toBe("关闭");
+    expect(useCleanPanel.getState().hashOn).toBe(false);
   });
 });
 

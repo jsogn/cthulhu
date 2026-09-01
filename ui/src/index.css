@@ -1054,9 +1054,68 @@ body {
   color: var(--muted-foreground);
 }
 
+.layer-tag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.weapon-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.layer-wm {
+  color: var(--ok);
+  background: color-mix(in oklch, var(--ok) 16%, transparent);
+}
+
+.layer-fp {
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 18%, transparent);
+}
+
+.layer-misc {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.weapon-meta {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
 .switch-inline {
   align-items: center;
   padding: 8px 12px;
+}
+
+.switch-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+}
+
+.switch-card > .switch {
+  border: 0;
+  border-radius: 0;
+}
+
+.switch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 12px 12px;
+  border-top: 1px solid var(--border);
 }
 
 .env-card {

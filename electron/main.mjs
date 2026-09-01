@@ -7,6 +7,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  FORCE_KILL_DELAY_MS,
+  HEALTH_PROBE_TIMEOUT_MS,
+  WATCHDOG_FAILURE_THRESHOLD,
+  WATCHDOG_INTERVAL_MS,
+  restartDelayMs,
+  shouldForceRestart,
+} from "./supervisor.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_DEV = !app.isPackaged;
@@ -34,6 +42,16 @@ app.setPath("sessionData", getCacheDir());
 /** @type {import('node:child_process').ChildProcess | null} */
 let backendProcess = null;
 
+// 后端地址与令牌在本次应用会话内固定：引擎意外退出并自动重启后，
+// 渲染进程无需重载也能用同一地址/令牌重新连上恢复的引擎。
+let backendPort = null;
+let backendAuthToken = null;
+let quitting = false;
+let restartAttempts = 0;
+let restartTimer = null;
+let watchdogTimer = null;
+let backendFailures = 0;
+
 /** 从系统分配一个空闲回环端口，用于生产模式随机化后端监听地址。 */
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -47,39 +65,152 @@ function getFreePort() {
   });
 }
 
+/** 本次应用会话内固定后端的端口与鉴权令牌（首次启动时生成）。 */
+async function resolveBackendConfig() {
+  if (backendPort !== null && backendAuthToken !== null) {
+    return { port: backendPort, authToken: backendAuthToken };
+  }
+  if (IS_DEV) {
+    backendPort = BACKEND_PORT;
+    backendAuthToken = DEV_AUTH_TOKEN;
+  } else {
+    backendPort = await getFreePort();
+    backendAuthToken = randomBytes(32).toString("hex");
+  }
+  return { port: backendPort, authToken: backendAuthToken };
+}
+
+/** 以独立进程组拉起后端：守护重启或强杀时连同 ffmpeg 子进程一起回收。 */
+function spawnBackend(command, args, options) {
+  return spawn(command, args, {
+    ...options,
+    detached: process.platform !== "win32",
+  });
+}
+
+function onBackendExit() {
+  const exitedPid = backendProcess?.pid;
+  console.log(`[backend] 退出，code=${backendProcess?.exitCode ?? "unknown"}`);
+  backendProcess = null;
+  // 原生崩溃时 ffmpeg 子进程可能残留，连同旧进程组一并回收，避免孤儿编码。
+  if (process.platform !== "win32" && exitedPid) {
+    try {
+      process.kill(-exitedPid, "SIGKILL");
+    } catch {
+      // 进程组已不存在，忽略
+    }
+  }
+  scheduleBackendRestart();
+}
+
+function onBackendError(error) {
+  console.error("[backend] 启动错误：", error.message);
+  backendProcess = null;
+  scheduleBackendRestart();
+}
+
+/** 后端意外退出后自动拉起：指数退避，恢复健康后由看门狗归零重试计数。 */
+function scheduleBackendRestart() {
+  if (quitting || restartTimer !== null) return;
+  const delay = restartDelayMs(restartAttempts);
+  restartAttempts += 1;
+  console.log(`[backend] ${Math.round(delay / 1000)} 秒后自动重启引擎`);
+  restartTimer = setTimeout(async () => {
+    restartTimer = null;
+    if (quitting) return;
+    try {
+      await startBackend();
+    } catch (error) {
+      console.error("[backend] 自动重启失败：", error.message);
+      scheduleBackendRestart();
+    }
+  }, delay);
+}
+
+function terminateBackend(signal = "SIGTERM") {
+  const proc = backendProcess;
+  if (!proc || proc.exitCode !== null) return;
+  try {
+    if (process.platform === "win32") {
+      proc.kill(signal);
+    } else {
+      process.kill(-proc.pid, signal);
+    }
+  } catch {
+    // 进程/进程组可能刚好退出，忽略
+  }
+}
+
+function killBackend() {
+  terminateBackend("SIGTERM");
+  const proc = backendProcess;
+  if (!proc || proc.exitCode !== null) return;
+  // 兜底：SIGTERM 后仍未退出则强杀，避免僵尸进程占用端口。
+  const forceKillTimer = setTimeout(() => {
+    if (backendProcess === proc && proc.exitCode === null) {
+      terminateBackend("SIGKILL");
+    }
+  }, FORCE_KILL_DELAY_MS);
+  forceKillTimer.unref?.();
+}
+
+/** 周期性健康检查：后端进程还活着但事件循环卡死时，强制重启恢复任务调度。 */
+function startWatchdog(port) {
+  if (watchdogTimer !== null) return;
+  watchdogTimer = setInterval(async () => {
+    if (quitting || backendProcess === null || backendProcess.exitCode !== null) return;
+    let healthy = false;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+      });
+      healthy = res.ok;
+    } catch {
+      healthy = false;
+    }
+    if (healthy) {
+      backendFailures = 0;
+      restartAttempts = 0;
+      return;
+    }
+    backendFailures += 1;
+    console.warn(
+      `[backend] 健康检查连续失败 ${backendFailures}/${WATCHDOG_FAILURE_THRESHOLD}`,
+    );
+    if (shouldForceRestart(backendFailures)) {
+      backendFailures = 0;
+      console.error("[backend] 引擎长时间无响应，强制重启以恢复任务调度");
+      killBackend();
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}
+
 async function startBackend() {
+  const { port, authToken } = await resolveBackendConfig();
   console.log("[backend] 启动模式：", IS_DEV ? "dev" : "packaged", "resources:", process.resourcesPath);
-  const onBackendExit = () => {
-    console.log(`[backend] 退出，code=${backendProcess?.exitCode ?? "unknown"}`);
-    backendProcess = null;
-  };
-  const onBackendError = (error) => {
-    console.error("[backend] 启动错误：", error.message);
-    backendProcess = null;
-  };
+  const crashLog = IS_DEV
+    ? path.join(getCacheDir(), "backend-crash.log")
+    : path.join(app.getPath("userData"), "backend-crash.log");
+  fs.mkdirSync(path.dirname(crashLog), { recursive: true });
   if (IS_DEV) {
     const backendDir = path.resolve(__dirname, "..", "backend");
-    backendProcess = spawn(
+    backendProcess = spawnBackend(
       "uv",
-      ["run", "uvicorn", "cthulhu_backend.main:app", "--port", String(BACKEND_PORT)],
+      ["run", "uvicorn", "cthulhu_backend.main:app", "--port", String(port)],
       {
         cwd: backendDir,
         stdio: "inherit",
         env: {
           ...process.env,
-          CTHULHU_AUTH_TOKEN: DEV_AUTH_TOKEN,
+          CTHULHU_AUTH_TOKEN: authToken,
           CTHULHU_FFMPEG_INSTALL_DIR: path.join(getCacheDir(), "ffmpeg"),
+          CTHULHU_CRASH_LOG: crashLog,
         },
       },
     );
-    backendProcess.once("exit", onBackendExit);
-    backendProcess.once("error", onBackendError);
-    return { port: BACKEND_PORT, authToken: DEV_AUTH_TOKEN };
   } else {
     // 生产模式：启动打包后的 Python sidecar，并由其后端托管前端静态资源。
     // extraResources 拷贝的是目录内容，可执行文件即 backend/<name>。
-    const port = await getFreePort();
-    const authToken = randomBytes(32).toString("hex");
     const backendExeName = process.platform === "win32" ? "cthulhu-backend.exe" : "cthulhu-backend";
     const backendExe = path.join(process.resourcesPath, "backend", backendExeName);
     const staticDir = path.join(process.resourcesPath, "backend", "ui-dist");
@@ -99,19 +230,19 @@ async function startBackend() {
       CTHULHU_AUTH_TOKEN: authToken,
       CTHULHU_PORT: String(port),
       CTHULHU_FFMPEG_INSTALL_DIR: path.join(cacheDir, "ffmpeg"),
+      CTHULHU_CRASH_LOG: crashLog,
     };
     if (fs.existsSync(ffmpegBinary)) {
       env.CTHULHU_FFMPEG_DIR = ffmpegDir;
     }
-    backendProcess = spawn(backendExe, [], {
+    backendProcess = spawnBackend(backendExe, [], {
       env,
       stdio: "inherit",
     });
     console.log("[backend] pid:", backendProcess.pid, "exe:", backendExe);
-    backendProcess.once("exit", onBackendExit);
-    backendProcess.once("error", onBackendError);
-    return { port, authToken };
   }
+  backendProcess.once("exit", onBackendExit);
+  backendProcess.once("error", onBackendError);
 }
 
 async function waitForBackend(port, timeoutMs = 30000) {
@@ -129,8 +260,12 @@ async function waitForBackend(port, timeoutMs = 30000) {
 }
 
 async function createWindow() {
-  const { port, authToken } = await startBackend();
+  const { port, authToken } = await resolveBackendConfig();
+  if (backendProcess === null) {
+    await startBackend();
+  }
   await waitForBackend(port);
+  startWatchdog(port);
   const backendUrl = `http://127.0.0.1:${port}`;
 
   const win = new BrowserWindow({
@@ -202,5 +337,14 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  backendProcess?.kill();
+  quitting = true;
+  if (restartTimer !== null) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+  if (watchdogTimer !== null) {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
+  }
+  terminateBackend();
 });

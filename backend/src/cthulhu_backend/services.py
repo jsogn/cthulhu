@@ -425,44 +425,6 @@ def _concat_video_segments(segments: list[str], output: str) -> None:
             pass
 
 
-def _transcode_chain(path: str, final_codec: str, check_cancelled) -> None:
-    """编码域组合拳：跨 codec 二次转码，破坏量化/GOP 域的脆弱相关。
-
-    第一遍换 codec（H.264→H.265，不可用则同 codec）高 CRF 粗量化，
-    第二遍转回目标 codec。音轨直接复制。产物替换回原路径。
-    """
-    chain_temp = tempfile.mkdtemp(prefix="cthulhu-chain-")
-    mid = os.path.join(chain_temp, "mid.mp4")
-    final = os.path.join(chain_temp, "final.mp4")
-    mid_codec = (
-        "libx265" if final_codec != "libx265" and ffmpeg.has_encoder("libx265") else final_codec
-    )
-    try:
-        subprocess.run(
-            [
-                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                "-i", path, "-c:v", mid_codec, "-preset", "veryfast",
-                "-crf", "28", "-c:a", "copy", mid,
-            ],
-            capture_output=True,
-            check=True,
-        )
-        check_cancelled()
-        subprocess.run(
-            [
-                ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-                "-i", mid, "-c:v", final_codec, "-preset", "veryfast",
-                "-crf", "23", "-c:a", "copy", final,
-            ],
-            capture_output=True,
-            check=True,
-        )
-        check_cancelled()
-        shutil.move(final, path)
-    finally:
-        shutil.rmtree(chain_temp, ignore_errors=True)
-
-
 def run_similarity(a: str, b: str) -> dict:
     a, b = _require_file(a), _require_file(b)
     # 相似度报告最多消费 60 帧，全片 float64 解码毫无必要且会在长片上
@@ -666,6 +628,7 @@ class _DesensitizeState:
     transform_context: Any
     frame_dtype: str
     native_chain: list[str]
+    native_complex: str | None
     base_filters: list[str]
     use_native_geometry: bool
     use_yuv_path: bool
@@ -679,7 +642,10 @@ class _DesensitizeState:
     phash_epsilon: float
     phash_iters: int
     multi_hash_attack: bool
-    detail_protect: float
+    dhash_attack: bool
+    quality_protect: bool
+    psnr_target: float
+    ssim_target: float
     assault_rng: Any
     assault_params: Any
     saliency_obj: Any
@@ -744,26 +710,101 @@ def _geometry_chain(state: _DesensitizeState, offset: int) -> list[str]:
     return chain
 
 
-def _apply_attacks(state: _DesensitizeState, frames: np.ndarray, output_ids: list[int]) -> np.ndarray:
-    """pHash 攻击、几何去同步与细节保护等与分块无关的后置变换。"""
-    protected = frames.copy() if state.detail_protect > 0 else None
+def _apply_attacks(
+    state: _DesensitizeState,
+    frames: np.ndarray,
+    output_ids: list[int],
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """pHash 攻击、几何去同步与画质门控等与分块无关的后置变换。"""
+    assault_rng = rng if rng is not None else state.assault_rng
+    original = frames.copy() if state.quality_protect else None
     if state.rotate_eff > 0:
         frames = strategies.rotate_de_sync(frames, output_ids, state.rotate_eff)
     if state.assault_params.enabled:
-        frames = extra_attacks.apply(frames, state.assault_params, state.assault_rng)
+        frames = extra_attacks.apply(frames, state.assault_params, assault_rng)
     if state.phash_attack:
         frames = adversarial.attack_frames(
+            frames, epsilon=state.phash_epsilon, iterations=state.phash_iters
+        )
+    elif state.dhash_attack:
+        frames = adversarial.attack_frames_dhash(
             frames, epsilon=state.phash_epsilon, iterations=state.phash_iters
         )
     elif state.multi_hash_attack:
         frames = adversarial.attack_frames_joint(
             frames, epsilon=state.phash_epsilon, iterations=state.phash_iters
         )
-    if protected is not None:
-        frames = extra_attacks.protect_details(frames, protected, state.detail_protect)
+    if original is not None:
+        frames = extra_attacks.quality_gate(
+            original, frames, state.psnr_target, state.ssim_target
+        )
     if state.saliency_obj is not None:
         frames = extra_attacks.salient_overlay(frames, state.saliency_obj)
     return frames
+
+
+def _parallel_workers() -> int:
+    """武器阶段进程池规模：默认关闭（8 线程已饱和带宽型武器）。
+
+    仅当显式设置 CTHULHU_PROCESS_WORKERS 时才启用多进程，供更高核数的
+    机器或未来计算型武器使用；进程内线程数保持 8 以不拖慢逐帧武器。
+    """
+    raw = os.environ.get("CTHULHU_PROCESS_WORKERS")
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    return 1
+
+
+def _transform_chunk_worker(payload: dict) -> np.ndarray:
+    """进程池工作项：解码块 → 变换 → 攻击，返回按序待编码的帧。"""
+    import dataclasses as dc
+
+    state = payload["state"]
+    if _WORKER_FIELDS:
+        for attr, value in _WORKER_FIELDS.items():
+            if value is not None:
+                setattr(state.assault_params, attr, value)
+    frames = payload["batch"]
+    output_ids = payload["output_ids"]
+    rng = np.random.default_rng(payload["chunk_seed"])
+    ctx = state.transform_context
+    if ctx.mid_rng is not None:
+        ctx = dc.replace(ctx, mid_rng=np.random.default_rng(payload["chunk_seed"] ^ 0x51A))
+    frames = state.strategy.apply(frames, output_ids, ctx, state.transform_options)
+    return _apply_attacks(state, frames, output_ids, rng=rng)
+
+
+_WORKER_FIELDS: dict[str, np.ndarray] = {}
+
+
+def _worker_init(fields: dict[str, np.ndarray]) -> None:
+    """进程池初始化：一次性注入首块算好的 SPSA 场，避免逐任务序列化。"""
+    global _WORKER_FIELDS
+    _WORKER_FIELDS = fields
+    # 进程级并行接管后，进程内的帧级线程池应退化为单线程，避免 48 线程
+    # 抢占 14 核造成的调度抖动。
+    os.environ["CTHULHU_TRANSFORM_THREADS"] = "8"
+
+
+def _collect_spsa_fields(state: _DesensitizeState, rng: np.random.Generator) -> dict:
+    """取出首块算好的 copy/face 一次性 SPSA 场。"""
+    from cthulhu_backend.transform import regenerate
+
+    cache = regenerate._FIELD_CACHE
+    key = id(rng)
+    fields: dict[str, np.ndarray] = {}
+    for name, attr in (
+        ("copy", "copy_field"),
+        ("facefield", "face_field"),
+    ):
+        field = cache.get((name, key))
+        if field is not None:
+            fields[attr] = field
+    return fields
 
 
 def _plan_shots(
@@ -935,6 +976,7 @@ def _prepare_desensitize(
     sharpness_eff = opts.sharpness
     noise_eff = opts.noise
     requant_eff = opts.requant
+    chroma_eff = opts.chroma_levels
     denoise_eff = opts.denoise
     # 几何/调光下沉到编码器滤镜链：仅在无重排、无变速的快路径上启用，
     # 避免输出帧号与原帧号不一致时表达式错位；其余路径保持 numpy 实现。
@@ -959,16 +1001,46 @@ def _prepare_desensitize(
     if opts.denoise and ffmpeg.has_filter("removegrain"):
         base_filters.append("removegrain=4")
         denoise_eff = False
+    # 噪声/重量化下沉原生滤镜：二者近乎无损且远快于 numpy 路径；画质门控
+    # 只负责覆盖 numpy 侧的重武器，这两项不参与门控（文档口径见门控说明）。
     if opts.noise > 0 and ffmpeg.has_filter("noise"):
         base_filters.append(f"noise=alls={max(1, round(opts.noise * 255))}:allf=t")
         noise_eff = 0.0
-    if opts.requant > 0 and ffmpeg.has_filter("posterize"):
+    # posterize 只支持 2~31 级，重量化档位（32~96）仍走 numpy 路径。
+    if 0 < opts.requant <= 31 and ffmpeg.has_filter("posterize"):
         base_filters.append(f"posterize={opts.requant}")
         requant_eff = 0
+    elif opts.requant > 31 and ffmpeg.has_filter("lut"):
+        # 任意级数量化查表：与 numpy 查表实现效果等价（原型验证 QIM 破坏力一致）。
+        scale = (opts.requant - 1) / 255.0
+        expr = f"round(val*{scale:.6f})*{1.0 / scale:.6f}"
+        base_filters.append(f"lut=r='{expr}':g='{expr}':b='{expr}'")
+        requant_eff = 0
+    if opts.chroma_levels > 0 and ffmpeg.has_filter("lutyuv"):
+        # 色度量化原生下沉：YUV 域对 U/V 平面查表量化，Y 原样保留。
+        levels = opts.chroma_levels
+        scale = (levels - 1) / 255.0
+        expr = f"128+round((val-128)*{scale:.6f})*{1.0 / scale:.6f}"
+        base_filters.append(
+            f"format=yuv444p,lutyuv=y='val':u='{expr}':v='{expr}',format=rgb24"
+        )
+        chroma_eff = 0
+    # 跨帧估计的原生加速：ffmpeg 链（median+tmix+blend 两步重构）在原生几何
+    # 快路径上启用；numpy 版作为重排/变速路径的兜底。
+    temporal_eff = opts.temporal_sub
+    native_temporal_ok = (
+        opts.native_temporal
+        and temporal_eff > 0
+        and use_native_geometry
+        and ffmpeg.has_filter("median")
+        and ffmpeg.has_filter("tmix")
+        and ffmpeg.has_filter("blend")
+    )
+    if native_temporal_ok:
+        temporal_eff = 0.0
     if opts.filter_scale > 0 and use_native_geometry:
         base_filters.append(f"scale={info['width']}:{info['height']}:flags=bicubic")
     assault_params = extra_attacks.AssaultParams(
-        mirror=opts.mirror,
         jitter=opts.jitter,
         perspective=opts.perspective,
         warp=opts.warp,
@@ -977,8 +1049,21 @@ def _prepare_desensitize(
         subtract_beta=opts.subtract_beta,
         requant=requant_eff,
         dct_step=opts.dct_step,
-        chroma_levels=opts.chroma_levels,
+        chroma_levels=chroma_eff,
         drop_every=opts.drop_every,
+        temporal_sub=temporal_eff,
+        fft_phase=opts.fft_phase,
+        fft_mag=opts.fft_mag,
+        dwt_detail=opts.dwt_detail,
+        hsv_jitter=opts.hsv_jitter,
+        nonint_ratio=opts.nonint_ratio,
+        flow_disturb=opts.flow_disturb,
+        texture_inject=opts.texture_inject,
+        multiscale=opts.multiscale,
+        complexity_trap=opts.complexity_trap,
+        face_perturb=opts.face_perturb,
+        temporal_blur=opts.temporal_blur,
+        copy_attack=opts.copy_attack,
     )
     saliency_obj = extra_attacks.saliency_layout(opts.seed, opts.saliency)
 
@@ -1041,7 +1126,7 @@ def _prepare_desensitize(
     # 中间量按 12 倍预留余量，分块上限 240，低内存机器自动变小块。
     chunk = max(8, min(240, int(budget // 12 // max(frame_bytes, 1))))
     # pHash/多哈希对抗在批级持有大量 float32 中间量，收窄分块避免长片 OOM。
-    if opts.phash_attack or opts.multi_hash_attack:
+    if opts.phash_attack or opts.multi_hash_attack or opts.dhash_attack:
         chunk = min(chunk, 48)
 
     # YUV420p 快路径：仅当所有像素变换都已下沉原生、且无任何 RGB 专属
@@ -1053,18 +1138,31 @@ def _prepare_desensitize(
         and not opts.banner
         and not opts.anti_reembed
         and not opts.spoof
-        and opts.detail_protect <= 0
+        and not opts.quality_protect
         and opts.saliency == 0
-        and not opts.mirror
         and opts.jitter <= 0
         and opts.perspective <= 0
         and opts.warp <= 0
         and opts.median <= 0
         and opts.subtract_beta <= 0
+        and opts.temporal_sub <= 0
+        and opts.fft_phase <= 0
+        and opts.fft_mag <= 0
+        and opts.dwt_detail <= 0
+        and opts.nonint_ratio <= 0
+        and opts.flow_disturb <= 0
+        and opts.texture_inject <= 0
+        and opts.multiscale <= 0
+        and opts.complexity_trap <= 0
+        and opts.face_perturb <= 0
+        and opts.temporal_blur <= 0
+        and opts.copy_attack <= 0
+        and opts.hsv_jitter <= 0
         and opts.dct_step <= 0
         and opts.chroma_levels <= 0
         and opts.drop_every <= 0
         and not opts.multi_hash_attack
+        and not opts.dhash_attack
     )
 
     state = _DesensitizeState(
@@ -1083,6 +1181,7 @@ def _prepare_desensitize(
         transform_context=transform_context,
         frame_dtype=frame_dtype,
         native_chain=[],
+        native_complex=None,
         base_filters=base_filters,
         use_native_geometry=use_native_geometry,
         use_yuv_path=use_yuv_path,
@@ -1096,7 +1195,10 @@ def _prepare_desensitize(
         phash_epsilon=opts.phash_epsilon,
         phash_iters=opts.phash_iters,
         multi_hash_attack=opts.multi_hash_attack,
-        detail_protect=opts.detail_protect,
+        dhash_attack=opts.dhash_attack,
+        quality_protect=opts.quality_protect,
+        psnr_target=opts.psnr_target,
+        ssim_target=opts.ssim_target,
         assault_rng=assault_rng,
         assault_params=assault_params,
         saliency_obj=saliency_obj,
@@ -1116,7 +1218,37 @@ def _prepare_desensitize(
         phase_c=phase_c,
         phase_d=phase_d,
     )
-    state.native_chain = _geometry_chain(state, 0) + state.base_filters
+    if native_temporal_ok:
+        beta = opts.temporal_sub
+        prefix = ",".join(_geometry_chain(state, 0) + base_filters)
+        graph = "[0]" + prefix
+        first = min(beta, 1.0)
+        extra = max(0.0, beta - 1.0)
+        if extra <= 1e-6:
+            graph += (
+                ("," if prefix else "")
+                + f"split=3[a][b][c];[b]median=radius=1[m];"
+                f"[m]tmix=frames=24[tm];[a]tmix=frames=24[ta];"
+                f"[c][tm]blend=all_mode=addition:all_opacity={first}[s1];"
+                f"[s1][ta]blend=all_mode=subtract:all_opacity={first}[out]"
+            )
+        else:
+            # β>1：blend 的 opacity 上限为 1，把过减拆成两段「加/减重构」，
+            # 两段合计仍为 β（每段都无带符号中间量，规避 8bit 负值钳零）。
+            graph += (
+                ("," if prefix else "")
+                + f"split=3[a][b][c];[b]median=radius=1[m];"
+                f"[m]split=2[m0][m1];[m0]tmix=frames=24[tm0];[m1]tmix=frames=24[tm1];"
+                f"[a]split=2[a0][a1];[a0]tmix=frames=24[ta0];[a1]tmix=frames=24[ta1];"
+                f"[c][tm0]blend=all_mode=addition:all_opacity={first}[s1];"
+                f"[s1][ta0]blend=all_mode=subtract:all_opacity={first}[s2];"
+                f"[s2][tm1]blend=all_mode=addition:all_opacity={extra}[s3];"
+                f"[s3][ta1]blend=all_mode=subtract:all_opacity={extra}[out]"
+            )
+        state.native_complex = graph
+        state.native_chain = []
+    else:
+        state.native_chain = _geometry_chain(state, 0) + state.base_filters
     return state
 
 
@@ -1164,7 +1296,12 @@ def _prepare_audio(
 ) -> tuple[np.ndarray | None, int]:
     """音轨独立准备：整段重混/回声扰动，供编码完成后统一 mux。"""
     sample_rate = 16000
-    if not (opts.audio_remix or opts.echo_defeat or state.needs_audio_alignment):
+    if not (
+        opts.audio_remix
+        or opts.echo_defeat
+        or opts.lpc_attack > 0
+        or state.needs_audio_alignment
+    ):
         return None, sample_rate
     decoded_audio = ffmpeg.decode_audio(path)
     if decoded_audio is None:
@@ -1179,6 +1316,10 @@ def _prepare_audio(
     elif opts.audio_remix:
         # 等长重混：不改内容时间线，音画同步只由末尾按实际帧数对齐兜底。
         signal = audio_transform.remix(signal, sample_rate, audio_rng)
+    if opts.lpc_attack > 0:
+        signal = audio_transform.lpc_whiten(
+            signal, sample_rate, opts.lpc_attack, audio_rng
+        )
     return signal, sample_rate
 
 
@@ -1402,7 +1543,8 @@ def _encode_desensitize(
             bitrate_kbps=state.bitrate_kbps,
             out_size=state.out_size,
             color=True,
-            filters=state.native_chain or None,
+            filters=None if state.native_complex else (state.native_chain or None),
+            complex_filter=state.native_complex,
             stop=should_stop,
         )
     )
@@ -1416,20 +1558,36 @@ def _encode_desensitize(
         elif state.speed == 1.0 and not opts.shot_retime and opts.cut_jitter == 0:
             # 默认快路径：按重排后的镜头顺序流式处理，每个镜头只 seek 一次，
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
-            for seg_start, orig_start, seg_len in state.segments:
+            # 武器阶段 CPU 密集，多进程并行处理帧块；首块在主进程处理以
+            # 预计算 deep/copy/face 的一次性 SPSA 场并分发到后续进程。
+            worker_count = _parallel_workers()
+            par_chunk = max(8, state.chunk // worker_count) if worker_count > 1 else state.chunk
+            for seg_index, (seg_start, orig_start, seg_len) in enumerate(state.segments):
                 check_cancelled()
                 decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
+                pool = None
                 try:
-                    for pos, batch in _prefetch_batches(
-                        decoder, seg_len, state.chunk, state.frame_dtype
+                    batches = _prefetch_batches(decoder, seg_len, par_chunk, state.frame_dtype)
+                    base_seed = int(state.transform_context.seed) ^ (1000003 * seg_index)
+
+                    def process(
+                        batch: np.ndarray,
+                        output_ids: list[int],
+                        seed: int,
+                        rng: np.random.Generator,
                     ):
-                        check_cancelled()
-                        check_pause()
-                        output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
+                        import dataclasses as dc
+
+                        ctx = state.transform_context
+                        if ctx.mid_rng is not None:
+                            ctx = dc.replace(ctx, mid_rng=np.random.default_rng(seed ^ 0x51A))
                         frames = state.strategy.apply(
-                            batch, output_ids, state.transform_context, state.transform_options
+                            batch, output_ids, ctx, state.transform_options
                         )
-                        frames = _apply_attacks(state, frames, output_ids)
+                        return _apply_attacks(state, frames, output_ids, rng=rng)
+
+                    def emit(frames: np.ndarray) -> None:
+                        nonlocal out_index
                         encoder.write(frames)
                         out_index += len(frames)
                         if progress_cb and state.total_out:
@@ -1437,7 +1595,64 @@ def _encode_desensitize(
                                 8 + int(out_index / state.total_out * 82),
                                 f"处理中 {out_index}/{state.total_out} 帧",
                             )
+
+                    # 首块在主进程处理：SPSA 场只在这里计算一次。
+                    pos, batch = next(batches)
+                    output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
+                    rng0 = np.random.default_rng(base_seed ^ pos)
+                    emit(process(batch, output_ids, base_seed ^ pos, rng0))
+                    spsa_fields = _collect_spsa_fields(state, rng0)
+
+                    if worker_count > 1:
+                        import multiprocessing
+
+                        pool = multiprocessing.get_context("spawn").Pool(
+                            worker_count,
+                            initializer=_worker_init,
+                            initargs=(spsa_fields,),
+                        )
+
+                        def tasks(
+                            batches=batches,
+                            base_seed=base_seed,
+                            seg_start=seg_start,
+                        ):
+                            for pos, batch in batches:
+                                check_cancelled()
+                                seed = base_seed ^ pos
+                                yield {
+                                    "state": state,
+                                    "batch": batch,
+                                    "output_ids": list(
+                                        range(seg_start + pos, seg_start + pos + len(batch))
+                                    ),
+                                    "chunk_seed": seed,
+                                }
+
+                        for frames in pool.imap(_transform_chunk_worker, tasks(), chunksize=4):
+                            check_cancelled()
+                            check_pause()
+                            emit(frames)
+                    else:
+                        for pos, batch in batches:
+                            check_cancelled()
+                            check_pause()
+                            output_ids = list(
+                                range(seg_start + pos, seg_start + pos + len(batch))
+                            )
+                            emit(
+                                process(
+                                    batch,
+                                    output_ids,
+                                    base_seed ^ pos,
+                                    rng0,
+                                )
+                            )
                 finally:
+                    if pool is not None:
+                        pool.terminate()
+                        pool.join()
+                        pool.close()
                     decoder.close()
         else:
             # O(N) 流式变速路径：逐镜头因子映射，每个镜头只 seek 一次。
@@ -1494,8 +1709,6 @@ def _encode_desensitize(
         if progress_cb:
             progress_cb(95, "编码完成")
         check_cancelled()
-        if opts.transcode_chain:
-            _transcode_chain(output, opts.codec, check_cancelled)
     except BaseException:
         if encoder is not None:
             encoder.abort()

@@ -4,7 +4,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { TabsContent } from "@/components/ui/tabs";
 import type { AudioAnalysis, DetectReport } from "@/lib/backend";
 import { riskLabel } from "@/lib/workbenchOptions";
-import type { AntiLevel } from "@/lib/templates";
 import type { Material, RiskLevel } from "@/stores/materials";
 
 interface DetectPaneProps {
@@ -16,8 +15,9 @@ interface DetectPaneProps {
   detectSubmitting: boolean;
   audio: AudioAnalysis | null;
   audioMissing: boolean;
-  antiLevel: AntiLevel;
-  setAntiLevel: (value: AntiLevel) => void;
+  hashOn: boolean;
+  setHashOn: (value: boolean) => void;
+  setDctOn: (value: boolean) => void;
   onDetect: () => void;
 }
 
@@ -30,8 +30,9 @@ export function DetectPane({
   detectSubmitting,
   audio,
   audioMissing,
-  antiLevel,
-  setAntiLevel,
+  hashOn,
+  setHashOn,
+  setDctOn,
   onDetect,
 }: DetectPaneProps) {
   const pct = risk === "待检测" ? 100 : Math.max(0, Math.min(100, score));
@@ -224,7 +225,7 @@ export function DetectPane({
               <div className="section-title">清洗建议</div>
               <ul className="suggest">
                 {(() => {
-                  const suggestions: { text: string; action?: { label: string; level: AntiLevel } }[] = [];
+                  const suggestions: { text: string; action?: { label: string; run: () => void } }[] = [];
                   if (report.bitstream.flags.length > 0) {
                     suggestions.push(
                       { text: `码流层命中 ${report.bitstream.flags.length} 项疑似特征，建议开启清洗并人工复核` },
@@ -251,14 +252,20 @@ export function DetectPane({
                   }
                   if (score >= 60) {
                     suggestions.push({
-                      text: `码流评分 ${score}，建议至少开启标准指纹对抗档`,
-                      action: { label: "应用标准档", level: "标准" },
+                      text: `码流评分 ${score}，建议开启哈希签名对抗与 DCT 系数扰动`,
+                      action: {
+                        label: "一键开启",
+                        run: () => {
+                          setHashOn(true);
+                          setDctOn(true);
+                        },
+                      },
                     });
                   }
-                  if (score >= 40 && antiLevel === "关闭") {
+                  if (score >= 40 && !hashOn) {
                     suggestions.push({
-                      text: "当前指纹对抗关闭，建议至少开启轻度档",
-                      action: { label: "应用轻度档", level: "轻度" },
+                      text: "经典指纹未开启，建议至少开启哈希签名对抗",
+                      action: { label: "开启", run: () => setHashOn(true) },
                     });
                   }
                   if (suggestions.length === 0) {
@@ -274,7 +281,7 @@ export function DetectPane({
                           variant="outline"
                           size="sm"
                           className="ml-2"
-                          onClick={() => setAntiLevel(item.action!.level)}
+                          onClick={item.action.run}
                         >
                           {item.action.label}
                         </Button>

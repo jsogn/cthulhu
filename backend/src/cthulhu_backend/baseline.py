@@ -197,7 +197,6 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--phash-iters", type=int, default=120)
     parser.add_argument("--multi-hash-attack", action="store_true")
     parser.add_argument("--rotate", type=float, default=0.0)
-    parser.add_argument("--transcode-chain", action="store_true")
     parser.add_argument("--median", type=int, default=0)
     parser.add_argument("--noise", type=float, default=0.0)
     parser.add_argument("--requant", type=int, default=0)
@@ -208,10 +207,8 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--warp", type=float, default=0.0)
     parser.add_argument("--subtract-beta", type=float, default=0.0)
     parser.add_argument("--saliency", type=int, default=0)
-    parser.add_argument("--mirror", action="store_true")
     parser.add_argument("--chroma-levels", type=int, default=0)
     parser.add_argument("--native-filters", action="store_true")
-    parser.add_argument("--detail-protect", type=float, default=0.0)
     parser.add_argument("--no-regrade", action="store_true")
     parser.add_argument("--no-sharpness", action="store_true")
     parser.add_argument("--no-color-restore", action="store_true")
@@ -256,7 +253,6 @@ def _main(argv: list[str] | None = None) -> None:
             phash_iters=args.phash_iters,
             multi_hash_attack=args.multi_hash_attack,
             rotate=args.rotate,
-            transcode_chain=args.transcode_chain,
             median=args.median,
             noise=args.noise,
             requant=args.requant,
@@ -265,12 +261,10 @@ def _main(argv: list[str] | None = None) -> None:
             jitter=args.jitter,
             perspective=args.perspective,
             warp=args.warp,
-            mirror=args.mirror,
             subtract_beta=args.subtract_beta,
             saliency=args.saliency,
             chroma_levels=args.chroma_levels,
             native_filters=args.native_filters,
-            detail_protect=args.detail_protect,
             regrade=not args.no_regrade,
             sharpness=not args.no_sharpness,
             color_restore=not args.no_color_restore,

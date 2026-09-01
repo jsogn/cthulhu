@@ -5,7 +5,6 @@ from __future__ import annotations
 from itertools import pairwise
 
 import numpy as np
-from scipy.fftpack import dctn, idctn
 from scipy.ndimage import gaussian_filter, zoom
 
 from cthulhu_backend.watermark.qim import MID_BAND
@@ -206,24 +205,33 @@ def midband_perturb(
     """中频系数随机扰动：破坏二次嵌入基准（PRD 3.1.2 抗二次检测增强）。"""
     if rng is None:
         rng = np.random.default_rng(seed)
+    from cthulhu_backend.transform.extra_attacks import _dct8
+
+    matrix = _dct8()
 
     def perturb_channel(frame: np.ndarray) -> np.ndarray:
         frame8 = frame * 255.0
         h, w = frame8.shape
         padded = np.pad(frame8, ((0, -h % 8), (0, -w % 8)), mode="edge")
-        blocks = padded.reshape(padded.shape[0] // 8, 8, padded.shape[1] // 8, 8)
-        coeffs = dctn(blocks, axes=(1, 3), norm="ortho")
-        bh, bw = coeffs.shape[0], coeffs.shape[2]
-        flat = coeffs.transpose(0, 2, 1, 3).reshape(bh, bw, 64)
-        flat[:, :, MID_BAND] += rng.standard_normal((bh, bw, len(MID_BAND))) * strength
-        coeffs = flat.reshape(bh, bw, 8, 8).transpose(0, 2, 1, 3)
-        recon = idctn(coeffs, axes=(1, 3), norm="ortho").reshape(padded.shape)
+        bh, bw = padded.shape[0] // 8, padded.shape[1] // 8
+        blocks = padded.reshape(bh, 8, bw, 8)
+        stacked = blocks.transpose(0, 2, 1, 3).reshape(-1, 8, 8)
+        coeffs = np.matmul(matrix, stacked)
+        coeffs = np.matmul(coeffs, matrix.T)
+        flat = coeffs.reshape(-1, 64)
+        flat[:, MID_BAND] += rng.standard_normal((flat.shape[0], len(MID_BAND))) * strength
+        coeffs = flat.reshape(-1, 8, 8)
+        recon = np.matmul(matrix.T, coeffs)
+        recon = np.matmul(recon, matrix)
+        recon = recon.reshape(bh, bw, 8, 8).transpose(0, 2, 1, 3).reshape(padded.shape)
         return np.clip(recon[:h, :w] / 255.0, 0, 1)
 
     out = []
     for frame in frames:
         if frame.ndim == 3:
-            out.append(np.stack([perturb_channel(frame[..., c]) for c in range(3)], axis=-1))
+            luma = 0.299 * frame[..., 0] + 0.587 * frame[..., 1] + 0.114 * frame[..., 2]
+            new_luma = perturb_channel(luma)
+            out.append(np.clip(frame + (new_luma - luma)[..., None], 0.0, 1.0))
         else:
             out.append(perturb_channel(frame))
     return np.asarray(out)

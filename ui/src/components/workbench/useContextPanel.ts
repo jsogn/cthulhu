@@ -60,8 +60,9 @@ export function useContextPanel(
     state.materials.find((m) => m.id === state.activeId),
   );
   const jobs = useQueueStore((state) => state.jobs);
-  const antiLevel = useCleanPanel((state) => state.antiLevel);
-  const setAntiLevel = useCleanPanel((state) => state.setAntiLevel);
+  const hashOn = useCleanPanel((state) => state.hashOn);
+  const setHashOn = useCleanPanel((state) => state.setHashOn);
+  const setDctOn = useCleanPanel((state) => state.setDctOn);
 
   const risk = (material?.risk ?? "待检测") as RiskLevel;
   const score = material?.score ?? 0;
@@ -123,8 +124,9 @@ export function useContextPanel(
     setPendingDelete: outputsFlow.setPendingDelete,
     playerPath: outputsFlow.playerPath,
     setPlayerPath: outputsFlow.setPlayerPath,
-    antiLevel,
-    setAntiLevel,
+    hashOn,
+    setHashOn,
+    setDctOn,
     detectNow: detectionFlow.detectNow,
     runClean: cleanActions.runClean,
     showVariant: outputsFlow.showVariant,

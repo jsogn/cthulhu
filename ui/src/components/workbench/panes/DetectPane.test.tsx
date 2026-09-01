@@ -48,8 +48,9 @@ function renderPane(props: Partial<React.ComponentProps<typeof DetectPane>> = {}
         detectSubmitting={false}
         audio={null}
         audioMissing={false}
-        antiLevel="关闭"
-        setAntiLevel={vi.fn()}
+        hashOn={false}
+        setHashOn={vi.fn()}
+        setDctOn={vi.fn()}
         onDetect={vi.fn()}
         {...props}
       />
@@ -70,12 +71,14 @@ describe("DetectPane", () => {
     expect(onDetect).toHaveBeenCalledOnce();
   });
 
-  it("高分时给出应用标准档建议", async () => {
+  it("高分时给出经典指纹一键开启建议", async () => {
     const user = userEvent.setup();
-    const setAntiLevel = vi.fn();
-    renderPane({ score: 60, setAntiLevel });
-    await user.click(screen.getByRole("button", { name: "应用标准档" }));
-    expect(setAntiLevel).toHaveBeenCalledWith("标准");
+    const setHashOn = vi.fn();
+    const setDctOn = vi.fn();
+    renderPane({ score: 60, setHashOn, setDctOn });
+    await user.click(screen.getByRole("button", { name: "一键开启" }));
+    expect(setHashOn).toHaveBeenCalledWith(true);
+    expect(setDctOn).toHaveBeenCalledWith(true);
   });
 
   it("无报告时展示检测引导", () => {

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
+    "test": "node --test supervisor.test.mjs",
     "dist": "electron-builder --mac"
   },
   "devDependencies": {
@@ -23,6 +24,7 @@
     },
     "files": [
       "main.mjs",
+      "supervisor.mjs",
       "preload.cjs",
       "package.json"
     ],
@@ -34,10 +36,6 @@
       {
         "from": "../ui/dist",
         "to": "backend/ui-dist"
-      },
-      {
-        "from": "../backend/models/clip-vit-b32-vision-fp16.onnx",
-        "to": "backend/models/clip-vit-b32-vision-fp16.onnx"
       }
     ],
     "mac": {

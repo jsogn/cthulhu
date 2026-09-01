@@ -129,11 +129,22 @@ class JobQueue:
         self._task_pause: dict[str, threading.Event] = {}
         self._seq = 0
         self._worker: asyncio.Task | None = None
+        self._proc_tasks: set[asyncio.Task] = set()
 
     def start(self) -> None:
         # worker 缺失或已随旧事件循环结束（如测试的多 portal 场景）时，重建队列与任务。
         if self._worker is None or self._worker.done():
+            # 重建队列前先把尚未消费的排队项搬过去：restore() 入队的续跑任务
+            # 不能被新队列静默丢弃，否则进程重启后任务会永远停在「排队中」。
+            pending: list[tuple[int, int, str]] = []
+            while not self._inbox.empty():
+                try:
+                    pending.append(self._inbox.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
             self._inbox = asyncio.PriorityQueue()
+            for item in pending:
+                self._inbox.put_nowait(item)
             self._gate = asyncio.Condition()
             self._active_slots = 0
             self._worker = asyncio.create_task(self._run_worker())
@@ -169,6 +180,13 @@ class JobQueue:
         self._inbox.put_nowait((job.get("priority", 0), self._seq, job["id"]))
 
     async def stop(self) -> None:
+        # 先取消在途的任务处理协程，再停调度循环；避免退出时遗留
+        # 无法收口的 _process 协程继续占着并发闸门或写数据库。
+        pending = [task for task in self._proc_tasks if not task.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         if self._worker:
             try:
                 self._worker.cancel()
@@ -344,14 +362,32 @@ class JobQueue:
 
     async def _run_worker(self) -> None:
         while True:
-            _, seq, job_id = await self._inbox.get()
-            job = self._jobs.get(job_id)
-            if job is None or job.get("enqueue_seq") != seq:
-                continue
-            # 并发处理多个 job：真正的并行度由全局闸门统一控制。
-            asyncio.create_task(self._process(job_id))
+            try:
+                _, seq, job_id = await self._inbox.get()
+                job = self._jobs.get(job_id)
+                if job is None or job.get("enqueue_seq") != seq:
+                    continue
+                # 并发处理多个 job：真正的并行度由全局闸门统一控制。
+                proc_task = asyncio.create_task(self._process(job_id))
+                self._proc_tasks.add(proc_task)
+                proc_task.add_done_callback(self._proc_tasks.discard)
+            except asyncio.CancelledError:
+                raise
+            except RuntimeError:
+                # 事件循环已关闭，调度循环随之终止。
+                raise
+            except Exception as exc:  # noqa: BLE001 - 单次分发失败不能杀死调度循环
+                print(f"[jobs] 任务分发异常（已跳过，继续调度）：{exc}")
 
     async def _process(self, job_id: str) -> None:
+        try:
+            await self._process_inner(job_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - 调度/持久化异常不允许任务卡死在运行态
+            await self._fail_job(job_id, f"调度异常：{exc}")
+
+    async def _process_inner(self, job_id: str) -> None:
         job = self._jobs[job_id]
         if job["status"] != "queued":
             return
@@ -391,7 +427,13 @@ class JobQueue:
                         task["elapsed"] = round(
                             time.time() - task.get("started_at", time.time()), 1
                         )
-                        asyncio.run_coroutine_threadsafe(self._publish_task(job, task), loop)
+                        try:
+                            asyncio.run_coroutine_threadsafe(
+                                self._publish_task(job, task), loop
+                            )
+                        except RuntimeError:
+                            # 事件循环已关闭（进程退出中），丢弃该进度事件即可。
+                            pass
 
                     try:
                         runner = RUNNERS[task["kind"]]
@@ -424,13 +466,40 @@ class JobQueue:
         elif job_id in self._paused:
             job["status"] = "paused"
         else:
-            job["status"] = "failed" if job["tasks"] and all(t["status"] == "failed" for t in job["tasks"]) else "done"
+            job["status"] = self._derive_job_status(job["tasks"])
         db.save_job(self.public_view(job))
         await self._publish_job(job)
         # 任务到达终态后清理标记，防止长期运行中集合随取消/暂停操作无界增长。
         self._cancelled.discard(job_id)
         if job["status"] != "paused":
             self._paused.discard(job_id)
+
+    async def _fail_job(self, job_id: str, error: str) -> None:
+        """把中途异常的任务标记为失败并广播，避免任务永远停留在「执行中」。"""
+        job = self._jobs.get(job_id)
+        if job is None or job["status"] not in {"queued", "running"}:
+            return
+        for task in job["tasks"]:
+            if task["status"] in {"queued", "running"}:
+                task["status"] = "failed"
+                task["error"] = error
+                task["progress_note"] = "处理中断"
+        # 与正常收尾路径共用同一终态规则：单条失败不影响整单，全部失败才算失败。
+        job["status"] = self._derive_job_status(job["tasks"])
+        try:
+            db.save_job(self.public_view(job))
+        except Exception as exc:  # noqa: BLE001 - 持久化失败不掩盖原始错误
+            print(f"[jobs] 任务失败状态持久化失败（可忽略）：{exc}")
+        await self._publish_job(job)
+        self._cancelled.discard(job_id)
+        self._paused.discard(job_id)
+
+    @staticmethod
+    def _derive_job_status(tasks: list[dict]) -> str:
+        """统一的任务单终态规则：全部子任务失败才算整单失败。"""
+        if tasks and all(task["status"] == "failed" for task in tasks):
+            return "failed"
+        return "done"
 
     async def _publish_job(self, job: dict) -> None:
         await broker.publish({"type": "job:state", "job": self.public_view(job)})

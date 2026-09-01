@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,7 +33,6 @@ def _dct8() -> np.ndarray:
 class AssaultParams:
     """底层攻击组合参数；零值表示关闭对应原语。"""
 
-    mirror: bool = False
     jitter: float = 0.0
     perspective: float = 0.0
     warp: float = 0.0
@@ -43,12 +43,26 @@ class AssaultParams:
     dct_step: float = 0.0
     chroma_levels: int = 0
     drop_every: int = 0
+    temporal_sub: float = 0.0
+    fft_phase: float = 0.0
+    fft_mag: float = 0.0
+    dwt_detail: float = 0.0
+    hsv_jitter: float = 0.0
+    nonint_ratio: float = 0.0
+    flow_disturb: float = 0.0
+    texture_inject: float = 0.0
+    copy_field: np.ndarray | None = None
+    face_field: np.ndarray | None = None
+    multiscale: float = 0.0
+    complexity_trap: float = 0.0
+    face_perturb: float = 0.0
+    temporal_blur: float = 0.0
+    copy_attack: float = 0.0
 
     @property
     def enabled(self) -> bool:
         return any(
             (
-                self.mirror,
                 self.jitter > 0,
                 self.perspective > 0,
                 self.warp > 0,
@@ -59,6 +73,19 @@ class AssaultParams:
                 self.dct_step > 0,
                 self.chroma_levels > 0,
                 self.drop_every > 0,
+                self.temporal_sub > 0,
+                self.fft_phase > 0,
+                self.fft_mag > 0,
+                self.dwt_detail > 0,
+                self.hsv_jitter > 0,
+                self.nonint_ratio > 0,
+                self.flow_disturb > 0,
+                self.texture_inject > 0,
+                self.multiscale > 0,
+                self.complexity_trap > 0,
+                self.face_perturb > 0,
+                self.temporal_blur > 0,
+                self.copy_attack > 0,
             )
         )
 
@@ -211,51 +238,80 @@ def salient_overlay(frames: np.ndarray, layout: SaliencyLayout | None) -> np.nda
     return map_frames(draw_frame, frames)
 
 
-def protect_details(
-    attacked: np.ndarray,
+def quality_gate(
     original: np.ndarray,
-    strength: float,
+    attacked: np.ndarray,
+    psnr_target: float,
+    ssim_target: float,
 ) -> np.ndarray:
-    """细节保护：按原始画面的边缘/纹理显著性生成掩码，让攻击结果向原帧回退。
+    """画质门控：把攻击结果按全局系数回退到满足 PSNR/SSIM 目标的最强程度。
 
-    人脸、字幕、商品等高细节区域保持原样，平坦区域保留完整攻击效果；
-    strength 为回退力度（0 关闭，1 完全保护细节区域）。
+    攻击 delta 方向不变，仅整体缩放：PSNR 对缩放系数单调，可闭式求解；
+    若 SSIM 仍不达标，再在 [0,k] 上二分回退（系数越小越接近原帧，SSIM
+    单调趋近 1）。SSIM 在「帧抽样 + 空间降采样」的代理上评估，避免整块
+    高斯滤波的内存与耗时；攻击本身已足够温和时（达标）原样返回，不做放大。
     """
-    if strength <= 0:
+    original_dtype = original.dtype
+    ref = original.astype(np.float32)
+    cand = attacked.astype(np.float32)
+    if original_dtype == np.uint8:
+        ref /= 255.0
+        cand /= 255.0
+    delta = cand - ref
+    mse_delta = float(np.mean(delta**2))
+    if mse_delta <= 1e-12:
         return attacked
-    from scipy.ndimage import gaussian_filter, sobel
+    target_mse = 10.0 ** (-psnr_target / 10.0)
+    if mse_delta <= target_mse and _ssim_proxy(ref, cand) >= ssim_target:
+        return attacked
+    # 0.995 余量吸收 float32 舍入，保证门控后 PSNR 稳定不低于目标。
+    k = min(1.0, float(np.sqrt(target_mse / mse_delta)) * 0.995)
+    out = ref + k * delta
+    if _ssim_proxy(ref, out) < ssim_target:
+        lo, hi = 0.0, k
+        for _ in range(6):
+            mid = (lo + hi) / 2.0
+            if _ssim_proxy(ref, ref + mid * delta) >= ssim_target:
+                lo = mid
+            else:
+                hi = mid
+        out = ref + lo * delta
+    out = np.clip(out, 0.0, 1.0)
+    if original_dtype == np.uint8:
+        return (out * 255.0).round().astype(np.uint8)
+    return out.astype(original_dtype)
 
-    from cthulhu_backend.parallel import map_frames
 
-    is_u8 = attacked.dtype == np.uint8
-    attacked_f = attacked.astype(np.float32)
-    original_f = original.astype(np.float32)
-    if is_u8:
-        attacked_f /= 255.0
-        original_f /= 255.0
+def _ssim_proxy(
+    reference: np.ndarray,
+    candidate: np.ndarray,
+    max_frames: int = 8,
+    max_edge: int = 256,
+) -> float:
+    """SSIM 代理：帧抽样 + 空间降采样，控制块级评估的内存与耗时。"""
+    from scipy.ndimage import zoom
 
-    def blend(pair: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-        current, source = pair
-        luma = (
-            0.299 * source[..., 0] + 0.587 * source[..., 1] + 0.114 * source[..., 2]
-            if source.ndim == 3
-            else source
-        )
-        gx = sobel(luma, axis=1, mode="reflect")
-        gy = sobel(luma, axis=0, mode="reflect")
-        magnitude = np.sqrt(gx**2 + gy**2)
-        magnitude = gaussian_filter(magnitude, sigma=1.5)
-        peak = float(np.percentile(magnitude, 96))
-        mask = np.clip(magnitude / max(peak, 1e-6), 0.0, 1.0)
-        mask = gaussian_filter(mask, sigma=1.0) * strength
-        if source.ndim == 3:
-            mask = mask[..., None]
-        return current * (1.0 - mask) + source * mask
+    from cthulhu_backend.evaluate import metrics
 
-    result = map_frames(blend, list(zip(attacked_f, original_f)))
-    if is_u8:
-        return (np.clip(result, 0.0, 1.0) * 255.0).round().astype(np.uint8)
-    return result.astype(attacked.dtype)
+    ref = np.asarray(reference, dtype=np.float32)
+    cand = np.asarray(candidate, dtype=np.float32)
+    if ref.ndim >= 3 and len(ref) > max_frames:
+        indices = np.linspace(0, len(ref) - 1, max_frames).astype(int)
+        ref = ref[indices]
+        cand = cand[indices]
+    if ref.ndim == 4:
+        h, w = ref.shape[1], ref.shape[2]
+        scale = min(1.0, max_edge / max(h, w))
+        if scale < 1.0:
+            ref = zoom(ref, (1.0, scale, scale, 1.0), order=1)
+            cand = zoom(cand, (1.0, scale, scale, 1.0), order=1)
+    elif ref.ndim == 3:
+        h, w = ref.shape[1], ref.shape[2]
+        scale = min(1.0, max_edge / max(h, w))
+        if scale < 1.0:
+            ref = zoom(ref, (1.0, scale, scale), order=1)
+            cand = zoom(cand, (1.0, scale, scale), order=1)
+    return metrics.ssim(ref, cand)
 
 
 def _spatial_kernel(shape: tuple[int, ...], size: int) -> tuple[int, ...]:
@@ -306,12 +362,14 @@ def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
     if levels <= 1:
         return frames
     original_dtype = frames.dtype
+    if original_dtype == np.uint8:
+        # 查表实现：256 项一次算好，逐像素查表比 float 往返快且零精度损失。
+        scale = (levels - 1) / 255.0
+        values = np.rint(np.arange(256, dtype=np.float32) * scale) / scale
+        table = np.rint(values).clip(0, 255).astype(np.uint8)
+        return table[frames]
     work = frames.astype(np.float32)
-    if original_dtype == np.uint8:
-        work /= 255.0
     requantized = np.round(work * (levels - 1)) / (levels - 1)
-    if original_dtype == np.uint8:
-        return (requantized * 255.0).round().astype(np.uint8)
     return requantized.astype(original_dtype)
 
 
@@ -346,36 +404,41 @@ def _requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.nda
 
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    thread_hint = os.environ.get("CTHULHU_TRANSFORM_THREADS")
+    internal_workers = int(thread_hint) if thread_hint and thread_hint.isdigit() else 4
+    with ThreadPoolExecutor(max_workers=internal_workers) as pool:
         for start, end, recon_frame in pool.map(run, jobs):
             out[start:end] = recon_frame
     return out[:, :h, :w]
 
 
 def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
-    """DCT 重量化：逐通道 RGB 直接处理（带宽受限机器上的最优实现）。
+    """DCT 重量化：彩色帧只对亮度做重量化、差值叠加回三通道。
 
-    亮度+子采样色度方案实测更慢（YCbCr 转换与上采样引入更多整片拷贝），
-    已回退为逐通道口径，正确性经旧 scipy 参考与代理回归门双重验证。
-    """
+    免去逐通道三份 DCT 与 YCbCr 往返，仅为亮度加权的两次全图加减；
+    灰度帧保持原有单平面路径。"""
     if step <= 0:
         return frames
     original_dtype = frames.dtype
     work = np.asarray(frames, dtype=np.float32)
-    domain_255 = work.max() > 1.0
-    if not domain_255:
-        work = work * 255.0
+    if original_dtype != np.uint8:
+        # float [0,1] 域：DCT 线性，量化步长同步除以 255，免去全图 ×255 往返。
+        effective_step = step / 255.0
+        if work.ndim == 3:
+            return np.clip(_requant_plane(work, effective_step), 0.0, 1.0).astype(
+                original_dtype
+            )
+        luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
+        new_luma = _requant_plane(luma, effective_step)
+        return np.clip(work + (new_luma - luma)[..., None], 0.0, 1.0).astype(original_dtype)
+
     if work.ndim == 3:
         result = np.clip(_requant_plane(work, step) / 255.0, 0.0, 1.0)
-        if original_dtype == np.uint8:
-            return (result * 255.0).round().astype(np.uint8)
-        return result.astype(original_dtype)
-
-    planes = [_requant_plane(work[..., c], step) for c in range(3)]
-    result = np.clip(np.stack(planes, axis=-1) / 255.0, 0.0, 1.0)
-    if frames.dtype == np.uint8:
         return (result * 255.0).round().astype(np.uint8)
-    return result.astype(frames.dtype)
+    luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
+    new_luma = _requant_plane(luma, step)
+    result = np.clip(work + (new_luma - luma)[..., None], 0.0, 255.0)
+    return result.round().astype(np.uint8)
 
 
 def chroma_quant(frames: np.ndarray, levels: int) -> np.ndarray:
@@ -413,11 +476,6 @@ def chroma_quant(frames: np.ndarray, levels: int) -> np.ndarray:
     if original_dtype == np.uint8:
         return out
     return out.astype(np.float32) / 255.0
-
-
-def mirror(frames: np.ndarray) -> np.ndarray:
-    """水平镜像。"""
-    return np.flip(frames, axis=frames.ndim - 2)
 
 
 def perspective_shear(
@@ -585,15 +643,17 @@ def apply(
     rng: np.random.Generator,
 ) -> np.ndarray:
     """按固定顺序施加组合攻击，全部为可选开关。"""
+    from cthulhu_backend.transform import regenerate
+
     work = frames
-    if params.mirror:
-        work = mirror(work)
     if params.jitter > 0:
         work = translate_jitter(work, params.jitter, rng)
     if params.perspective > 0:
         work = perspective_shear(work, params.perspective, rng)
     if params.warp > 0:
         work = local_warp(work, params.warp, rng)
+    if params.nonint_ratio > 0:
+        work = regenerate.noninteger_rescale(work, params.nonint_ratio)
     if params.median > 0:
         work = median(work, params.median)
     if params.noise > 0:
@@ -606,6 +666,30 @@ def apply(
         work = dct_requant(work, params.dct_step)
     if params.chroma_levels > 0:
         work = chroma_quant(work, params.chroma_levels)
+    if params.temporal_sub > 0:
+        work = regenerate.temporal_subtract(work, params.temporal_sub)
+    if params.fft_phase > 0:
+        work = regenerate.fft_phase(work, params.fft_phase, rng)
+    if params.fft_mag > 0:
+        work = regenerate.fft_magnitude(work, params.fft_mag, rng)
+    if params.dwt_detail > 0:
+        work = regenerate.dwt_detail(work, params.dwt_detail, rng)
+    if params.hsv_jitter > 0:
+        work = regenerate.hsv_jitter(work, params.hsv_jitter, rng)
+    if params.flow_disturb > 0:
+        work = regenerate.flow_disturb(work, params.flow_disturb, rng)
+    if params.texture_inject > 0:
+        work = regenerate.texture_inject(work, params.texture_inject, rng)
+    if params.copy_attack > 0:
+        work = regenerate.copy_attack(work, params.copy_attack, rng, field=params.copy_field)
+    if params.multiscale > 0:
+        work = regenerate.multiscale_perturb(work, params.multiscale, rng)
+    if params.complexity_trap > 0:
+        work = regenerate.complexity_trap(work, params.complexity_trap, rng)
+    if params.face_perturb > 0:
+        work = regenerate.face_perturb(work, params.face_perturb, rng, field=params.face_field)
+    if params.temporal_blur > 0:
+        work = regenerate.temporal_blur(work, params.temporal_blur)
     if params.drop_every > 0:
         work = drop_duplicate(work, params.drop_every)
     return work

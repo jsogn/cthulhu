@@ -10,6 +10,64 @@ import numpy as np
 from scipy.signal import butter, lfilter, resample_poly
 
 
+def _lpc_coeffs(segment: np.ndarray, order: int) -> np.ndarray:
+    """自相关法 + Levinson-Durbin 求 LPC 系数 a_1..a_p。"""
+    r = np.correlate(segment, segment, mode="full")[len(segment) - 1 : len(segment) + order]
+    r = r.astype(np.float64)
+    energy = float(r[0]) + 1e-12
+    a = np.zeros(order + 1)
+    a[0] = 1.0
+    for i in range(1, order + 1):
+        acc = 0.0
+        for j in range(1, i):
+            acc += a[j] * r[i - j]
+        k = (r[i] - acc) / energy
+        a[1:i] = a[1:i] - k * a[i - 1 : 0 : -1]
+        a[i] = k
+        energy *= 1.0 - k * k
+    return a[1:]
+
+
+def lpc_whiten(
+    signal: np.ndarray,
+    sample_rate: int,
+    strength: float,
+    rng: np.random.Generator,
+    frame_ms: float = 20.0,
+    order: int = 12,
+) -> np.ndarray:
+    """LPCAA 音频攻击：逐帧 LPC 残差白化，破坏 LPC/倒谱类语音指纹。
+
+    预测误差向白噪声方向拉伸 strength 比例后再经逆滤波重构，能量保持、
+    音色轻微变化；对回声隐藏类倒谱结构有削弱作用。
+    """
+    if strength <= 0:
+        return signal
+    frame = int(sample_rate * frame_ms / 1000.0)
+    hop = max(1, frame // 2)
+    n = len(signal)
+    if n < frame:
+        return signal
+    window = np.hanning(frame)
+    out = np.zeros(n, dtype=np.float64)
+    weight = np.zeros(n, dtype=np.float64)
+    for start in range(0, n - frame + 1, hop):
+        segment = signal[start : start + frame]
+        if float(np.std(segment)) < 1e-9:
+            continue
+        coeffs = _lpc_coeffs(segment, order)
+        residual = lfilter(np.concatenate([[1.0], -coeffs]), [1.0], segment)
+        white = rng.standard_normal(frame) * (float(np.std(residual)) + 1e-9)
+        mixed = (1.0 - strength) * residual + strength * white
+        recon = lfilter([1.0], np.concatenate([[1.0], -coeffs]), mixed)
+        if not np.isfinite(recon).all():
+            continue
+        out[start : start + frame] += recon * window
+        weight[start : start + frame] += window
+    safe = np.maximum(weight, 1e-6)
+    return np.where(weight > 1e-6, out / safe, signal).astype(signal.dtype)
+
+
 def eq_tilt(signal: np.ndarray, sample_rate: int, rng: np.random.Generator, gain_db: float = 3.0) -> np.ndarray:
     """一阶高/低频倾斜滤波，方向随机。"""
     direction = 1.0 if rng.random() < 0.5 else -1.0

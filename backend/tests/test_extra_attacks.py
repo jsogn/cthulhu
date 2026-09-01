@@ -13,6 +13,27 @@ def make_frames(color: bool = False) -> np.ndarray:
     return rng.random(shape, dtype=np.float32)
 
 
+def test_quality_gate_pulls_back_until_psnr_target():
+    frames = make_frames()
+    degraded = np.clip(frames + np.random.default_rng(4).normal(0, 0.2, frames.shape), 0, 1)
+    out = extra_attacks.quality_gate(frames, degraded, psnr_target=32.0, ssim_target=0.8)
+    from cthulhu_backend.evaluate import metrics
+
+    assert out.shape == frames.shape
+    assert out.dtype == frames.dtype
+    assert metrics.psnr(frames, out) >= 32.0
+    assert metrics.ssim(frames, out) >= 0.8
+    # 回退后的画面应比退化版更接近原帧。
+    assert float(np.mean((out - frames) ** 2)) < float(np.mean((degraded - frames) ** 2))
+
+
+def test_quality_gate_keeps_gentle_attack_untouched():
+    frames = make_frames()
+    gentle = np.clip(frames + np.random.default_rng(5).normal(0, 0.002, frames.shape), 0, 1)
+    out = extra_attacks.quality_gate(frames, gentle, psnr_target=38.0, ssim_target=0.94)
+    np.testing.assert_array_equal(out, gentle)
+
+
 def test_all_off_is_identity():
     frames = make_frames()
     out = extra_attacks.apply(frames, extra_attacks.AssaultParams(), np.random.default_rng(1))
@@ -67,9 +88,9 @@ def test_color_dct_requant_preserves_luma_and_touches_chroma():
     assert abs(after - before) > 1e-4
 
 
-def test_mirror_and_jitter_deterministic():
+def test_jitter_deterministic():
     frames = make_frames()
-    params = extra_attacks.AssaultParams(mirror=True, jitter=0.01)
+    params = extra_attacks.AssaultParams(jitter=0.05)
     first = extra_attacks.apply(frames, params, np.random.default_rng(4))
     second = extra_attacks.apply(frames, params, np.random.default_rng(4))
     np.testing.assert_array_equal(first, second)
@@ -132,16 +153,6 @@ def test_saliency_higher_levels_add_strong_content():
     out = extra_attacks.salient_overlay(frames, layout4)
     assert out.shape == frames.shape
     assert float(np.mean(np.abs(out.astype(np.float32) - frames.astype(np.float32)))) > 0.05
-
-
-def test_protect_details_restores_toward_original():
-    frames = make_frames(color=True)
-    attacked = np.clip(frames + 0.06, 0.0, 1.0).astype(np.float32)
-    out = extra_attacks.protect_details(attacked, frames, strength=0.7)
-    assert out.shape == frames.shape
-    assert out.dtype == frames.dtype
-    assert float(np.mean(np.abs(out - frames))) < float(np.mean(np.abs(attacked - frames)))
-    assert float(np.mean(np.abs(out - attacked))) > 0
 
 
 def test_chroma_quant_preserves_luma_reduces_chroma():

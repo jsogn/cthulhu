@@ -10,7 +10,7 @@ function template(payload: Record<string, unknown>): TemplateInfo {
 describe("payloadOf", () => {
   it("空 payload 走兼容旧模板的默认档位", () => {
     const payload = payloadOf(template({}));
-    expect(payload.anti).toBe("标准");
+    expect(payload.rotate).toBe(0);
     expect(payload.regradeOn).toBe(true);
     expect(payload.sharpness).toBe(true);
     expect(payload.colorRestore).toBe(true);
@@ -19,9 +19,9 @@ describe("payloadOf", () => {
   });
 
   it("兼容旧版 audio 字段并保留显式字段", () => {
-    const payload = payloadOf(template({ audio: false, anti: "轻度", denoise: false }));
+    const payload = payloadOf(template({ audio: false, rotate: 1.2, denoise: false }));
     expect(payload.audioRemix).toBe(false);
-    expect(payload.anti).toBe("轻度");
+    expect(payload.rotate).toBe(1.2);
     expect(payload.denoise).toBe(false);
   });
 
@@ -38,7 +38,7 @@ describe("payloadOf", () => {
 
 describe("DEFAULT_TEMPLATE", () => {
   it("默认档位从关闭状态开始", () => {
-    expect(DEFAULT_TEMPLATE.anti).toBe("关闭");
+    expect(DEFAULT_TEMPLATE.rotate).toBe(0);
     expect(DEFAULT_TEMPLATE.codec).toBe("H.264");
     expect(DEFAULT_TEMPLATE.resolution).toBe("保持原始分辨率");
     expect(DEFAULT_TEMPLATE.audioRemix).toBe(false);

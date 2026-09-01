@@ -8,62 +8,6 @@ export const FIXED_GAMMA = 0.03 + 0.2 * FIXED_PERTURB;
 export const FIXED_BRIGHTNESS = 0.02 + 0.06 * FIXED_PERTURB;
 export const FIXED_CROP = 0.03;
 
-// 指纹对抗档：静态几何去同步（低频微旋转）+ 签名域扰动 + 静态频域/色度原语。
-// 硬约束：不含可见运动（逐帧抖动/透视/局部扭曲/抽帧复制）与时间域攻击
-// （逐镜头变速/切点删帧/音频变速），保证观感与音画同步。
-export type AntiPreset = {
-  rotate: number;
-  epsilon?: number;
-  median?: number;
-  noise?: number;
-  requant?: number;
-  dctStep?: number;
-  dropEvery?: number;
-  jitter?: number;
-  perspective?: number;
-  warp?: number;
-  mirror?: boolean;
-  chromaLevels?: number;
-  subtractBeta?: number;
-  transcodeChain?: boolean;
-  jointAttack?: boolean;
-  saliency?: number;
-  detailProtect?: number;
-  shotRetime?: boolean;
-  cutJitter?: number;
-  audioStrong?: boolean;
-};
-
-export const ANTI_PRESETS: Record<string, AntiPreset | undefined> = {
-  关闭: undefined,
-  轻度: { rotate: 0.15 },
-  标准: {
-    rotate: 0.2,
-    requant: 96,
-    noise: 0.003,
-    audioStrong: true,
-  },
-  强力: {
-    rotate: 0.25,
-    epsilon: 0.045,
-    requant: 64,
-    noise: 0.004,
-    audioStrong: true,
-  },
-  全兵器: {
-    rotate: 0.3,
-    epsilon: 0.05,
-    dctStep: 12,
-    requant: 32,
-    chromaLevels: 32,
-    noise: 0.008,
-    subtractBeta: 1.2,
-    transcodeChain: true,
-    jointAttack: true,
-    audioStrong: true,
-  },
-};
-
 /** 从清洗设置单源组装后端清洗参数（每次调用生成独立随机种子）。 */
 export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
   // 只换壳模式不经过任何对抗/处理管线，记录与展示都不应包含无效参数。
@@ -84,13 +28,13 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
       seed: Math.floor(Math.random() * 1_000_000),
     };
   }
-  const anti = ANTI_PRESETS[state.antiLevel];
   return {
     reorder: false,
     speed: 1.0,
     recrop: state.recropOn ? FIXED_CROP : 0,
     perturb: FIXED_PERTURB,
     regrade: state.regradeOn,
+    ...(state.regradeOn ? { hsv_jitter: 6, chroma_levels: 32 } : {}),
     output_mode: state.outputMode,
     audio_remix: state.audioClean,
     echo_defeat: state.echoDefeat,
@@ -99,38 +43,47 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     sharpness: state.sharpness,
     color_restore: state.colorFix,
     denoise: state.aiDenoise,
-    anti_reembed: state.antiReembed,
-    detail_protect: state.detailProtectOn ? 0.5 : 0,
+    ...(state.rotateOn ? { rotate: state.rotate } : {}),
+    ...(state.hashOn
+      ? state.hashMode === "phash"
+        ? { phash_attack: true, phash_epsilon: state.hashEps }
+        : state.hashMode === "dhash"
+          ? { dhash_attack: true, phash_epsilon: state.hashEps }
+          : { multi_hash_attack: true, phash_epsilon: state.hashEps }
+      : {}),
+    ...(state.requantOn ? { requant: state.requant } : {}),
+    ...(state.noiseOn ? { noise: state.noise } : {}),
+    ...(state.dctOn ? { dct_step: 12 } : {}),
+    ...(state.audioStrongOn ? { audio_strong: true } : {}),
+    ...(state.temporalSubOn ? { temporal_sub: state.temporalSub } : {}),
+    ...(state.temporalSubOn && state.nativeTemporalOn ? { native_temporal: true } : {}),
+    ...(state.fftOn ? { fft_phase: state.fftPhase, fft_mag: state.fftMag } : {}),
+    ...(state.dwtDetailOn ? { dwt_detail: state.dwtDetail } : {}),
+    ...(state.warpOn ? { warp: state.warp } : {}),
+    ...(state.shearOn ? { perspective: state.shear } : {}),
+    ...(state.jitterOn ? { jitter: state.jitter } : {}),
+    ...(state.nonintOn ? { nonint_ratio: state.nonintRatio } : {}),
+    ...(state.flowOn ? { flow_disturb: state.flow } : {}),
+    ...(state.textureOn
+      ? { texture_inject: state.texture, complexity_trap: state.texture * 2.5 }
+      : {}),
+    ...(state.multiscaleOn ? { multiscale: state.multiscale } : {}),
+    ...(state.faceOn ? { face_perturb: state.face } : {}),
+    ...(state.temporalBlurOn ? { temporal_blur: state.temporalBlur } : {}),
+    ...(state.lpcOn ? { lpc_attack: state.lpc } : {}),
+    ...(state.neuralOn ? { copy_attack: state.neural } : {}),
+    ...(state.qualityProtectOn
+      ? {
+          quality_protect: true,
+          psnr_target: state.psnrTarget,
+          ssim_target: state.ssimTarget,
+        }
+      : {}),
     seed: Math.floor(Math.random() * 1_000_000),
     codec: state.codec === "H.265" ? "libx265" : "libx264",
     lossless: state.lossless,
     spoof: state.spoof,
     ...(state.resolution !== "保持原始分辨率" ? { resolution: state.resolution } : {}),
-    ...(anti
-      ? {
-          rotate: anti.rotate,
-          phash_attack: !anti.jointAttack && anti.epsilon != null,
-          phash_epsilon: anti.epsilon,
-          ...(anti.median ? { median: anti.median } : {}),
-          ...(anti.noise ? { noise: anti.noise } : {}),
-          ...(anti.requant ? { requant: anti.requant } : {}),
-          ...(anti.dctStep ? { dct_step: anti.dctStep } : {}),
-          ...(anti.dropEvery ? { drop_every: anti.dropEvery } : {}),
-          ...(anti.jitter ? { jitter: anti.jitter } : {}),
-          ...(anti.perspective ? { perspective: anti.perspective } : {}),
-          ...(anti.warp ? { warp: anti.warp } : {}),
-          ...(anti.mirror ? { mirror: true } : {}),
-          ...(anti.chromaLevels ? { chroma_levels: anti.chromaLevels } : {}),
-          ...(anti.subtractBeta ? { subtract_beta: anti.subtractBeta } : {}),
-          ...(anti.transcodeChain ? { transcode_chain: true } : {}),
-          ...(anti.jointAttack ? { multi_hash_attack: true } : {}),
-          ...(anti.saliency ? { saliency: anti.saliency } : {}),
-          ...(anti.detailProtect ? { detail_protect: anti.detailProtect } : {}),
-          ...(anti.shotRetime ? { shot_retime: true } : {}),
-          ...(anti.cutJitter ? { cut_jitter: anti.cutJitter } : {}),
-          ...(anti.audioStrong ? { audio_strong: true } : {}),
-        }
-      : {}),
   };
 }
 

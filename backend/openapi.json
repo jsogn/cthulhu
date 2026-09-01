@@ -1686,11 +1686,16 @@
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Phash Iters",
-            "default": 120
+            "default": 40
           },
           "multi_hash_attack": {
             "type": "boolean",
             "title": "Multi Hash Attack",
+            "default": false
+          },
+          "dhash_attack": {
+            "type": "boolean",
+            "title": "Dhash Attack",
             "default": false
           },
           "shot_retime": {
@@ -1742,11 +1747,6 @@
             "title": "Rotate",
             "default": 0.0
           },
-          "transcode_chain": {
-            "type": "boolean",
-            "title": "Transcode Chain",
-            "default": false
-          },
           "median": {
             "type": "integer",
             "maximum": 9.0,
@@ -1782,6 +1782,128 @@
             "title": "Drop Every",
             "default": 0
           },
+          "temporal_sub": {
+            "type": "number",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Temporal Sub",
+            "default": 0.0
+          },
+          "fft_phase": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Fft Phase",
+            "default": 0.0
+          },
+          "fft_mag": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Fft Mag",
+            "default": 0.0
+          },
+          "dwt_detail": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Dwt Detail",
+            "default": 0.0
+          },
+          "hsv_jitter": {
+            "type": "number",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Hsv Jitter",
+            "default": 0.0
+          },
+          "nonint_ratio": {
+            "type": "number",
+            "maximum": 0.1,
+            "minimum": 0.0,
+            "title": "Nonint Ratio",
+            "default": 0.0
+          },
+          "flow_disturb": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Flow Disturb",
+            "default": 0.0
+          },
+          "texture_inject": {
+            "type": "number",
+            "maximum": 0.1,
+            "minimum": 0.0,
+            "title": "Texture Inject",
+            "default": 0.0
+          },
+          "multiscale": {
+            "type": "number",
+            "maximum": 0.1,
+            "minimum": 0.0,
+            "title": "Multiscale",
+            "default": 0.0
+          },
+          "complexity_trap": {
+            "type": "number",
+            "maximum": 0.2,
+            "minimum": 0.0,
+            "title": "Complexity Trap",
+            "default": 0.0
+          },
+          "face_perturb": {
+            "type": "number",
+            "maximum": 0.2,
+            "minimum": 0.0,
+            "title": "Face Perturb",
+            "default": 0.0
+          },
+          "temporal_blur": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Temporal Blur",
+            "default": 0.0
+          },
+          "lpc_attack": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Lpc Attack",
+            "default": 0.0
+          },
+          "copy_attack": {
+            "type": "number",
+            "maximum": 0.2,
+            "minimum": 0.0,
+            "title": "Copy Attack",
+            "default": 0.0
+          },
+          "native_temporal": {
+            "type": "boolean",
+            "title": "Native Temporal",
+            "default": false
+          },
+          "quality_protect": {
+            "type": "boolean",
+            "title": "Quality Protect",
+            "default": false
+          },
+          "psnr_target": {
+            "type": "number",
+            "maximum": 60.0,
+            "minimum": 10.0,
+            "title": "Psnr Target",
+            "default": 38.0
+          },
+          "ssim_target": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Ssim Target",
+            "default": 0.94
+          },
           "jitter": {
             "type": "number",
             "maximum": 1.0,
@@ -1802,11 +1924,6 @@
             "minimum": 0.0,
             "title": "Warp",
             "default": 0.0
-          },
-          "mirror": {
-            "type": "boolean",
-            "title": "Mirror",
-            "default": false
           },
           "subtract_beta": {
             "type": "number",
@@ -1833,13 +1950,6 @@
             "type": "boolean",
             "title": "Native Filters",
             "default": false
-          },
-          "detail_protect": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Detail Protect",
-            "default": 0.0
           },
           "path": {
             "type": "string",
@@ -2152,17 +2262,45 @@
             "title": "Antireembed",
             "default": false
           },
-          "anti": {
+          "rotate": {
+            "type": "number",
+            "title": "Rotate",
+            "default": 0.0
+          },
+          "hashAttack": {
+            "type": "boolean",
+            "title": "Hashattack",
+            "default": false
+          },
+          "hashEpsilon": {
+            "type": "number",
+            "title": "Hashepsilon",
+            "default": 0.045
+          },
+          "hashMode": {
             "type": "string",
-            "enum": [
-              "关闭",
-              "轻度",
-              "标准",
-              "强力",
-              "全兵器"
-            ],
-            "title": "Anti",
-            "default": "关闭"
+            "title": "Hashmode",
+            "default": "joint"
+          },
+          "requant": {
+            "type": "integer",
+            "title": "Requant",
+            "default": 0
+          },
+          "noise": {
+            "type": "number",
+            "title": "Noise",
+            "default": 0.0
+          },
+          "dctStep": {
+            "type": "number",
+            "title": "Dctstep",
+            "default": 0.0
+          },
+          "audioStrong": {
+            "type": "boolean",
+            "title": "Audiostrong",
+            "default": false
           },
           "regradeOn": {
             "type": "boolean",
@@ -2174,10 +2312,110 @@
             "title": "Recropon",
             "default": false
           },
-          "detailProtectOn": {
+          "temporalSub": {
+            "type": "number",
+            "title": "Temporalsub",
+            "default": 0.0
+          },
+          "fftPhase": {
+            "type": "number",
+            "title": "Fftphase",
+            "default": 0.0
+          },
+          "dwtDetail": {
+            "type": "number",
+            "title": "Dwtdetail",
+            "default": 0.0
+          },
+          "fftMag": {
+            "type": "number",
+            "title": "Fftmag",
+            "default": 0.0
+          },
+          "hsvJitter": {
+            "type": "number",
+            "title": "Hsvjitter",
+            "default": 0.0
+          },
+          "nonintRatio": {
+            "type": "number",
+            "title": "Nonintratio",
+            "default": 0.0
+          },
+          "jitter": {
+            "type": "number",
+            "title": "Jitter",
+            "default": 0.0
+          },
+          "perspective": {
+            "type": "number",
+            "title": "Perspective",
+            "default": 0.0
+          },
+          "warp": {
+            "type": "number",
+            "title": "Warp",
+            "default": 0.0
+          },
+          "flowDisturb": {
+            "type": "number",
+            "title": "Flowdisturb",
+            "default": 0.0
+          },
+          "textureInject": {
+            "type": "number",
+            "title": "Textureinject",
+            "default": 0.0
+          },
+          "multiscale": {
+            "type": "number",
+            "title": "Multiscale",
+            "default": 0.0
+          },
+          "complexityTrap": {
+            "type": "number",
+            "title": "Complexitytrap",
+            "default": 0.0
+          },
+          "facePerturb": {
+            "type": "number",
+            "title": "Faceperturb",
+            "default": 0.0
+          },
+          "temporalBlur": {
+            "type": "number",
+            "title": "Temporalblur",
+            "default": 0.0
+          },
+          "lpcAttack": {
+            "type": "number",
+            "title": "Lpcattack",
+            "default": 0.0
+          },
+          "copyAttack": {
+            "type": "number",
+            "title": "Copyattack",
+            "default": 0.0
+          },
+          "nativeTemporal": {
             "type": "boolean",
-            "title": "Detailprotecton",
+            "title": "Nativetemporal",
             "default": false
+          },
+          "qualityProtect": {
+            "type": "boolean",
+            "title": "Qualityprotect",
+            "default": false
+          },
+          "psnrTarget": {
+            "type": "number",
+            "title": "Psnrtarget",
+            "default": 38.0
+          },
+          "ssimTarget": {
+            "type": "number",
+            "title": "Ssimtarget",
+            "default": 0.94
           },
           "sharpness": {
             "type": "boolean",

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -7,11 +9,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { TabsContent } from "@/components/ui/tabs";
+import {
+  WeaponTags,
+  type CostKind,
+  type LayerKind,
+  type QualityKind,
+} from "@/components/workbench/WeaponTags";
 import type { TemplateInfo } from "@/lib/backend";
-import { FIXED_BRIGHTNESS, FIXED_CROP, FIXED_GAMMA } from "@/lib/cleanOptions";
-import type { AntiLevel } from "@/lib/templates";
+import { FIXED_CROP } from "@/lib/cleanOptions";
 import { cn } from "@/lib/utils";
 import { useCleanPanel } from "@/stores/cleanPanel";
 
@@ -32,20 +40,36 @@ export function CleanPane({
     templateId,
     outputMode,
     setOutputMode,
-    antiLevel,
-    setAntiLevel,
     audioClean,
     setAudioClean,
     echoDefeat,
     setEchoDefeat,
-    antiReembed,
-    setAntiReembed,
+    rotateOn,
+    setRotateOn,
+    rotate,
+    setRotate,
+    hashOn,
+    setHashOn,
+    hashEps,
+    setHashEps,
+    hashMode,
+    setHashMode,
+    requantOn,
+    setRequantOn,
+    requant,
+    setRequant,
+    noiseOn,
+    setNoiseOn,
+    noise,
+    setNoise,
+    dctOn,
+    setDctOn,
+    audioStrongOn,
+    setAudioStrongOn,
     recropOn,
     setRecropOn,
     regradeOn,
     setRegradeOn,
-    detailProtectOn,
-    setDetailProtectOn,
     sharpness,
     setSharpness,
     colorFix,
@@ -54,6 +78,72 @@ export function CleanPane({
     setAiDenoise,
     spoof,
     setSpoof,
+    temporalSubOn,
+    setTemporalSubOn,
+    temporalSub,
+    setTemporalSub,
+    nativeTemporalOn,
+    setNativeTemporalOn,
+    fftOn,
+    setFftOn,
+    fftPhase,
+    setFftPhase,
+    fftMag,
+    setFftMag,
+    dwtDetailOn,
+    setDwtDetailOn,
+    dwtDetail,
+    setDwtDetail,
+    warpOn,
+    setWarpOn,
+    warp,
+    setWarp,
+    shearOn,
+    setShearOn,
+    shear,
+    setShear,
+    jitterOn,
+    setJitterOn,
+    jitter,
+    setJitter,
+    nonintOn,
+    setNonintOn,
+    nonintRatio,
+    setNonintRatio,
+    flowOn,
+    setFlowOn,
+    flow,
+    setFlow,
+    textureOn,
+    setTextureOn,
+    texture,
+    setTexture,
+    multiscaleOn,
+    setMultiscaleOn,
+    multiscale,
+    setMultiscale,
+    faceOn,
+    setFaceOn,
+    face,
+    setFace,
+    temporalBlurOn,
+    setTemporalBlurOn,
+    temporalBlur,
+    setTemporalBlur,
+    lpcOn,
+    setLpcOn,
+    lpc,
+    setLpc,
+    neuralOn,
+    setNeuralOn,
+    neural,
+    setNeural,
+    qualityProtectOn,
+    setQualityProtectOn,
+    psnrTarget,
+    setPsnrTarget,
+    ssimTarget,
+    setSsimTarget,
     codec,
     setCodec,
     lossless,
@@ -61,6 +151,29 @@ export function CleanPane({
     resolution,
     setResolution,
   } = useCleanPanel();
+
+  const switchCard = (
+    label: string,
+    desc: ReactNode,
+    layer: LayerKind,
+    cost: CostKind,
+    quality: QualityKind,
+    checked: boolean,
+    onCheckedChange: (value: boolean) => void,
+    body?: ReactNode,
+  ) => (
+    <div className="switch-card">
+      <div className="switch">
+        <div>
+          <div className="switch-label">{label}</div>
+          <div className="switch-desc">{desc}</div>
+          <WeaponTags layer={layer} cost={cost} quality={quality} />
+        </div>
+        <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      </div>
+      {body ? <div className="switch-body">{body}</div> : null}
+    </div>
+  );
 
   return (
     <TabsContent value="清洗去重" className="tab-pane">
@@ -135,31 +248,117 @@ export function CleanPane({
               outputMode === "remux" ? " pointer-events-none select-none opacity-45" : ""
             }`}
           >
-            <div className="field">
-              <span className="field-label">指纹对抗强度</span>
-              <Select
-                value={antiLevel}
-                onValueChange={(value) => setAntiLevel(value as AntiLevel)}
-              >
-                <SelectTrigger className="form-input h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="关闭">关闭 · 不启用指纹对抗</SelectItem>
-                  <SelectItem value="轻度">轻度 · 低成本近无损</SelectItem>
-                  <SelectItem value="标准">标准 · 均衡，哈希层打满</SelectItem>
-                  <SelectItem value="强力">强力 · 轻微模糊，可能有轻微闪烁</SelectItem>
-                  <SelectItem value="全兵器">全兵器 · 研究用，明显伪影</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="form-help">
-                档位越高对经典哈希破坏越充分，耗时与模糊逐档上升；语义级指纹各档提升有限。本地代理口径，仅供参考。
+            <div className="switch">
+              <div>
+                <div className="switch-label">重新构图（裁剪回缩）</div>
+                <div className="switch-desc">
+                  裁左/下各 {((FIXED_CROP * 100).toFixed(1))}%，顶部与右侧保留。对暗水印无效，用于判重指纹；文字位置不固定，可能裁到字幕，仅确认边缘无文字时使用
+                </div>
+                <WeaponTags layer="fp" cost="fast" quality="heavy" />
               </div>
+              <Switch checked={recropOn} onCheckedChange={setRecropOn} />
             </div>
+            {switchCard(
+              "几何微旋转",
+              "低频小幅旋转去同步，破坏哈希与块对齐",
+              "dual",
+              "fast",
+              "mild",
+              rotateOn,
+              setRotateOn,
+              rotateOn ? (
+                <div className="field">
+                  <span className="field-label">旋转振幅 {rotate.toFixed(1)}°</span>
+                  <Slider
+                    value={[rotate]}
+                    min={0.1}
+                    max={2.5}
+                    step={0.1}
+                    onValueChange={(values) => setRotate(values[0] ?? 0.2)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "局部平滑扭曲",
+              "粗网格位移场上采样成平滑光流逐帧重采样，破坏空间对齐",
+              "wm",
+              "mid",
+              "mild",
+              warpOn,
+              setWarpOn,
+              warpOn ? (
+                <div className="field">
+                  <span className="field-label">位移跨度 {(warp * 100).toFixed(1)}% 短边</span>
+                  <Slider
+                    value={[warp]}
+                    min={0.001}
+                    max={0.01}
+                    step={0.001}
+                    onValueChange={(values) => setWarp(values[0] ?? 0.005)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "透视剪切",
+              "逐帧轻微梯形畸变，破坏块对齐与几何同步",
+              "wm",
+              "mid",
+              "mild",
+              shearOn,
+              setShearOn,
+              shearOn ? (
+                <div className="field">
+                  <span className="field-label">剪切强度 {shear.toFixed(3)}</span>
+                  <Slider
+                    value={[shear]}
+                    min={0.005}
+                    max={0.03}
+                    step={0.005}
+                    onValueChange={(values) => setShear(values[0] ?? 0.01)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "平移抖动",
+              "逐帧随机平移后回缩，模拟机位晃动，破坏逐帧对齐",
+              "wm",
+              "fast",
+              "heavy",
+              jitterOn,
+              setJitterOn,
+              jitterOn ? (
+                <div className="field">
+                  <span className="field-label">抖动幅度 {(jitter * 100).toFixed(1)}%</span>
+                  <Slider
+                    value={[jitter]}
+                    min={0.005}
+                    max={0.03}
+                    step={0.005}
+                    onValueChange={(values) => setJitter(values[0] ?? 0.005)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            <div className="switch">
+              <div>
+                <div className="switch-label">色彩微扰（伽马/亮度+色相）</div>
+                <div className="switch-desc">
+                  逐帧伽马/亮度微调并叠加 ±6° 色相抖动，对抗时域与色彩描述子
+                </div>
+                <WeaponTags layer="dual" cost="fast" quality="mild" />
+              </div>
+              <Switch checked={regradeOn} onCheckedChange={setRegradeOn} />
+            </div>
+
+            <div className="section-title">音频处理</div>
             <div className="switch">
               <div>
                 <div className="switch-label">同步处理音频指纹</div>
                 <div className="switch-desc">对音轨做等长频谱轻处理，不影响音画同步</div>
+                <WeaponTags layer="audio" cost="fast" quality="none" />
               </div>
               <Switch checked={audioClean} onCheckedChange={setAudioClean} />
             </div>
@@ -167,47 +366,423 @@ export function CleanPane({
               <div>
                 <div className="switch-label">音频回声扰动</div>
                 <div className="switch-desc">同步放慢约 3% 并保音调</div>
+                <WeaponTags layer="audio" cost="fast" quality="mild" />
               </div>
               <Switch checked={echoDefeat} onCheckedChange={setEchoDefeat} />
             </div>
-            <div className="switch">
-              <div>
-                <div className="switch-label">抗二次检测增强</div>
-                <div className="switch-desc">扰动中频 DCT 系数，破坏二次嵌入</div>
-              </div>
-              <Switch checked={antiReembed} onCheckedChange={setAntiReembed} />
-            </div>
-            <div className="switch">
-              <div>
-                <div className="switch-label">重新构图（裁剪回缩）</div>
-                <div className="switch-desc">
-                  裁左/下各 {((FIXED_CROP * 100).toFixed(1))}%，顶部与右侧保留，静态缩放微模糊
+            {switchCard(
+              "LPCAA 音频攻击",
+              "LPC 残差白化，破坏语音类指纹 · 高强可听出改变",
+              "audio",
+              "fast",
+              "heavy",
+              lpcOn,
+              setLpcOn,
+              lpcOn ? (
+                <div className="field">
+                  <span className="field-label">白化强度 {lpc.toFixed(2)}</span>
+                  <Slider
+                    value={[lpc]}
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    onValueChange={(values) => setLpc(values[0] ?? 0.85)}
+                  />
                 </div>
-              </div>
-              <Switch checked={recropOn} onCheckedChange={setRecropOn} />
-            </div>
+              ) : undefined,
+            )}
             <div className="switch">
               <div>
-                <div className="switch-label">调光微扰</div>
-                <div className="switch-desc">
-                  逐帧伽马/亮度微调（γ±{FIXED_GAMMA.toFixed(2)} · 亮度±{FIXED_BRIGHTNESS.toFixed(3)}），对抗时域相关信号
-                </div>
+                <div className="switch-label">强音频重混</div>
+                <div className="switch-desc">变调+EQ 倾斜+底噪，配合音频指纹开关生效</div>
+                <WeaponTags layer="audio" cost="fast" quality="heavy" />
               </div>
-              <Switch checked={regradeOn} onCheckedChange={setRegradeOn} />
-            </div>
-            <div className="switch">
-              <div>
-                <div className="switch-label">细节保护（人脸/字幕/纹理）</div>
-                <div className="switch-desc">保护区域回退原帧，保留部分水印特征</div>
-              </div>
-              <Switch checked={detailProtectOn} onCheckedChange={setDetailProtectOn} />
+              <Switch checked={audioStrongOn} onCheckedChange={setAudioStrongOn} />
             </div>
 
+            <div className="section-title">再生重写</div>
+            {switchCard(
+              "哈希签名对抗（pHash/dHash）",
+              "签名域可微扰动，翻转感知哈希符号位（专攻模式效果更强）",
+              "fp",
+              "mid",
+              "heavy",
+              hashOn,
+              setHashOn,
+              hashOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">目标模式</span>
+                    <Select
+                      value={hashMode}
+                      onValueChange={(value) =>
+                        setHashMode(value as "phash" | "dhash" | "joint")
+                      }
+                    >
+                      <SelectTrigger className="form-input h-8 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="phash">pHash 专攻（推荐）</SelectItem>
+                        <SelectItem value="dhash">dHash 专攻</SelectItem>
+                        <SelectItem value="joint">联合（pHash+dHash）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="field">
+                    <span className="field-label">扰动预算 ε {hashEps.toFixed(3)}</span>
+                    <Slider
+                      value={[hashEps]}
+                      min={0.02}
+                      max={0.12}
+                      step={0.01}
+                      onValueChange={(values) => setHashEps(values[0] ?? 0.08)}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            {switchCard(
+              "像素重量化",
+              "把像素压缩到有限级数，破坏低位与细微扰动",
+              "wm",
+              "fast",
+              "none",
+              requantOn,
+              setRequantOn,
+              requantOn ? (
+                <div className="field">
+                  <span className="field-label">量化级数 {requant}</span>
+                  <Slider
+                    value={[requant]}
+                    min={32}
+                    max={96}
+                    step={8}
+                    onValueChange={(values) => setRequant(values[0] ?? 64)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "微噪声",
+              "加性微高斯噪声，破坏扩频水印的低位相关",
+              "wm",
+              "fast",
+              "none",
+              noiseOn,
+              setNoiseOn,
+              noiseOn ? (
+                <div className="field">
+                  <span className="field-label">噪声强度 {noise.toFixed(3)}</span>
+                  <Slider
+                    value={[noise]}
+                    min={0.001}
+                    max={0.01}
+                    step={0.001}
+                    onValueChange={(values) => setNoise(values[0] ?? 0.004)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            <div className="switch">
+              <div>
+                <div className="switch-label">空间降噪</div>
+                <div className="switch-desc">removegrain 轻降噪，破坏扩频/QIM/DWT 水印</div>
+                <WeaponTags layer="wm" cost="fast" quality="none" />
+              </div>
+              <Switch checked={aiDenoise} onCheckedChange={setAiDenoise} />
+            </div>
+            {switchCard(
+              "非整缩重采样",
+              "先放大再回压，打散像素网格与块对齐",
+              "dual",
+              "fast",
+              "mild",
+              nonintOn,
+              setNonintOn,
+              nonintOn ? (
+                <div className="field">
+                  <span className="field-label">缩放比例 {(nonintRatio * 100).toFixed(1)}%</span>
+                  <Slider
+                    value={[nonintRatio]}
+                    min={0.005}
+                    max={0.03}
+                    step={0.005}
+                    onValueChange={(values) => setNonintRatio(values[0] ?? 0.01)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "跨帧估计相减",
+              "估计帧间固定水印并过减，会削弱静态字幕/背景边缘",
+              "wm",
+              "mid",
+              "heavy",
+              temporalSubOn,
+              setTemporalSubOn,
+              temporalSubOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">过减强度 β {temporalSub.toFixed(1)}</span>
+                    <Slider
+                      value={[temporalSub]}
+                      min={0.2}
+                      max={1.5}
+                      step={0.1}
+                      onValueChange={(values) => setTemporalSub(values[0] ?? 0.8)}
+                    />
+                  </div>
+                  <div className="switch-inline">
+                    <div>
+                      <div className="switch-label">原生加速(ffmpeg)</div>
+                      <div className="switch-desc">8bit 原生链,破坏力更强,不支持分镜重排</div>
+                    </div>
+                    <Switch
+                      checked={nativeTemporalOn}
+                      onCheckedChange={setNativeTemporalOn}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            {switchCard(
+              "FFT 扰动（相位+幅度）",
+              "打散中高频相位并随机缩放幅值，覆盖 DFT 域两类水印",
+              "wm",
+              "mid",
+              "heavy",
+              fftOn,
+              setFftOn,
+              fftOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">相位强度 {fftPhase.toFixed(2)}</span>
+                    <Slider
+                      value={[fftPhase]}
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      onValueChange={(values) => setFftPhase(values[0] ?? 0.5)}
+                    />
+                  </div>
+                  <div className="field">
+                    <span className="field-label">幅度强度 {fftMag.toFixed(2)}</span>
+                    <Slider
+                      value={[fftMag]}
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      onValueChange={(values) => setFftMag(values[0] ?? 0.5)}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            {switchCard(
+              "小波细节带随机化",
+              "随机化 Haar 对角线细节子带，破坏小波嵌入相关",
+              "wm",
+              "fast",
+              "none",
+              dwtDetailOn,
+              setDwtDetailOn,
+              dwtDetailOn ? (
+                <div className="field">
+                  <span className="field-label">随机化强度 {dwtDetail.toFixed(2)}</span>
+                  <Slider
+                    value={[dwtDetail]}
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    onValueChange={(values) => setDwtDetail(values[0] ?? 0.8)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            <div className="switch">
+              <div>
+                <div className="switch-label">DCT 系数扰动（重量化+中频）</div>
+                <div className="switch-desc">8×8 DCT 重量化并扰动中频系数</div>
+                <WeaponTags layer="wm" cost="mid" quality="mild" />
+              </div>
+              <Switch checked={dctOn} onCheckedChange={setDctOn} />
+            </div>
+            <div className="switch">
+              <div>
+                <div className="switch-label">伪水印注入（溯源干扰）</div>
+                <div className="switch-desc">注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测</div>
+                <WeaponTags layer="wm" cost="mid" quality="mild" />
+              </div>
+              <Switch checked={spoof} onCheckedChange={setSpoof} />
+            </div>
+            {switchCard(
+              "光流一致性破坏",
+              "按运动加权的平滑扰动重采样，改运动指纹",
+              "fp",
+              "fast",
+              "heavy",
+              flowOn,
+              setFlowOn,
+              flowOn ? (
+                <div className="field">
+                  <span className="field-label">扰动强度 {flow.toFixed(1)}px</span>
+                  <Slider
+                    value={[flow]}
+                    min={0.5}
+                    max={2.5}
+                    step={0.1}
+                    onValueChange={(values) => setFlow(values[0] ?? 2)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "纹理/复杂度注入",
+              "向低纹理区注入纹理并拉平复杂度分布",
+              "fp",
+              "slow",
+              "heavy",
+              textureOn,
+              setTextureOn,
+              textureOn ? (
+                <div className="field">
+                  <span className="field-label">注入强度 {texture.toFixed(2)}</span>
+                  <Slider
+                    value={[texture]}
+                    min={0.01}
+                    max={0.05}
+                    step={0.005}
+                    onValueChange={(values) => setTexture(values[0] ?? 0.04)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "神经对抗",
+              "黑盒攻击 DINOv2 判重描述子，压拷贝检测 embedding · 较慢",
+              "fp",
+              "slow",
+              "heavy",
+              neuralOn,
+              setNeuralOn,
+              neuralOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">扰动预算 ±{neural.toFixed(2)}</span>
+                    <Slider
+                      value={[neural]}
+                      min={0.01}
+                      max={0.08}
+                      step={0.01}
+                      onValueChange={(values) => setNeural(values[0] ?? 0.05)}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            {switchCard(
+              "多尺度特征扰动（DMFF）",
+              "金字塔各尺度带限扰动，8/16/32 签名同步偏移",
+              "fp",
+              "slow",
+              "heavy",
+              multiscaleOn,
+              setMultiscaleOn,
+              multiscaleOn ? (
+                <div className="field">
+                  <span className="field-label">扰动强度 {multiscale.toFixed(2)}</span>
+                  <Slider
+                    value={[multiscale]}
+                    min={0.005}
+                    max={0.04}
+                    step={0.005}
+                    onValueChange={(values) => setMultiscale(values[0] ?? 0.02)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "人脸抗AI扰动",
+              "仅在脸部区域注入扰动，破坏人脸识别特征",
+              "face",
+              "mid",
+              "none",
+              faceOn,
+              setFaceOn,
+              faceOn ? (
+                <div className="field">
+                  <span className="field-label">扰动强度 {face.toFixed(2)}</span>
+                  <Slider
+                    value={[face]}
+                    min={0.01}
+                    max={0.08}
+                    step={0.01}
+                    onValueChange={(values) => setFace(values[0] ?? 0.04)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+            {switchCard(
+              "时序模糊",
+              "帧间时域平滑，破坏逐帧匹配与帧差结构",
+              "dual",
+              "mid",
+              "heavy",
+              temporalBlurOn,
+              setTemporalBlurOn,
+              temporalBlurOn ? (
+                <div className="field">
+                  <span className="field-label">模糊强度 {temporalBlur.toFixed(2)}</span>
+                  <Slider
+                    value={[temporalBlur]}
+                    min={0.05}
+                    max={0.5}
+                    step={0.05}
+                    onValueChange={(values) => setTemporalBlur(values[0] ?? 0.25)}
+                  />
+                </div>
+              ) : undefined,
+            )}
+
+            {/* 排序约定：画质优化固定在倒数第二分区，新增分区请插在它之前。 */}
             <div className="section-title">画质优化</div>
+            {switchCard(
+              "画质保护（PSNR/SSIM 门控）",
+              `对攻击/重武器层按目标自动回退，PSNR≥${psnrTarget}dB、SSIM≥${ssimTarget}（原生滤镜链除外）`,
+              "quality",
+              "mid",
+              "none",
+              qualityProtectOn,
+              setQualityProtectOn,
+              qualityProtectOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">PSNR 目标 {psnrTarget} dB</span>
+                    <Slider
+                      value={[psnrTarget]}
+                      min={32}
+                      max={44}
+                      step={1}
+                      onValueChange={(values) => setPsnrTarget(values[0] ?? 38)}
+                    />
+                  </div>
+                  <div className="field">
+                    <span className="field-label">SSIM 目标 {ssimTarget.toFixed(2)}</span>
+                    <Slider
+                      value={[ssimTarget]}
+                      min={0.8}
+                      max={0.98}
+                      step={0.01}
+                      onValueChange={(values) => setSsimTarget(values[0] ?? 0.94)}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
             <div className="switch">
               <div>
                 <div className="switch-label">锐度补偿</div>
                 <div className="switch-desc">抵消清除算法带来的轻微模糊</div>
+                <WeaponTags layer="quality" cost="fast" quality="none" />
               </div>
               <Switch checked={sharpness} onCheckedChange={setSharpness} />
             </div>
@@ -215,24 +790,10 @@ export function CleanPane({
               <div>
                 <div className="switch-label">色彩还原</div>
                 <div className="switch-desc">把处理后亮度均值校准回原片</div>
+                <WeaponTags layer="quality" cost="fast" quality="none" />
               </div>
               <Switch checked={colorFix} onCheckedChange={setColorFix} />
             </div>
-            <div className="switch">
-              <div>
-                <div className="switch-label">空间降噪</div>
-                <div className="switch-desc">破坏空域扩频水印</div>
-              </div>
-              <Switch checked={aiDenoise} onCheckedChange={setAiDenoise} />
-            </div>
-            <div className="switch">
-              <div>
-                <div className="switch-label">伪水印注入（溯源干扰）</div>
-                <div className="switch-desc">注入随机干扰水印，轻微损失画质</div>
-              </div>
-              <Switch checked={spoof} onCheckedChange={setSpoof} />
-            </div>
-
             <div className="section-title">输出编码 · MP4</div>
             <div className="field">
               <span className="field-label">视频编码</span>
@@ -259,6 +820,7 @@ export function CleanPane({
               <div>
                 <div className="switch-label">无损输出</div>
                 <div className="switch-desc">极致保留画质，文件体积相应增大</div>
+                <WeaponTags layer="quality" cost="fast" quality="none" />
               </div>
               <Switch checked={lossless} onCheckedChange={setLossless} />
             </div>

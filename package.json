@@ -7,7 +7,7 @@
     "dev:desktop": "VITE_AUTH_TOKEN=dev-local CTHULHU_AUTH_TOKEN=dev-local concurrently -k -n ui,electron -c blue,magenta \"pnpm --dir ui dev\" \"pnpm --dir electron dev\"",
     "build": "pnpm --dir ui build",
     "typecheck": "pnpm --dir ui typecheck",
-    "test": "pnpm --dir ui test",
+    "test": "pnpm --dir ui test && pnpm --dir electron test",
     "package:backend": "uv run --project backend pyinstaller packaging/cthulhu-backend.spec --distpath packaging/backend-dist --workpath packaging/build --noconfirm",
     "package": "pnpm build && pnpm package:backend && pnpm --dir electron dist"
   },

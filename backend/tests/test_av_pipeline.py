@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -17,6 +18,34 @@ from cthulhu_backend.media import ffmpeg
 needs_ffmpeg = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="需要 ffmpeg/ffprobe")
 
 client = TestClient(app, headers={"X-CTHULHU-Token": "test-token"})
+
+
+def test_stderr_drain_reads_beyond_pipe_capacity():
+    """后台排空 stderr：数据量超过管道容量时也不会因写满而阻塞。"""
+    read_fd, write_fd = os.pipe()
+    drain = ffmpeg._StderrDrain(os.fdopen(read_fd, "rb"))
+    payload = b"error: corrupt frame\n" * 8192  # 约 180KB，超过常见 64KB 管道缓冲
+    try:
+        offset = 0
+        while offset < len(payload):
+            offset += os.write(write_fd, payload[offset : offset + 65536])
+    finally:
+        os.close(write_fd)
+    drain.join(timeout=5)
+    assert drain.text().count("corrupt frame") == 8192, "stderr 未被完整排空"
+
+
+def test_stderr_drain_caps_retained_text():
+    """异常素材持续刷屏时只保留最近约 1MB，内存有界。"""
+    read_fd, write_fd = os.pipe()
+    drain = ffmpeg._StderrDrain(os.fdopen(read_fd, "rb"))
+    try:
+        for _ in range(40):  # 共约 2.5MB
+            os.write(write_fd, b"x" * 65536)
+    finally:
+        os.close(write_fd)
+    drain.join(timeout=5)
+    assert len(drain.text()) <= (1 << 20) + 65536, "保留的 stderr 文本未封顶"
 
 
 @needs_ffmpeg
@@ -298,7 +327,6 @@ def test_desensitize_accepts_snake_case_anti_options(tmp_path):
             "chroma_levels": 32,
             "drop_every": 7,
             "subtract_beta": 1.2,
-            "detail_protect": 0.5,
             "audio_strong": True,
         },
     )
@@ -358,31 +386,6 @@ def test_desensitize_preserves_color(tmp_path):
     assert decoded_anti.shape[-1] == 3
     anti_means = decoded_anti.reshape(len(decoded_anti), -1, 3).mean(axis=1).mean(axis=0)
     assert anti_means[0] > anti_means[1] > anti_means[2]
-
-
-@needs_ffmpeg
-def test_desensitize_transcode_chain(tmp_path):
-    """编码域组合拳：二次转码后产物仍有效且内容保持。"""
-    video = samples.make_cut_video(2, 8, 160, 120, seed=36)
-    source = tmp_path / "src.mp4"
-    output = tmp_path / "out.mp4"
-    ffmpeg.encode_video(video, str(source), fps=30)
-    services.run_desensitize(
-        str(source),
-        str(output),
-        reorder=False,
-        speed=1.0,
-        regrade=False,
-        audio_remix=False,
-        sharpness=False,
-        color_restore=False,
-        denoise=False,
-        transcode_chain=True,
-    )
-    assert output.exists()
-    decoded, info = ffmpeg.decode_video(str(output))
-    assert decoded.shape == video.shape
-    assert info["codec"] == "h264"
 
 
 @needs_ffmpeg

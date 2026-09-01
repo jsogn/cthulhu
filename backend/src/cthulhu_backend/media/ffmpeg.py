@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from fractions import Fraction
 
@@ -239,8 +240,10 @@ class StreamingDecoder:
         self.grayscale = grayscale
         self.pix_fmt = pix_fmt
         self._remaining = max(0, count)
-        cmd = [
-            FFMPEG_BIN, "-v", "error",
+        cmd = [FFMPEG_BIN, "-v", "error"]
+        if sys.platform == "darwin":
+            cmd += ["-hwaccel", "videotoolbox"]
+        cmd += [
             "-i", path,
             "-ss", str(start),
             "-frames:v", str(self._remaining),
@@ -384,6 +387,48 @@ def decode_sampled(
     return (frames, info, starts) if return_starts else (frames, info)
 
 
+class _StderrDrain:
+    """后台线程持续排空 ffmpeg stderr，避免管道写满导致进程永久阻塞。
+
+    FFmpeg 以 `-v error` + `stderr=PIPE` 运行时，损坏素材可能持续刷错误，
+    一旦写满约 64KB 的管道缓冲，进程会在写 stderr 时阻塞，`wait()` 永远
+    不返回。本类在等待期间并发读取，只保留最近 _CAP 字节的错误文本，
+    防止异常素材无界占用内存。
+    """
+
+    _CAP = 1 << 20  # 1 MiB
+
+    def __init__(self, stream) -> None:
+        self._chunks: list[bytes] = []
+        self._size = 0
+        self._thread: threading.Thread | None = None
+        if stream is not None:
+            self._thread = threading.Thread(
+                target=self._run,
+                args=(stream,),
+                daemon=True,
+                name="ffmpeg-stderr-drain",
+            )
+            self._thread.start()
+
+    def _run(self, stream) -> None:
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                return
+            if self._size < self._CAP:
+                self._chunks.append(chunk)
+                self._size += len(chunk)
+
+    def join(self, timeout: float = 5.0) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout)
+
+    def text(self, tail: int | None = None) -> str:
+        text = b"".join(self._chunks).decode(errors="ignore").strip()
+        return text[-tail:] if tail is not None else text
+
+
 class StreamingEncoder:
     """把 float32 灰度帧分块写入长期 FFmpeg 编码进程。
 
@@ -408,6 +453,7 @@ class StreamingEncoder:
         out_size: tuple[int, int] | None = None,
         hw_quality: int = 70,
         filters: list[str] | None = None,
+        complex_filter: str | None = None,
         input_pix_fmt: str | None = None,
         threads: int | None = None,
         stop=None,
@@ -441,7 +487,9 @@ class StreamingEncoder:
         chain = list(filters or [])
         if out_size:
             chain.append(f"scale={out_size[0]}:{out_size[1]}")
-        if chain:
+        if complex_filter:
+            cmd += ["-filter_complex", complex_filter, "-map", "[out]"]
+        elif chain:
             cmd += ["-vf", ",".join(chain)]
         cmd += ["-pix_fmt", "yuv420p", path]
         self._stop = stop
@@ -451,7 +499,9 @@ class StreamingEncoder:
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            bufsize=4 * 1024 * 1024,
         )
+        self._stderr_drain = _StderrDrain(self._proc.stderr)
 
     def write(self, frames: np.ndarray) -> None:
         if self._stop and self._stop():
@@ -465,10 +515,9 @@ class StreamingEncoder:
         except BrokenPipeError as exc:
             # ffmpeg 提前退出时把真实 stderr 带上，避免只看到无意义的 Broken pipe。
             self._proc.wait()
-            stderr = ""
-            if self._proc.stderr is not None:
-                stderr = self._proc.stderr.read().decode(errors="ignore").strip()
-            detail = stderr[-500:] if stderr else "编码进程意外退出"
+            self._stderr_drain.join()
+            stderr = self._stderr_drain.text(tail=500)
+            detail = stderr or "（无 stderr 输出）"
             raise RuntimeError(f"编码进程意外退出：{detail}") from exc
 
     def finish(self) -> None:
@@ -477,7 +526,8 @@ class StreamingEncoder:
             raise InterruptedError("任务已取消")
         self._proc.stdin.close()
         returncode = self._proc.wait()
-        stderr = self._proc.stderr.read().decode(errors="ignore")
+        self._stderr_drain.join()
+        stderr = self._stderr_drain.text()
         self._finished = True
         if returncode != 0:
             raise subprocess.CalledProcessError(returncode, "ffmpeg", stderr=stderr)
@@ -697,6 +747,7 @@ def repair_delogo(
         cmd += ["-c:a", "copy"]
     cmd += [output]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stderr_drain = _StderrDrain(proc.stderr)
     total = float(info.get("duration") or 0)
     last_percent = 0
     for raw_line in proc.stdout:
@@ -727,7 +778,8 @@ def repair_delogo(
                 last_percent = percent
                 progress_cb(percent, "逐帧修复中")
     returncode = proc.wait()
-    stderr = proc.stderr.read().decode(errors="ignore")
+    stderr_drain.join()
+    stderr = stderr_drain.text()
     if returncode != 0:
         raise subprocess.CalledProcessError(returncode, cmd, stderr=stderr)
 

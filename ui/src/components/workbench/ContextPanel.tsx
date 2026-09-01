@@ -36,8 +36,9 @@ export function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
           detectSubmitting={ctx.detectSubmitting}
           audio={ctx.audio}
           audioMissing={ctx.audioMissing}
-          antiLevel={ctx.antiLevel}
-          setAntiLevel={ctx.setAntiLevel}
+          hashOn={ctx.hashOn}
+          setHashOn={ctx.setHashOn}
+          setDctOn={ctx.setDctOn}
           onDetect={() => void ctx.detectNow()}
         />
         <RegionsPane onRunRepair={() => void ctx.runRepairJob()} />

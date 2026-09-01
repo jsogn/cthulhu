@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 
@@ -66,6 +67,53 @@ def test_restore_requeues_interrupted_job(client):
     assert restored["tasks"][0]["error"] is None
     assert "续跑" in restored["name"]
     db.delete_jobs("all")
+
+
+def test_restore_then_start_dispatches_restored_job():
+    """restore 之后 start 不能重建空队列丢弃恢复任务（引擎重启续跑回归）。"""
+    job_id = uuid.uuid4().hex[:12]
+    db.save_job({
+        "id": job_id,
+        "name": "重启续跑",
+        "status": "running",
+        "parallelism": 1,
+        "created_at": time.time(),
+        "tasks": [{
+            "id": "t1",
+            "kind": "detect",
+            "path": "/no/such/file.mp4",
+            "options": {},
+            "status": "running",
+            "percent": 30,
+            "result": None,
+            "error": None,
+        }],
+    })
+    queue = JobQueue()
+
+    async def drive():
+        # 与 lifespan 相同的顺序：先恢复入队、再启动调度。
+        queue.restore()
+        queue.start()
+        try:
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                job = queue.get(job_id)
+                if job is not None and job["status"] in {"done", "failed", "canceled"}:
+                    return job
+                await asyncio.sleep(0.05)
+            raise TimeoutError("恢复的任务未被调度")
+        finally:
+            await queue.stop()
+
+    try:
+        job = asyncio.run(drive())
+    finally:
+        db.delete_jobs("all")
+    # 源文件不存在，任务应快速失败而非永远停在「排队中」。
+    assert job["status"] == "failed", "恢复的任务单未进入终态"
+    assert job["tasks"][0]["status"] == "failed", "恢复的子任务未被执行到失败"
+    assert job["tasks"][0]["error"], "失败子任务缺少错误信息"
 
 
 @needs_ffmpeg

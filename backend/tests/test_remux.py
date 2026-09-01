@@ -113,7 +113,6 @@ def test_queue_accepts_full_snake_case_options(tmp_path) -> None:
         "color_restore": False,
         "denoise": False,
         "anti_reembed": False,
-        "detail_protect": 0.0,
         "seed": 0,
         "codec": "libx264",
         "lossless": False,

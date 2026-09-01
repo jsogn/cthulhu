@@ -140,7 +140,7 @@ export function BatchPopup() {
               将使用当前清洗设置（
               {cleanPanel.outputMode === "remux"
                 ? "重新封装"
-                : `重新编码 · 指纹对抗 ${cleanPanel.antiLevel}`}
+                : "重新编码 · 当前面板参数"}
               ）清洗所选素材，开始后可在任务中心查看进度。
             </AlertDialogDescription>
           </AlertDialogHeader>
