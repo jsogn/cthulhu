@@ -70,7 +70,7 @@ def _preset_payload(**overrides) -> dict:
     return TemplatePayload(**overrides).model_dump(mode="json")
 
 
-PRESET_VERSION = 21
+PRESET_VERSION = 22
 
 
 PRESET_TEMPLATES = [
@@ -154,7 +154,6 @@ PRESET_TEMPLATES = [
             fftPhase=0.7,
             dwtDetail=1.0,
             facePerturb=0.05,
-            lpcAttack=0.85,
             copyAttack=0.06,
             regradeOn=True,
             sharpness=True,

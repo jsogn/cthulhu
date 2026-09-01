@@ -85,7 +85,7 @@ def eq_tilt(signal: np.ndarray, sample_rate: int, rng: np.random.Generator, gain
     return out
 
 
-def normalize_loudness(signal: np.ndarray, target_peak: float = 0.25) -> np.ndarray:
+def normalize_loudness(signal: np.ndarray, target_peak: float = 0.9) -> np.ndarray:
     peak = float(np.max(np.abs(signal))) or 1.0
     return signal * (target_peak / peak)
 

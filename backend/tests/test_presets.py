@@ -137,11 +137,11 @@ def test_weak_weapons_removed_from_presets() -> None:
 
 
 def test_balanced_preset_prefers_listening_quality() -> None:
-    """音频矩阵显示 LPC 0.3 对回声水印无贡献且有听感代价，均衡档按听感优先移除。"""
+    """LPC 对回声水印收益与听感代价不匹配，常规档按听感优先移除。"""
     balanced = next(p for p in db.PRESET_TEMPLATES if p["name"] == "防重复清除")
     assert not balanced["payload"].get("lpcAttack")
     strong = next(p for p in db.PRESET_TEMPLATES if p["name"] == "深度清除")
-    assert strong["payload"].get("lpcAttack") == 0.85
+    assert not strong["payload"].get("lpcAttack")
     for preset in db.PRESET_TEMPLATES:
         assert preset["payload"].get("denoise"), (
             f"{preset['name']} 应默认开空间降噪（removegrain 是 SS/QIM/DWT 主要破坏者）"

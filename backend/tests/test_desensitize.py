@@ -64,7 +64,7 @@ def test_audio_remix_preserves_shape_and_peak():
     signal = samples.make_audio(1.0, seed=11)
     out = audio_transform.remix(signal, 16000, np.random.default_rng(0))
     assert out.shape == signal.shape
-    assert abs(float(np.max(np.abs(out))) - 0.25) < 0.05
+    assert abs(float(np.max(np.abs(out))) - 0.9) < 0.05
 
 
 def test_audio_remix_keeps_content_timeline_aligned():
