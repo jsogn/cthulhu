@@ -14,9 +14,9 @@ import tempfile
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+from cthulhu_backend import services
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.media import ffmpeg
-from cthulhu_backend import services
 from cthulhu_backend.transform import regenerate
 from cthulhu_backend.watermark import common, ss
 

@@ -20,7 +20,14 @@ def _run_detect(path: str, options: dict, progress=None, stop=None, pause=None) 
     return services.run_detect(path, progress_cb=progress, should_stop=stop, pause=pause)
 
 
-def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
+def _run_desensitize(
+    path: str,
+    options: dict,
+    progress=None,
+    stop=None,
+    pause=None,
+    metrics_gate=None,
+) -> dict:
     # 变换策略与编码档：任务选项优先，其次设置项，最后取模块默认。
     # 默认策略为 fast（经检测基准 A/B 验证与 thorough 信号等价，约快 2 倍）。
     # 结果中的 transform_strategy 由 services.run_desensitize 写回，随任务持久化。
@@ -49,7 +56,7 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
         path,
         options["output"],
         defer_metrics=True,
-        metrics_gate=job_queue.is_idle,
+        metrics_gate=metrics_gate,
         progress_cb=progress,
         should_stop=stop,
         hardware=hardware,
@@ -443,9 +450,11 @@ class JobQueue:
 
                     try:
                         runner = RUNNERS[task["kind"]]
-                        result = await asyncio.to_thread(
-                            runner, task["path"], task["options"], on_progress, stop.is_set, pause
-                        )
+                        runner_args = [task["path"], task["options"], on_progress, stop.is_set, pause]
+                        if task["kind"] == "desensitize":
+                            # 空闲闸门由调度器注入，避免 runner 反向依赖全局单例。
+                            runner_args.append(self.is_idle)
+                        result = await asyncio.to_thread(runner, *runner_args)
                         task["result"] = result
                         task["status"] = "done"
                         task["percent"] = 100

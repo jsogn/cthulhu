@@ -8,14 +8,14 @@ from cthulhu_backend import db
 from cthulhu_backend.schemas import TemplatePayload
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
-from bench_preset_matrix import payload_to_options  # noqa: E402
+from bench_preset_matrix import payload_to_options
 
 
 def main() -> None:
     print(f"PRESET_VERSION={db.PRESET_VERSION}，档位数={len(db.PRESET_TEMPLATES)}")
     removed = {
         "transcodeChain", "srRewrite", "clahe", "deepAttack",
-        "transcode_chain", "sr_rewrite", "clahe", "deep_attack", "mirror",
+        "transcode_chain", "sr_rewrite", "deep_attack", "mirror",
     }
     for preset in db.PRESET_TEMPLATES:
         payload = preset["payload"]

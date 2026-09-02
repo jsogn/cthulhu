@@ -8,7 +8,7 @@ import pathlib
 
 os.environ.setdefault("CTHULHU_AUTH_TOKEN", "openapi-export")
 
-from cthulhu_backend.main import app  # noqa: E402
+from cthulhu_backend.main import app
 
 TARGET = pathlib.Path(__file__).resolve().parents[1] / "openapi.json"
 

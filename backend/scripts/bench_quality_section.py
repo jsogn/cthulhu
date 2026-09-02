@@ -6,10 +6,9 @@ import subprocess
 
 import numpy as np
 
-from cthulhu_backend import samples
 from cthulhu_backend.attacks import spatial as spatial_attacks
 from cthulhu_backend.evaluate import metrics
-from cthulhu_backend.transform import extra_attacks, regenerate
+from cthulhu_backend.transform import extra_attacks
 from cthulhu_backend.watermark import common, ss
 
 BITS = common.payload_bits(1, 64)
