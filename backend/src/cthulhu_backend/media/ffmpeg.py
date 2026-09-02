@@ -139,6 +139,45 @@ def video_info(path: str) -> dict:
     }
 
 
+def _rawvideo_to_frames(
+    raw: bytes,
+    width: int,
+    height: int,
+    channels: int,
+    grayscale: bool,
+    dtype: str = "float32",
+) -> np.ndarray:
+    """把 rawvideo 字节流转为 [0,1] 域帧数组；灰度/彩色形状口径统一。"""
+    count = len(raw) // (height * width * channels)
+    shape = (count, height, width) if grayscale else (count, height, width, 3)
+    arr = np.frombuffer(raw, dtype=np.uint8).reshape(shape)
+    return arr.astype(np.dtype(dtype)) / 255.0
+
+
+def _encoder_args(
+    codec: str,
+    *,
+    hardware: bool,
+    bitrate_kbps: int | None,
+    crf: int,
+    preset: str,
+    hw_quality: int = 70,
+) -> tuple[str, list[str]]:
+    """统一编码器解析与码率/质量参数：VideoToolbox 映射 + 三档口径。"""
+    if hardware and sys.platform == "darwin":
+        resolved = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
+        if bitrate_kbps:
+            return resolved, ["-b:v", f"{bitrate_kbps}k"]
+        return resolved, ["-q:v", str(hw_quality)]
+    if bitrate_kbps:
+        return codec, [
+            "-b:v", f"{bitrate_kbps}k",
+            "-maxrate", f"{bitrate_kbps}k",
+            "-bufsize", f"{bitrate_kbps * 2}k",
+        ]
+    return codec, ["-preset", preset, "-crf", str(crf)]
+
+
 def decode_video(
     path: str,
     grayscale: bool = True,
@@ -173,11 +212,7 @@ def decode_video(
         capture_output=True,
         check=True,
     ).stdout
-    total = len(raw) // (height * width * channels)
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    shape = (total, height, width) if grayscale else (total, height, width, 3)
-    frames = arr.reshape(shape).astype(out_dtype)
-    frames /= 255.0
+    frames = _rawvideo_to_frames(raw, width, height, channels, grayscale, dtype=out_dtype)
     return frames, info
 
 
@@ -205,11 +240,7 @@ def decode_video_range(
     ]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
     height, width = info["height"], info["width"]
-    total = len(raw) // (height * width * channels)
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    shape = (total, height, width) if grayscale else (total, height, width, 3)
-    frames = arr.reshape(shape).astype(np.float32)
-    frames /= 255.0
+    frames = _rawvideo_to_frames(raw, width, height, channels, grayscale)
     return frames, info
 
 
@@ -391,12 +422,7 @@ def decode_sampled(
         count = len(raw) // (out_h * out_w * channels)
         if count == 0:
             return start_frame, None
-        shape = (
-            (count, out_h, out_w)
-            if grayscale
-            else (count, out_h, out_w, 3)
-        )
-        part = np.frombuffer(raw, dtype=np.uint8).reshape(shape).astype(np.float32) / 255.0
+        part = _rawvideo_to_frames(raw, out_w, out_h, channels, grayscale)
         return start_frame, part
 
     workers = _sampling_workers(positions, out_h * out_w * channels * per)
@@ -496,28 +522,22 @@ class StreamingEncoder:
         threads: int | None = None,
         stop=None,
     ) -> None:
-        if hardware and sys.platform == "darwin":
-            codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
+        codec, quality_args = _encoder_args(
+            codec,
+            hardware=hardware,
+            bitrate_kbps=bitrate_kbps,
+            crf=crf,
+            preset=preset,
+            hw_quality=hw_quality,
+        )
         cmd = [
             FFMPEG_BIN, "-y", "-v", "error",
             "-f", "rawvideo", "-pix_fmt", input_pix_fmt or ("rgb24" if color else "gray"),
             "-s", f"{width}x{height}", "-r", str(fps),
             "-i", "-",
             "-c:v", codec,
+            *quality_args,
         ]
-        if hardware and sys.platform == "darwin":
-            if bitrate_kbps:
-                cmd += ["-b:v", f"{bitrate_kbps}k"]
-            else:
-                cmd += ["-q:v", str(hw_quality)]
-        elif bitrate_kbps:
-            cmd += [
-                "-b:v", f"{bitrate_kbps}k",
-                "-maxrate", f"{bitrate_kbps}k",
-                "-bufsize", f"{bitrate_kbps * 2}k",
-            ]
-        else:
-            cmd += ["-preset", preset, "-crf", str(crf)]
         if gop:
             cmd += ["-g", str(gop)]
         if threads:
@@ -600,29 +620,22 @@ def encode_video(
     _check_frame_budget(len(frames), height, width, channels, frames.dtype.itemsize)
     raw = np.clip(frames, 0, 1)
     payload = (raw * 255).round().astype(np.uint8).tobytes()
-    if hardware and sys.platform == "darwin":
-        codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
+    codec, quality_args = _encoder_args(
+        codec,
+        hardware=hardware,
+        bitrate_kbps=bitrate_kbps,
+        crf=crf,
+        preset="medium",
+        hw_quality=hw_quality,
+    )
     cmd = [
         FFMPEG_BIN, "-y", "-v", "error",
         "-f", "rawvideo", "-pix_fmt", "rgb24" if color else "gray",
         "-s", f"{width}x{height}", "-r", str(fps),
         "-i", "-",
         "-c:v", codec,
+        *quality_args,
     ]
-    if hardware and sys.platform == "darwin":
-        # VideoToolbox 用质量标度（0~100，越高画质越好）；有码率要求时按码率。
-        if bitrate_kbps:
-            cmd += ["-b:v", f"{bitrate_kbps}k"]
-        else:
-            cmd += ["-q:v", str(hw_quality)]
-    elif bitrate_kbps:
-        cmd += [
-            "-b:v", f"{bitrate_kbps}k",
-            "-maxrate", f"{bitrate_kbps}k",
-            "-bufsize", f"{bitrate_kbps * 2}k",
-        ]
-    else:
-        cmd += ["-preset", "medium", "-crf", str(crf)]
     if gop:
         cmd += ["-g", str(gop)]
     if out_size:
@@ -680,8 +693,14 @@ def encode_video_with_audio(
     _check_frame_budget(len(frames), height, width, 1, frames.dtype.itemsize)
     video_payload = (np.clip(frames, 0, 1) * 255).round().astype(np.uint8).tobytes()
     audio_payload = (np.clip(audio, -1, 1) * 32767).round().astype(np.int16).tobytes()
-    if hardware and sys.platform == "darwin":
-        codec = "hevc_videotoolbox" if codec == "libx265" else "h264_videotoolbox"
+    codec, quality_args = _encoder_args(
+        codec,
+        hardware=hardware,
+        bitrate_kbps=bitrate_kbps,
+        crf=crf,
+        preset="medium",
+        hw_quality=hw_quality,
+    )
     # 两个 raw 流都从 stdin 读取会共享同一管道：管道容量与读写时序会决定
     # 视频/音频字节的分界（Linux 默认 64KiB 管道下，小样本一次写满时视频
     # demuxer 会吞掉音频字节，输出文件丢失视频流）。各自写临时文件彻底消除
@@ -702,20 +721,8 @@ def encode_video_with_audio(
             "-f", "s16le", "-ar", str(sample_rate), "-ac", "1",
             "-i", audio_tmp,
             "-c:v", codec,
+            *quality_args,
         ]
-        if hardware and sys.platform == "darwin":
-            if bitrate_kbps:
-                cmd += ["-b:v", f"{bitrate_kbps}k"]
-            else:
-                cmd += ["-q:v", str(hw_quality)]
-        elif bitrate_kbps:
-            cmd += [
-                "-b:v", f"{bitrate_kbps}k",
-                "-maxrate", f"{bitrate_kbps}k",
-                "-bufsize", f"{bitrate_kbps * 2}k",
-            ]
-        else:
-            cmd += ["-preset", "medium", "-crf", str(crf)]
         if gop:
             cmd += ["-g", str(gop)]
         if out_size:

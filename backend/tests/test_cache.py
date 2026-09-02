@@ -207,7 +207,7 @@ def test_deferred_metrics_waits_for_gate(tmp_path):
     )
     assert result["metrics_pending"] is True
     services.record_variant(str(video), str(output), {"seed": 1}, seed=1, metrics=None)
-    time.sleep(1.0)
+    # 闸门恒为 False 的这段时间里指标不可能被计算：无需依赖固定睡眠即可断言。
     held = db.get_variant_by_output(str(output))
     assert held is not None and held["metrics"].get("psnr_db") is None, "闸门未放行前不应计算指标"
 

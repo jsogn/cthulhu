@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import db, samples, services
+from cthulhu_backend import db, pipeline, samples, services
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
@@ -116,7 +116,7 @@ def test_prefetch_batches_stops_thread_on_early_exit(tmp_path):
     decoder = ffmpeg.StreamingDecoder(str(path), 0, 80)
     before = {t.ident for t in threading.enumerate()}
     try:
-        gen = services._prefetch_batches(decoder, 80, 8, "float32")
+        gen = pipeline._prefetch_batches(decoder, 80, 8, "float32")
         _, batch = next(gen)
         assert len(batch) == 8
         gen.close()

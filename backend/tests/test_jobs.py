@@ -9,7 +9,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import db, jobs, samples, services
+from cthulhu_backend import db, jobs, pipeline, samples, services
 from cthulhu_backend.jobs import JobQueue
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
@@ -186,7 +186,7 @@ def test_desensitize_streams_video_in_chunks(monkeypatch, tmp_path):
     output = tmp_path / "out.mp4"
     ffmpeg.encode_video(frames, str(source), fps=30)
     # 强制小块，验证多块流式路径。
-    monkeypatch.setattr(services, "_memory_budget_bytes", lambda: 16 * 1024**2)
+    monkeypatch.setattr(pipeline, "_memory_budget_bytes", lambda: 16 * 1024**2)
     report = services.run_desensitize(
         str(source),
         str(output),

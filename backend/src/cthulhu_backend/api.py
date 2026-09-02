@@ -22,6 +22,7 @@ from cthulhu_backend import db, services
 from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
 from cthulhu_backend.media import ffmpeg
+from cthulhu_backend.media import installer as ffmpeg_installer
 from cthulhu_backend.schemas import DesensitizeOptions, DesensitizeRequest, TemplatePayload
 from cthulhu_backend.watermark import detect as watermark_detect
 
@@ -597,13 +598,13 @@ def select_ffmpeg(request: PathRequest) -> dict:
 def install_ffmpeg() -> dict:
     """后台下载静态视频处理引擎，前端轮询状态直到完成。"""
     target = os.environ.get("CTHULHU_FFMPEG_INSTALL_DIR") or _default_ffmpeg_install_dir()
-    return services.install_ffmpeg(target)
+    return ffmpeg_installer.install_ffmpeg(target)
 
 
 @router.get("/ffmpeg/install")
 def ffmpeg_install_status() -> dict:
     """查询视频处理引擎一键安装进度。"""
-    return services.ffmpeg_install_state()
+    return ffmpeg_installer.ffmpeg_install_state()
 
 
 @router.post("/jobs", status_code=202)

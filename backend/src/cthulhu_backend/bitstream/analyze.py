@@ -12,22 +12,36 @@ from cthulhu_backend.bitstream import qp as qp_module
 from cthulhu_backend.media import container, ffmpeg
 
 
-def _features(path: str, max_frames: int | None = None) -> tuple[dict, dict, dict, int | None]:
+def _features(
+    path: str,
+    max_frames: int | None = None,
+    scan: dict | None = None,
+    sei_count: int | None = None,
+) -> tuple[dict, dict, dict, int | None]:
     qp_feat = qp_module.qp_features(qp_module.extract_qp_maps(path, max_frames) or [])
     alloc = frames_module.frame_allocation(path)
     alloc_feat = frames_module.allocation_features(*alloc) if alloc else {"frame_packets": 0}
-    scan = container.scan_mp4(path)
-    return qp_feat, alloc_feat, scan, container.count_sei(path)
+    scan = scan if scan is not None else container.scan_mp4(path)
+    sei = sei_count if sei_count is not None else container.count_sei(path)
+    return qp_feat, alloc_feat, scan, sei
 
 
 def _level(score: int) -> str:
     return "低" if score < 30 else "中" if score < 60 else "高"
 
 
-def analyze(path: str, reference: str | None = None, max_frames: int | None = None) -> dict:
+def analyze(
+    path: str,
+    reference: str | None = None,
+    max_frames: int | None = None,
+    scan: dict | None = None,
+    sei_count: int | None = None,
+) -> dict:
     """码流层分析。带 reference 时输出差分评分（研究口径，不替代平台实测）。"""
     info = ffmpeg.video_info(path)
-    qp_feat, alloc_feat, scan, sei = _features(path, max_frames)
+    qp_feat, alloc_feat, scan, sei = _features(
+        path, max_frames, scan=scan, sei_count=sei_count
+    )
 
     base = {
         "file": path,
