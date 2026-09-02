@@ -1,6 +1,6 @@
 {
   "name": "cthulhu",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "VITE_AUTH_TOKEN=dev-local CTHULHU_AUTH_TOKEN=dev-local concurrently -k -n ui,backend -c blue,green \"pnpm --dir ui dev\" \"uv run --project backend uvicorn cthulhu_backend.main:app --port 57173 --reload --reload-dir backend/src\"",
