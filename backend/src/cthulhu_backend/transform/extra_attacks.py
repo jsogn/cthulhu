@@ -376,6 +376,12 @@ def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
 def _requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.ndarray:
     """对 (F,H,W) float32 平面做 8×8 DCT 重量化（子批 matmul，内存受控）。"""
     h, w = work.shape[1:3]
+    # 可选原生加速：未启用/库缺失/尺寸不满足时返回 None，走 numpy 兜底。
+    from cthulhu_backend import native_dct
+
+    fast = native_dct.requant_plane(work, step)
+    if fast is not None:
+        return fast
     pad_h, pad_w = -h % 8, -w % 8
     if pad_h or pad_w:
         work = np.pad(work, ((0, 0), (0, pad_h), (0, pad_w)), mode="edge")

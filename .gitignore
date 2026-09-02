@@ -24,6 +24,9 @@ packaging/build/
 packaging/dist/
 packaging/backend-dist/
 
+# 原生加速库由本地脚本编译，不入库
+backend/src/cthulhu_backend/native/*.dylib
+
 # 各平台 FFmpeg 二进制由 CI/本地脚本下载，不入库
 packaging/ffmpeg/
 packaging/ffmpeg-x64/
