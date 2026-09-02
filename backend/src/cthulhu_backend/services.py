@@ -27,6 +27,7 @@ from scipy.signal import resample_poly
 
 from cthulhu_backend import db, samples
 from cthulhu_backend.bitstream import analyze as bitstream_analyze
+from cthulhu_backend.cache import analysis_cache
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import container, ffmpeg
@@ -946,13 +947,27 @@ def _prepare_desensitize(
     if progress_cb:
         progress_cb(8, "扫描镜头结构")
     need_shots = opts.reorder or opts.shot_retime or opts.cut_jitter > 0
-    # 分析抽样只为镜头检测与色彩还原服务；两者都关闭时跳过整段抽样解码。
-    if need_shots or opts.color_restore:
-        sampled, _, sampled_starts = ffmpeg.decode_sampled(path, cap=400, return_starts=True)
+    # 400 帧灰度抽样只为镜头检测服务；仅色彩还原时不再解码整段抽样帧
+    # （旧实现会解码后直接丢弃）。镜头边界按文件身份缓存，同素材重洗复用。
+    if need_shots:
+        shot_ranges = analysis_cache.get_shot_boundaries(path)
+        if (
+            shot_ranges
+            and shot_ranges[0][0] == 0
+            and shot_ranges[-1][1] == total_in
+        ):
+            sampled = np.empty((0,), dtype=np.float32)
+            sampled_starts = [0]
+        else:
+            sampled, _, sampled_starts = ffmpeg.decode_sampled(
+                path, cap=400, return_starts=True
+            )
+            shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
+            analysis_cache.put_shot_boundaries(path, shot_ranges)
     else:
         sampled = np.empty((0,), dtype=np.float32)
         sampled_starts = [0]
-    shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
+        shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
 
     rng = np.random.default_rng(opts.seed)
     segments, seg_factors, seg_out_lens, total_out = _build_segments(
@@ -1068,9 +1083,14 @@ def _prepare_desensitize(
     saliency_obj = extra_attacks.saliency_layout(opts.seed, opts.saliency)
 
     if opts.color_restore:
-        color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
-        ref_mean, ref_std = channel_stats(color_sampled)
-        del color_sampled
+        cached_stats = analysis_cache.get_color_stats(path)
+        if cached_stats is not None:
+            ref_mean, ref_std = cached_stats
+        else:
+            color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
+            ref_mean, ref_std = channel_stats(color_sampled)
+            del color_sampled
+            analysis_cache.put_color_stats(path, ref_mean, ref_std)
     else:
         ref_mean = np.zeros(3, dtype=np.float32)
         ref_std = np.zeros(3, dtype=np.float32)
@@ -1252,10 +1272,74 @@ def _prepare_desensitize(
     return state
 
 
+_DEFERRED_METRICS_LOCK = threading.Lock()
+
+# 清洗结果里的指标字段统一清单：同步/异步指标遍与后台回写共用同一份键名，
+# 避免三处手写字典漂移。
+_RESULT_METRIC_KEYS = (
+    "similarity_before",
+    "similarity_after",
+    "psnr_db",
+    "ssim",
+    "vmaf",
+    "vmaf_aligned",
+    "quality_metrics_na",
+    "export_health",
+)
+
+
+def _result_template(
+    path: str,
+    output: str,
+    opts: DesensitizeOptions,
+    state: _DesensitizeState,
+) -> dict:
+    """清洗结果基础结构：指标字段初始为 None，由指标遍填充。"""
+    return {
+        "input": path,
+        "output": output,
+        "transform_strategy": state.strategy.name,
+        "preset": opts.preset,
+        "frames": state.total_in,
+        **{key: None for key in _RESULT_METRIC_KEYS},
+    }
+
+
+def _deferred_measure(
+    path: str,
+    output: str,
+    opts: DesensitizeOptions,
+    state: _DesensitizeState,
+    metrics_gate=None,
+) -> None:
+    """后台指标遍：任务先完成，指标算完后回写产物记录。
+
+    metrics_gate 为空闲闸门（任务队列忙时返回 False）：闸门未放行前不启动
+    计算，避免低配机器上指标遍与下一批编码任务抢核；放行后全局串行执行。
+    指标回写带重试，容忍调用方「先返回、再落 variant 记录」的时序差。
+    进程退出时线程随之结束，未回写的指标允许丢失（产物本身不受影响）。
+    """
+    if metrics_gate is not None:
+        while not metrics_gate():
+            time.sleep(1.0)
+    try:
+        with _DEFERRED_METRICS_LOCK:
+            report = _measure_desensitize(path, output, opts, state, None)
+    except Exception:  # noqa: BLE001 - 指标失败不影响已完成的产物
+        return
+    payload = {key: report.get(key) for key in _RESULT_METRIC_KEYS}
+    for _ in range(10):
+        if db.update_variant_metrics(output, payload):
+            return
+        time.sleep(0.2)
+
+
 def run_desensitize(
     path: str,
     output: str,
     *,
+    defer_metrics: bool = False,
+    metrics_gate=None,
     progress_cb=None,
     should_stop=None,
     pause=None,
@@ -1265,6 +1349,10 @@ def run_desensitize(
 
     选项经 DesensitizeOptions 归一化（未知键与旧版显式签名一样直接报错），
     内部分为 准备/编码/指标 三个阶段执行。
+    defer_metrics=True 时指标遍转入后台线程，任务即刻完成，指标随后回写
+    variants 记录；适合任务队列等「完成即反馈」的调用方。
+    metrics_gate 配合 defer_metrics 使用：返回 False 时后台指标计算等待，
+    供任务队列在忙碌期间错峰计算指标。
     """
     opts = DesensitizeOptions(**options)
     path = _require_file(path)
@@ -1287,6 +1375,19 @@ def run_desensitize(
         raise ValueError(f"当前 FFmpeg 缺少视频编码器 {opts.codec}，请更换输出编码或安装完整版 FFmpeg")
     state = _prepare_desensitize(path, opts, progress_cb, check_cancelled)
     _encode_desensitize(path, output, opts, state, progress_cb, should_stop, pause)
+    if defer_metrics:
+        threading.Thread(
+            target=_deferred_measure,
+            args=(path, output, opts, state, metrics_gate),
+            daemon=True,
+            name="cthulhu-deferred-metrics",
+        ).start()
+        return {
+            **_result_template(path, output, opts, state),
+            # 与自身比较恒为 1：异步路径同样直接给出，与同步指标遍口径一致。
+            "similarity_before": IDENTICAL_SIMILARITY,
+            "metrics_pending": True,
+        }
     return _measure_desensitize(path, output, opts, state, progress_cb)
 
 def _prepare_audio(
@@ -1519,7 +1620,24 @@ def _encode_desensitize(
                 raise InterruptedError("任务已取消")
             time.sleep(0.2)
 
-    audio_signal, sample_rate = _prepare_audio(path, opts, state)
+    # 音轨独立准备放入后台线程，与视频解码/变换/编码重叠；结果在 mux 前
+    # 取回。内存峰值与旧串行实现一致（音频数组本来就会驻留到 mux）。
+    # 取舍：坏音轨的失败时机从「编码前」后移到「mux 前」（罕见路径，
+    # 错误与产物状态不变），换来音频阶段被完整隐藏。
+    audio_box: list[tuple[np.ndarray | None, int] | BaseException] = []
+
+    def prepare_audio_worker() -> None:
+        try:
+            audio_box.append(_prepare_audio(path, opts, state))
+        except BaseException as exc:  # noqa: BLE001 - 统一在 mux 前抛给主线程
+            audio_box.append(exc)
+
+    audio_thread = threading.Thread(
+        target=prepare_audio_worker,
+        daemon=True,
+        name="cthulhu-audio-prep",
+    )
+    audio_thread.start()
 
     # ---------- 处理遍：逐块解码 → 变换 → 流式编码 ----------
     # 中间文件放系统临时目录（每任务独立子目录），避免污染输出/素材目录；
@@ -1702,6 +1820,13 @@ def _encode_desensitize(
                     decoder.close()
         if encoder is not None:
             encoder.finish()
+        # 视频完成后取回音轨结果：正常路径在这里才需要音频，后台准备
+        # 已与整个视频阶段重叠；音频失败在此处抛出并走统一清理。
+        audio_thread.join()
+        audio_result = audio_box[0] if audio_box else None
+        if isinstance(audio_result, BaseException):
+            raise audio_result
+        audio_signal, sample_rate = audio_result
         _mux_output(
             path, output, temp_video, out_index, audio_signal, sample_rate, opts, state
         )
@@ -1735,27 +1860,22 @@ def _measure_desensitize(
     ref_s, mov_s, matches = metrics.temporal_match(original_sampled, processed_sampled)
     # 几何去同步（旋转）使逐像素画质指标失去对齐口径，数值会误导用户。
     quality_na = opts.rotate > 0
-    return {
-        "input": path,
-        "output": output,
-        "transform_strategy": state.strategy.name,
-        "preset": opts.preset,
-        "frames": state.total_in,
-        # 与自身比较恒为 1，直接给出常量，省去一次全量 embedding。
-        "similarity_before": IDENTICAL_SIMILARITY,
-        "similarity_after": embedding.similarity_report(original_sampled, processed_sampled),
-        "psnr_db": None if quality_na else round(metrics.matched_psnr(ref_s, mov_s, matches), 2),
-        "ssim": None if quality_na else round(metrics.matched_ssim(ref_s, mov_s, matches), 4),
-        # 重排/变速后时间轴错位，朴素 VMAF 恒近 0 无参考价值，改用对齐分。
-        "vmaf": None,
-        "vmaf_aligned": (
-            None
-            if (quality_na or opts.skip_vmaf)
-            else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=state.output_fps)
-        ),
-        "quality_metrics_na": quality_na,
-        "export_health": _export_health(output),
-    }
+    report = _result_template(path, output, opts, state)
+    # 与自身比较恒为 1，直接给出常量，省去一次全量 embedding。
+    report["similarity_before"] = IDENTICAL_SIMILARITY
+    report["similarity_after"] = embedding.similarity_report(original_sampled, processed_sampled)
+    report["psnr_db"] = None if quality_na else round(metrics.matched_psnr(ref_s, mov_s, matches), 2)
+    report["ssim"] = None if quality_na else round(metrics.matched_ssim(ref_s, mov_s, matches), 4)
+    # 重排/变速后时间轴错位，朴素 VMAF 恒近 0 无参考价值，改用对齐分。
+    report["vmaf"] = None
+    report["vmaf_aligned"] = (
+        None
+        if (quality_na or opts.skip_vmaf)
+        else _temporal_aligned_vmaf(ref_s, mov_s, matches, fps=state.output_fps)
+    )
+    report["quality_metrics_na"] = quality_na
+    report["export_health"] = _export_health(output)
+    return report
 
 
 def run_repair(

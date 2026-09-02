@@ -240,6 +240,8 @@ export interface DesensitizeJobResult {
   ssim?: number;
   vmaf?: number | null;
   vmaf_aligned?: number | null;
+  /** 指标遍转入后台，任务先完成、指标稍后回写。 */
+  metrics_pending?: boolean;
 }
 
 export type JobKind = "detect" | "desensitize" | "repair";

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 
 import numpy as np
@@ -310,6 +311,30 @@ class StreamingDecoder:
             self._proc.kill()
 
 
+def _sampling_workers(positions: int, raw_bytes_per_window: int) -> int:
+    """抽样窗口并行度：环境变量显式覆盖，否则按内存自适应。
+
+    每窗口瞬时峰值约为 raw uint8 体积的 5 倍（raw + float32 各一份及
+    中间量），并行预算最多取物理内存的 10%（下限 128MB），避免 1080p
+    长片抽样在低配机器上放大内存峰值导致 OOM。
+    """
+    override = os.environ.get("CTHULHU_SAMPLE_WORKERS")
+    if override:
+        try:
+            return max(1, min(positions, int(override)))
+        except ValueError:
+            pass
+    cpu = os.cpu_count() or 1
+    try:
+        total_mem = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        total_mem = 0
+    budget = max(128 * 1024**2, int(total_mem * 0.1)) if total_mem > 0 else 128 * 1024**2
+    peak_per_window = max(raw_bytes_per_window, 1) * 5
+    by_memory = max(1, budget // peak_per_window)
+    return max(1, min(positions, cpu, by_memory))
+
+
 def decode_sampled(
     path: str,
     cap: int = 200,
@@ -319,7 +344,7 @@ def decode_sampled(
 ):
     """跨全片抽样解码至多 cap 帧（关键帧 seek，长视频不再整段解码）。
 
-    等间隔取 10 个位置，每个位置连续解码 cap/10 帧；仅解码 cap 帧左右，
+    等间隔取 6 个位置，每个位置连续解码 cap/6 帧；仅解码 cap 帧左右，
     相比 fps 滤镜全片解码，长片（8 分钟以上）耗时下降一个量级。
     return_starts=True 时额外返回每个窗口首帧的全局帧号（用于镜头边界映射）。
     scale_long_edge 指定输出长边像素（等比缩放），把降采样下沉到解码器。
@@ -351,9 +376,8 @@ def decode_sampled(
     # 每窗口一次子进程；窗口数固定为 6，在长片省时与短片子进程开销间取平衡。
     positions = min(6, cap)
     per = max(1, cap // positions)
-    parts: list[np.ndarray] = []
-    starts: list[int] = []
-    for index in range(positions):
+
+    def decode_window(index: int) -> tuple[int, np.ndarray | None]:
         start_frame = int(total * (index + 0.5) / positions)
         cmd = [
             FFMPEG_BIN, "-v", "error",
@@ -366,13 +390,27 @@ def decode_sampled(
         raw = subprocess.run(cmd, capture_output=True, check=True).stdout
         count = len(raw) // (out_h * out_w * channels)
         if count == 0:
-            continue
+            return start_frame, None
         shape = (
             (count, out_h, out_w)
             if grayscale
             else (count, out_h, out_w, 3)
         )
         part = np.frombuffer(raw, dtype=np.uint8).reshape(shape).astype(np.float32) / 255.0
+        return start_frame, part
+
+    workers = _sampling_workers(positions, out_h * out_w * channels * per)
+    if workers > 1 and positions > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(decode_window, range(positions)))
+    else:
+        results = [decode_window(index) for index in range(positions)]
+
+    parts: list[np.ndarray] = []
+    starts: list[int] = []
+    for start_frame, part in results:
+        if part is None:
+            continue
         parts.append(part)
         starts.append(start_frame)
     if not parts:

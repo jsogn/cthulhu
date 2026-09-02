@@ -48,6 +48,8 @@ def _run_desensitize(path: str, options: dict, progress=None, stop=None, pause=N
     result = services.run_desensitize(
         path,
         options["output"],
+        defer_metrics=True,
+        metrics_gate=job_queue.is_idle,
         progress_cb=progress,
         should_stop=stop,
         hardware=hardware,
@@ -156,6 +158,10 @@ class JobQueue:
         except (TypeError, ValueError):
             value = self.default_parallelism
         return min(4, max(1, value))
+
+    def is_idle(self) -> bool:
+        """当前是否有任务占用并发槽：空闲时后台指标遍才允许启动。"""
+        return self._active_slots == 0
 
     async def _acquire_slot(self) -> None:
         gate = self._gate

@@ -506,6 +506,24 @@ def _variant_record(row: sqlite3.Row) -> dict:
     }
 
 
+def _resolve_variant_outputs(connection: sqlite3.Connection, output: str) -> list[str]:
+    """返回与给定输出路径等价的 variants.output 拼写列表。
+
+    覆盖三种口径：调用方原样传入、~ 展开、以及库里经 realpath 归并的同文件
+    记录。update/delete 共用此解析；get 保留索引直查快路径，不走全表扫描。
+    """
+    matched = [output]
+    expanded = os.path.expanduser(output)
+    if expanded != output:
+        matched.append(expanded)
+    target = os.path.realpath(expanded)
+    for row in connection.execute("SELECT output FROM variants").fetchall():
+        candidate = row["output"]
+        if candidate not in matched and os.path.realpath(os.path.expanduser(candidate)) == target:
+            matched.append(candidate)
+    return matched
+
+
 def get_variant_by_output(output: str) -> dict | None:
     """按输出路径查找产物记录，兼容 ~ 与绝对路径两种写法。
 
@@ -535,19 +553,31 @@ def get_variant_by_output(output: str) -> dict | None:
     return None
 
 
+def update_variant_metrics(output: str, metrics: dict) -> bool:
+    """按输出路径回写产物指标（异步指标遍完成后调用），命中返回 True。
+
+    路径匹配口径与 get_variant_by_output 一致（原样 / ~ 展开 / realpath）。
+    """
+    payload = json.dumps(metrics or {}, ensure_ascii=False)
+    try:
+        with _connect() as connection:
+            for candidate in _resolve_variant_outputs(connection, output):
+                cursor = connection.execute(
+                    "UPDATE variants SET metrics = ? WHERE output = ?",
+                    (payload, candidate),
+                )
+                if cursor.rowcount:
+                    return True
+    except sqlite3.OperationalError:
+        return False
+    return False
+
+
 def delete_variant_by_output(output: str) -> bool:
     """按输出路径删除产物记录，兼容 ~ 与绝对路径两种写法。"""
     try:
-        target = os.path.realpath(os.path.expanduser(output))
         with _connect() as connection:
-            rows = connection.execute("SELECT output FROM variants").fetchall()
-            matched = [
-                row["output"]
-                for row in rows
-                if os.path.realpath(os.path.expanduser(row["output"])) == target
-            ]
-            if not matched:
-                return False
+            matched = _resolve_variant_outputs(connection, output)
             placeholders = ", ".join("?" for _ in matched)
             cursor = connection.execute(
                 f"DELETE FROM variants WHERE output IN ({placeholders})",
