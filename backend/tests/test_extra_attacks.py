@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from cthulhu_backend.transform import extra_attacks
 
@@ -96,6 +97,30 @@ def test_jitter_deterministic():
     np.testing.assert_array_equal(first, second)
     assert first.shape == frames.shape
     assert float(np.mean(np.abs(first - frames))) > 1e-3
+
+
+def test_jitter_sine_trajectory_is_smooth_and_keeps_vertical_amplitude():
+    rng = np.random.default_rng(9)
+    dx, dy = extra_attacks.jitter_offsets(200, 1280, 720, 0.005, rng, trajectory="sine")
+    # 相邻帧位移差 ≤1px：低频漂移，避免高频晃动诱发晕眩。
+    assert int(np.abs(np.diff(dx)).max()) <= 1, "水平位移帧间跳变应不超过 1px"
+    assert int(np.abs(np.diff(dy)).max()) <= 1, "垂直位移帧间跳变应不超过 1px"
+    # 垂直幅度不压缩：SS/DFT 按行提取，需要纵向错位才能被破坏。
+    assert int(np.abs(dy).max()) >= 2, "垂直幅度被压缩会让 SS/DFT 保护失效"
+    assert dx.shape == dy.shape == (200,), "偏移序列长度应等于帧数"
+
+
+def test_translate_jitter_sine_deterministic():
+    frames = make_frames()
+    first = extra_attacks.translate_jitter(frames, 0.01, np.random.default_rng(11), trajectory="sine")
+    second = extra_attacks.translate_jitter(frames, 0.01, np.random.default_rng(11), trajectory="sine")
+    np.testing.assert_array_equal(first, second)
+    assert first.shape == frames.shape
+
+
+def test_jitter_offsets_rejects_unknown_trajectory():
+    with pytest.raises(ValueError):
+        extra_attacks.jitter_offsets(10, 64, 48, 0.01, np.random.default_rng(0), trajectory="bogus")
 
 
 def test_perspective_shear_preserves_content_and_shape():

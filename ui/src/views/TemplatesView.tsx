@@ -363,7 +363,7 @@ export default function TemplatesView() {
               {switchRow("哈希签名对抗（pHash/dHash）", "签名域可微扰动，翻转哈希符号位", "fp", "mid", "heavy", "hashAttack")}
               {regenRow("局部平滑扭曲", "粗网格位移场上采样成平滑光流，破坏空间对齐", "wm", "mid", "mild", "warp", 0.005)}
               {regenRow("透视剪切", "逐帧轻微梯形畸变，破坏块对齐与几何同步", "wm", "mid", "mild", "perspective", 0.01)}
-              {regenRow("平移抖动", "逐帧随机平移后回缩，破坏逐帧对齐", "wm", "fast", "heavy", "jitter", 0.005)}
+              {regenRow("平移抖动", "低频正弦漂移（相邻帧 ≤1px），破坏逐帧对齐", "wm", "fast", "mild", "jitter", 0.005)}
               <div className="field">
                 <span className="field-label">哈希目标模式</span>
                 <Select

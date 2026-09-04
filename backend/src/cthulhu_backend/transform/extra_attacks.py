@@ -600,8 +600,55 @@ def estimate_subtract(
     return attacked.astype(original_dtype)
 
 
-def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator) -> np.ndarray:
-    """逐帧随机平移抖动：随机裁剪偏移后缩回原尺寸，模拟机位晃动。"""
+def jitter_offsets(
+    count: int,
+    width: int,
+    height: int,
+    jitter: float,
+    rng: np.random.Generator,
+    trajectory: str = "noise",
+) -> tuple[np.ndarray, np.ndarray]:
+    """生成逐帧平移偏移序列（x/y，单位像素，整数）。
+
+    ``noise`` 为历史白噪声轨迹：相邻帧位移完全独立，高频晃动观感明显、
+    易诱发晕眩。``sine`` 是约 8 秒周期的低频正弦漂移：相邻帧位移差远低于
+    人眼可感知的帧间运动阈值，
+    观感接近缓慢机位漂移，但每帧仍相对源片整体错位，保留空间对齐破坏力。
+    垂直幅度保持与水平一致：SS/DFT 按行提取，纵向错位不可压缩。
+    """
+    if jitter <= 0 or count <= 0:
+        return np.zeros(max(count, 0), dtype=int), np.zeros(max(count, 0), dtype=int)
+    ax = jitter * width
+    ay = jitter * height
+    if trajectory == "sine":
+        # 周期与 rotate_de_sync 的低频轨迹一致：约 8 秒 @25fps。
+        period = 200
+        phase_x = float(rng.uniform(0, 2 * np.pi))
+        phase_y = float(rng.uniform(0, 2 * np.pi))
+        t = np.arange(count)
+        dx = np.round(ax * np.sin(2 * np.pi * t / period + phase_x)).astype(int)
+        dy = np.round(ay * np.sin(2 * np.pi * t / period + phase_y)).astype(int)
+        return dx, dy
+    if trajectory != "noise":
+        raise ValueError(f"未知抖动轨迹：{trajectory}")
+    draws = rng.uniform(-jitter, jitter, count * 2)
+    dx = np.round(draws[0::2] * width).astype(int)
+    dy = np.round(draws[1::2] * height).astype(int)
+    return dx, dy
+
+
+def translate_jitter(
+    frames: np.ndarray,
+    jitter: float,
+    rng: np.random.Generator,
+    trajectory: str = "noise",
+) -> np.ndarray:
+    """逐帧平移抖动：随机裁剪偏移后缩回原尺寸。
+
+    默认 ``noise`` 保留历史白噪声行为；``sine`` 为低频平滑轨迹，
+    观感轻微但仍逐帧破坏与源片的空间对齐。偏移序列一次性生成，避免并行
+    帧处理时共享 RNG 的取数顺序不确定。
+    """
     if jitter <= 0:
         return frames
     from PIL import Image
@@ -609,11 +656,16 @@ def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator
     from cthulhu_backend.parallel import map_frames
 
     is_u8 = frames.dtype == np.uint8
+    height, width = frames.shape[1:3]
+    offsets = jitter_offsets(
+        len(frames), width, height, jitter, rng, trajectory=trajectory,
+    )
 
-    def shift_one(frame: np.ndarray) -> np.ndarray:
+    def shift_one(pair: tuple[int, np.ndarray]) -> np.ndarray:
+        index, frame = pair
+        dx = int(offsets[0][index])
+        dy = int(offsets[1][index])
         h, w = frame.shape[:2]
-        dx = int(rng.uniform(-jitter, jitter) * w)
-        dy = int(rng.uniform(-jitter, jitter) * h)
         box = (
             max(0, -dx),
             max(0, -dy),
@@ -631,7 +683,7 @@ def translate_jitter(frames: np.ndarray, jitter: float, rng: np.random.Generator
             return result.astype(np.uint8)
         return result.astype(np.float32) / 255.0
 
-    return map_frames(shift_one, frames)
+    return map_frames(shift_one, list(enumerate(frames)))
 
 
 def drop_duplicate(frames: np.ndarray, every: int) -> np.ndarray:
@@ -653,7 +705,7 @@ def apply(
 
     work = frames
     if params.jitter > 0:
-        work = translate_jitter(work, params.jitter, rng)
+        work = translate_jitter(work, params.jitter, rng, trajectory="sine")
     if params.perspective > 0:
         work = perspective_shear(work, params.perspective, rng)
     if params.warp > 0:

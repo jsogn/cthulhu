@@ -323,10 +323,10 @@ export function CleanPane({
             )}
             {switchCard(
               "平移抖动",
-              "逐帧随机平移后回缩，模拟机位晃动，破坏逐帧对齐",
+              "低频正弦漂移（相邻帧 ≤1px），破坏逐帧对齐，观感轻微",
               "wm",
               "fast",
-              "heavy",
+              "mild",
               jitterOn,
               setJitterOn,
               jitterOn ? (
