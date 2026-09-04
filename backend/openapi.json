@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "暗水印清洗台后端",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "paths": {
     "/api/health": {
