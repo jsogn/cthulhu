@@ -55,8 +55,10 @@ def _run_desensitize(
     result = services.run_desensitize(
         path,
         options["output"],
-        defer_metrics=True,
-        metrics_gate=metrics_gate,
+        # GUI 产物不需要画质/相似度指标回填；关闭后任务完成即产物就绪，
+        # 不再触发指标遍的内存尖峰。runner 仍保留 metrics_gate 形参以兼容
+        # 调度器注入（由 services.defer_metrics=True 的直连调用方使用）。
+        compute_metrics=False,
         progress_cb=progress,
         should_stop=stop,
         hardware=hardware,
@@ -65,18 +67,13 @@ def _run_desensitize(
         pause=pause,
         **params,
     )
-    # 产物记录写入编码阶段已有的画质指标。
+    # 产物记录只保存参数快照，画质/相似度指标不再自动回填。
     try:
-        metrics = {
-            "psnr_db": result.get("psnr_db"),
-            "ssim": result.get("ssim"),
-        }
         services.record_variant(
             path,
             result.get("output") or os.path.expanduser(options["output"]),
             snapshot,
             seed=params.get("seed", 0),
-            metrics=metrics,
         )
     except Exception:  # noqa: BLE001, S110 - 记录失败不影响任务结果
         pass

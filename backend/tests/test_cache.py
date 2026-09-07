@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 
 import numpy as np
@@ -220,6 +221,36 @@ def test_deferred_metrics_waits_for_gate(tmp_path):
         time.sleep(0.2)
     record = db.get_variant_by_output(str(output))
     assert record is not None and record["metrics"].get("psnr_db") is not None
+
+
+@needs_ffmpeg
+def test_compute_metrics_disabled_skips_metric_pass(monkeypatch, tmp_path):
+    """GUI 路径关闭指标遍后，编码完成即返回，不启动后台指标计算。"""
+    video = tmp_path / "src.mp4"
+    output = tmp_path / "out.mp4"
+    ffmpeg.encode_video(samples.make_video_frames(8, 160, 120, seed=11), str(video), fps=30)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("compute_metrics=False 不应进入指标遍")
+
+    monkeypatch.setattr(services, "_measure_desensitize", unexpected)
+    monkeypatch.setattr(services, "_deferred_measure", unexpected)
+    result = services.run_desensitize(
+        str(video),
+        str(output),
+        compute_metrics=False,
+        defer_metrics=True,
+        color_restore=False,
+        sharpness=False,
+        audio_remix=False,
+        seed=1,
+    )
+    assert output.exists()
+    assert result.get("metrics_pending") is not True
+    assert result.get("quality_metrics_na") is True
+    assert not any(
+        thread.name == "cthulhu-deferred-metrics" for thread in threading.enumerate()
+    ), "关闭指标后不应残留后台指标线程"
 
 
 def test_queue_idle_gate():

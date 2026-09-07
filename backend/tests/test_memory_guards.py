@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 from scipy.fftpack import dctn
 from scipy.ndimage import median_filter
 
-from cthulhu_backend import samples
+from cthulhu_backend import pipeline, samples
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.watermark import detect
 from cthulhu_backend.watermark.qim import MID_BAND
@@ -115,3 +117,36 @@ def test_sampled_detect_path_is_bounded_and_deterministic(tmp_path) -> None:
     second = detect.windowed_video_scores(sampled)
     assert first == second
     assert all(0.0 <= value <= 1.0 for value in first.values())
+
+
+def _sysconf_with_ram(total_bytes: int | None):
+    """模拟 os.sysconf：total_bytes=None 时模拟平台不支持物理内存查询。"""
+
+    def sysconf(name: str) -> int:
+        if name == "SC_PAGE_SIZE":
+            return 4096
+        if name == "SC_PHYS_PAGES" and total_bytes is not None:
+            return max(1, total_bytes // 4096)
+        raise AttributeError(name)
+
+    return sysconf
+
+
+def test_working_budget_floor_is_256_mib() -> None:
+    """兜底必须是 256MiB：曾误写成 512*1024**3//2（256GiB）导致预算恒为上限。"""
+    assert pipeline.MAX_WORKING_BYTES == 256 * 1024**2
+
+
+def test_working_budget_scales_with_ram_and_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """预算按物理内存分档（<4GB 40%、大内存 55%），且不超过 32GiB。"""
+    monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(1024**3))
+    assert pipeline._memory_budget_bytes() == int(1024**3 * 0.4)
+
+    monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(64 * 1024**3))
+    assert pipeline._memory_budget_bytes() == 32 * 1024**3
+
+
+def test_working_budget_falls_back_to_256_mib(monkeypatch: pytest.MonkeyPatch) -> None:
+    """平台不支持物理内存查询时（如 Windows）落到 256MiB 兜底。"""
+    monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(None))
+    assert pipeline._memory_budget_bytes() == pipeline.MAX_WORKING_BYTES

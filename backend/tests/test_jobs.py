@@ -130,6 +130,30 @@ def test_desensitize_resolves_strategy_and_preset_from_settings(tmp_path):
     assert result["preset"] == "veryfast"
 
 
+@needs_ffmpeg
+def test_desensitize_job_disables_metric_pass(monkeypatch, tmp_path):
+    """任务队列清洗以 compute_metrics=False 调用，产物完成即返回。"""
+    video = _video(tmp_path, seed=52)
+    output = tmp_path / "out.mp4"
+    captured: dict = {}
+
+    def fake_run(path: str, out: str, **kwargs):
+        captured.update(kwargs)
+        return {
+            "output": str(out),
+            "transform_strategy": kwargs.get("transform_strategy", "fast"),
+            "preset": kwargs.get("preset", "veryfast"),
+            "frames": 8,
+        }
+
+    monkeypatch.setattr(services, "run_desensitize", fake_run)
+    monkeypatch.setattr(services, "record_variant", lambda *args, **kwargs: {})
+    result = jobs._run_desensitize(str(video), {"output": str(output)})
+    assert result["output"] == str(output)
+    assert captured.get("compute_metrics") is False
+    assert captured.get("defer_metrics") is None, "任务队列不再启用延迟指标线程"
+
+
 def test_pause_resume_lifecycle():
     job_id = uuid.uuid4().hex[:12]
     job = {

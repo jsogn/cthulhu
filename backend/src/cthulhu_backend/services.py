@@ -495,6 +495,7 @@ def run_desensitize(
     path: str,
     output: str,
     *,
+    compute_metrics: bool = True,
     defer_metrics: bool = False,
     metrics_gate=None,
     progress_cb=None,
@@ -506,6 +507,9 @@ def run_desensitize(
 
     选项经 DesensitizeOptions 归一化（未知键与旧版显式签名一样直接报错），
     内部分为 准备/编码/指标 三个阶段执行。
+    compute_metrics=False 时编码完成即返回，不启动指标遍；供 GUI 任务队列
+    使用（画质/相似度指标无业务消费，且指标遍会在低配机上造成内存尖峰）。
+    直接 API、CLI 与基准研究保持默认 True，继续输出完整指标。
     defer_metrics=True 时指标遍转入后台线程，任务即刻完成，指标随后回写
     variants 记录；适合任务队列等「完成即反馈」的调用方。
     metrics_gate 配合 defer_metrics 使用：返回 False 时后台指标计算等待，
@@ -532,6 +536,13 @@ def run_desensitize(
         raise ValueError(f"当前 FFmpeg 缺少视频编码器 {opts.codec}，请更换输出编码或安装完整版 FFmpeg")
     state = _prepare_desensitize(path, opts, progress_cb, check_cancelled)
     _encode_desensitize(path, output, opts, state, progress_cb, should_stop, pause)
+    if not compute_metrics:
+        return {
+            **_result_template(path, output, opts, state),
+            # GUI 产物不再自动回填指标：任务完成即产物就绪。
+            "similarity_before": IDENTICAL_SIMILARITY,
+            "quality_metrics_na": True,
+        }
     if defer_metrics:
         threading.Thread(
             target=_deferred_measure,

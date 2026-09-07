@@ -33,7 +33,7 @@ from cthulhu_backend.transform import audio as audio_transform
 from cthulhu_backend.transform import extra_attacks, regenerate, shots, strategies
 from cthulhu_backend.watermark import common as watermark_common
 
-MAX_WORKING_BYTES = 512 * 1024**3 // 2  # 低内存机器兜底：256MB
+MAX_WORKING_BYTES = 256 * 1024**2  # 低内存机器兜底：256MiB
 
 
 def _memory_budget_bytes() -> int:
