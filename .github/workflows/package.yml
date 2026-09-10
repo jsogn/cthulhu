@@ -54,7 +54,7 @@ jobs:
 
       - name: 安装 Python 依赖
         working-directory: backend
-        run: uv sync
+        run: uv sync --extra purify
         env:
           # 云端走官方 PyPI；本地配置的清华镜像仅用于国内开发环境。
           UV_DEFAULT_INDEX: https://pypi.org/simple
@@ -71,6 +71,13 @@ jobs:
         run: bash packaging/fetch_ffmpeg.sh
         env:
           FETCH_PLATFORM: ${{ matrix.platform }}
+
+      - name: 缓存内置净化模型
+        uses: actions/cache@v4
+        with:
+          path: packaging/models
+          # v2：模型目录新增潜空间引擎权重（TAESD），旧缓存不含它。
+          key: purify-model-fp16-${{ runner.os }}-v2
 
       - name: 构建前端
         run: pnpm build

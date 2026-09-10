@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from cthulhu_backend.attacks import spatial as spatial_attacks
+from cthulhu_backend.transform import embedding_domain, purify
 from cthulhu_backend.transform import video as video_transform
 from cthulhu_backend.watermark import qim
 
@@ -33,6 +34,17 @@ class TransformOptions:
     color_restore: bool = True
     sharpness: bool = True
     spoof: bool = False
+    purify_strength: float = 0.0
+    purify_detail: float = 0.0
+    purify_detail_sigma: float = 1.5
+    purify_detail_wide: bool = False
+    purify_temporal: float = 0.0
+    purify_max_edge: int = 0
+    purify_batch: int = 1
+    embedding_attack: str = ""
+    embedding_strength: float = 0.0
+    embedding_variant: str = "v2"
+    embedding_aggressive: bool = False
 
 
 @dataclass
@@ -95,6 +107,29 @@ class ThoroughStrategy:
             frames = video_transform.color_restore(frames, ctx.ref_mean, ctx.ref_std)
         if options.sharpness:
             frames = video_transform.sharpen(frames, amount=0.25, radius=1.2, threshold=0.01)
+        if options.purify_strength > 0:
+            frames = purify.purify_frames(
+                frames,
+                strength=options.purify_strength,
+                seed=ctx.seed,
+                max_edge=options.purify_max_edge,
+                batch=options.purify_batch,
+                detail=options.purify_detail,
+                detail_sigma=options.purify_detail_sigma,
+                detail_wide=options.purify_detail_wide,
+                temporal_strength=options.purify_temporal,
+            )
+        if options.embedding_strength > 0 and options.embedding_attack:
+            frames = embedding_domain.attack(
+                frames,
+                mode=options.embedding_attack,
+                strength=options.embedding_strength,
+                rng=ctx.mid_rng,
+                variant=options.embedding_variant,
+                block_jitter=options.embedding_aggressive,
+                multiscale=options.embedding_aggressive,
+                chroma_subsample=options.embedding_aggressive,
+            )
         if options.spoof and ctx.spoof_bits is not None:
             frames = _embed_qim_frames(frames, ctx.spoof_bits, delta=6)
         return frames
@@ -306,6 +341,29 @@ class FastStrategy:
             frames = _fast_color_restore_u8(frames, ctx.ref_mean, ctx.ref_std)
         if options.sharpness:
             frames = _fast_sharpen_u8(frames, amount=0.25, radius=1.2)
+        if options.purify_strength > 0:
+            frames = purify.purify_frames(
+                frames,
+                strength=options.purify_strength,
+                seed=ctx.seed,
+                max_edge=options.purify_max_edge,
+                batch=options.purify_batch,
+                detail=options.purify_detail,
+                detail_sigma=options.purify_detail_sigma,
+                detail_wide=options.purify_detail_wide,
+                temporal_strength=options.purify_temporal,
+            )
+        if options.embedding_strength > 0 and options.embedding_attack:
+            frames = embedding_domain.attack(
+                frames,
+                mode=options.embedding_attack,
+                strength=options.embedding_strength,
+                rng=ctx.mid_rng,
+                variant=options.embedding_variant,
+                block_jitter=options.embedding_aggressive,
+                multiscale=options.embedding_aggressive,
+                chroma_subsample=options.embedding_aggressive,
+            )
         if options.spoof and ctx.spoof_bits is not None:
             frames = _u8_roundtrip(
                 frames,

@@ -8,8 +8,6 @@ import {
 } from "@/lib/backend";
 import { fmtSize } from "@/lib/format";
 
-export type RiskLevel = "有疑似特征" | "未发现异常" | "待检测";
-
 export interface Material {
   id: string;
   name: string;
@@ -17,14 +15,12 @@ export interface Material {
   res: string;
   fps: string;
   size: string;
-  risk: RiskLevel;
-  score: number;
+  codec?: string;
   tags: string[];
   frame: string;
   path?: string;
   duration?: number;
   missing?: boolean;
-  report?: unknown;
   outputCount?: number;
 }
 
@@ -40,19 +36,10 @@ interface MaterialsState {
   toggleSelectAll: (ids: string[]) => void;
   deleteSelected: (ids: string[]) => void;
   importOne: (material: Material) => void;
-  applyDetectResult: (
-    path: string,
-    report: { bitstream: { score: number; flags: string[] } },
-  ) => void;
   loadLibrary: (files: LibraryFile[], outputCounts?: Record<string, number>) => void;
   refreshLibrary: () => Promise<void>;
   refreshOutputCounts: () => Promise<void>;
   markLoadFailed: () => void;
-}
-
-function reportRisk(report?: { bitstream: { flags: string[] } } | null): RiskLevel {
-  if (!report) return "待检测";
-  return report.bitstream.flags.length > 0 ? "有疑似特征" : "未发现异常";
 }
 
 function fmtDur(seconds: number): string {
@@ -135,24 +122,8 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
       return { materials: [material, ...state.materials] };
     }),
 
-  applyDetectResult: (path, report) =>
-    set((state) => ({
-      materials: state.materials.map((m) =>
-        m.path === path
-          ? {
-              ...m,
-              report,
-              score: report.bitstream.score,
-              risk: reportRisk(report),
-            }
-          : m,
-      ),
-    })),
-
   loadLibrary: (files, outputCounts?) => {
     const materials: Material[] = files.map((file) => {
-      const report = file.report ?? undefined;
-      const score = report?.bitstream.score ?? 0;
       const missing = file.video == null;
       return {
         id: file.path,
@@ -161,14 +132,12 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
         res: missing ? "—" : `${file.video!.width}×${file.video!.height}`,
         fps: missing ? "—" : `${file.video!.fps}fps`,
         size: fmtSize(file.size),
-        risk: missing ? "待检测" : reportRisk(report),
-        score,
+        codec: missing ? undefined : file.video!.codec,
         tags: ["本地"],
         frame: missing ? "" : thumbUrl(file.path, 320),
         path: file.path,
         duration: file.video?.duration,
         missing,
-        report,
         outputCount: outputCounts?.[file.path] ?? 0,
       };
     });

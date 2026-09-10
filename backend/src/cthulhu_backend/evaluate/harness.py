@@ -348,10 +348,13 @@ def run_cleanse_matrix(
     crf: int = 23,
     workers: int | None = None,
 ) -> dict:
-    """通杀验收矩阵：各水印变体经编码与各档清洗后的已知水印误码率。
+    """通杀验收矩阵：各水印变体经编码与各档清洗后的误码率与画质。
 
     variants 每个条目需提供 embed(frame, bits) 与 extract(frame)。
     levels 每个条目为 run_desensitize 的关键字参数（不含 path/output）。
+    variant 可选 content_kind 标签（simple/textured/natural），报告按内容
+    分层输出 FNR（BER<0.6 视为失效，0.5 为随机猜测）。返回结构向后兼容：
+    levels 仍是 BER 浮点数，画质与分层汇总放在新增的 quality / summary 键。
     """
     bits = bits or common.payload_bits(seed + 1, 64)
     report: dict = {}
@@ -368,17 +371,24 @@ def run_cleanse_matrix(
             coded, _ = ffmpeg.decode_video(wm_path)
             row: dict = {
                 "encoded_ber": round(_extract_ber(coded, variant["extract"], bits, segment), 4),
+                "content_kind": variant.get("content_kind", "unknown"),
                 "levels": {},
+                "quality": {},
             }
             report[variant_name] = row
             for level_name, params in levels.items():
-                prepared.append((variant_name, level_name, variant, params, wm_path))
+                prepared.append(
+                    (variant_name, level_name, variant, params, wm_path, coded)
+                )
 
-        def _level_one(item: tuple[str, str, dict, dict, str]) -> tuple[str, str, float]:
-            variant_name, level_name, variant, params, wm_path = item
+        def _level_one(
+            item: tuple[str, str, dict, dict, str, np.ndarray],
+        ) -> tuple[str, str, float, float, float]:
+            variant_name, level_name, variant, params, wm_path, reference = item
             out_path = os.path.join(tmp, f"{variant_name}-{level_name}.mp4")
             services.run_desensitize(wm_path, out_path, **params)
             cleaned, _ = ffmpeg.decode_video(out_path)
+            aligned = min(len(reference), len(cleaned))
             return (
                 variant_name,
                 level_name,
@@ -386,10 +396,39 @@ def run_cleanse_matrix(
                     _extract_ber(cleaned, variant["extract"], bits, variant.get("segment", False)),
                     4,
                 ),
+                round(metrics.psnr(reference[:aligned], cleaned[:aligned]), 2),
+                round(metrics.ssim(reference[:aligned], cleaned[:aligned]), 4),
             )
 
-        for variant_name, level_name, ber in parallel.map_items(_level_one, prepared, workers):
+        for variant_name, level_name, ber, psnr, ssim in parallel.map_items(
+            _level_one, prepared, workers
+        ):
             report[variant_name]["levels"][level_name] = ber
+            report[variant_name]["quality"][level_name] = {
+                "psnr_db": psnr,
+                "ssim": ssim,
+            }
+
+    # FNR 分层汇总：命中阈值 0.6（与报告一致），按内容复杂度分列。
+    all_hits = [0, 0]
+    by_kind: dict[str, list[int]] = {}
+    for row in report.values():
+        if not isinstance(row, dict) or "levels" not in row:
+            continue
+        kind = row["content_kind"]
+        by_kind.setdefault(kind, [0, 0])
+        for ber in row["levels"].values():
+            failed = 1 if ber < 0.6 else 0
+            all_hits[0] += failed
+            all_hits[1] += 1
+            by_kind[kind][0] += failed
+            by_kind[kind][1] += 1
+    report["summary"] = {
+        "fnr": round(all_hits[0] / max(1, all_hits[1]), 4),
+        "fnr_by_content": {
+            kind: round(hits[0] / max(1, hits[1]), 4) for kind, hits in by_kind.items()
+        },
+    }
     return report
 
 

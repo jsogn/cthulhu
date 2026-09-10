@@ -1,6 +1,6 @@
 [project]
 name = "cthulhu-backend"
-version = "0.4.2"
+version = "0.6.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -16,6 +16,18 @@ dependencies = [
     "scipy>=1.18.0",
     "typer>=0.27.1",
     "uvicorn[standard]>=0.52.4",
+]
+
+[project.optional-dependencies]
+# 开箱即用（A）：桌面端打包必须安装本 extra；权重首次使用时按需下载。
+purify = [
+    "torch>=2.2",
+    "diffusers>=0.30",
+    "transformers>=4.44",
+    "accelerate>=1.0",
+    "safetensors>=0.4",
+    "huggingface-hub>=0.26",
+    "tqdm>=4.66",
 ]
 
 [project.scripts]

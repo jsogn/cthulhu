@@ -8,7 +8,21 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# 已下线：扩散引擎随 sd-turbo（2.4GB）一起移除，strength 现在只作开关，
+# 步数与 guidance 不再有消费方。旧模板/旧脚本仍带这些键，入参处丢弃而不是
+# 报错，避免存量数据一升级就 422。
+_DEPRECATED_INPUT_KEYS = frozenset(
+    {
+        "purify_engine",
+        "purifyEngine",
+        "purify_steps",
+        "purifySteps",
+        "purify_guidance",
+        "purifyGuidance",
+    }
+)
 
 
 class DesensitizeOptions(BaseModel):
@@ -16,7 +30,17 @@ class DesensitizeOptions(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    output_mode: str = "reencode"
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_deprecated(cls, data: object) -> object:
+        if isinstance(data, dict):
+            return {
+                key: value
+                for key, value in data.items()
+                if key not in _DEPRECATED_INPUT_KEYS
+            }
+        return data
+
     reorder: bool = False
     speed: float = Field(1.0, gt=0)
     recrop: float = Field(0.0, ge=0, le=0.2)
@@ -83,6 +107,23 @@ class DesensitizeOptions(BaseModel):
     saliency: int = Field(0, ge=0, le=4)
     chroma_levels: int = Field(0, ge=0, le=256)
     native_filters: bool = False
+    purify_strength: float = Field(0.0, ge=0, le=1)
+    # 潜空间净化：strength 只作开关（>0 启用），实际强度由边缘/带宽决定。
+    purify_detail: float = Field(1.0, ge=0, le=1)
+    # 细节回注带宽：水印在低频、字幕纹理在中频。0 = 自动（按帧长边换算，
+    # 512p→1.3、1080p→2.7），>0 为专家手动指定的像素值。
+    purify_detail_sigma: float = Field(0.0, ge=0, le=4.0)
+    # B 档画质优先：把回注带宽推到字幕笔画尺度（1080p≈6.5），字幕可读，
+    # 代价是水印部分回流。
+    purify_detail_wide: bool = False
+    purify_temporal: float = Field(0.0, ge=0, le=1)
+    purify_max_edge: int = Field(256, ge=0, le=2048)
+    purify_batch: int = Field(8, ge=1, le=16)
+    embedding_attack: Literal["", "auto", "luma", "chroma", "both"] = ""
+    embedding_strength: float = Field(0.0, ge=0, le=1)
+    embedding_variant: Literal["legacy", "v2"] = "v2"
+    embedding_aggressive: bool = False
+    auto_profile: bool = False
 
 
 class DesensitizeRequest(DesensitizeOptions):
@@ -90,6 +131,17 @@ class DesensitizeRequest(DesensitizeOptions):
 
     path: str
     output: str
+
+
+class CollusionRequest(BaseModel):
+    """共谋平均请求：同一内容的多份不同水印副本。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(min_length=2, max_length=32)
+    output: str
+    mode: Literal["mean", "median"] = "mean"
+    max_frames: int = Field(600, ge=2, le=6000)
 
 
 TemplateCodec = Literal["H.264", "H.265"]
@@ -138,6 +190,18 @@ class TemplatePayload(BaseModel):
     qualityProtect: bool = False
     psnrTarget: float = 38.0
     ssimTarget: float = 0.94
+    purifyStrength: float = Field(0.0, ge=0, le=1)
+    purifyDetail: float = Field(1.0, ge=0, le=1)
+    purifyDetailSigma: float = Field(0.0, ge=0, le=4.0)
+    purifyDetailWide: bool = False
+    purifyTemporal: float = Field(0.0, ge=0, le=1)
+    purifyMaxEdge: int = Field(256, ge=0, le=2048)
+    purifyBatch: int = Field(8, ge=1, le=16)
+    embeddingAttack: Literal["", "auto", "luma", "chroma", "both"] = ""
+    embeddingStrength: float = Field(0.0, ge=0, le=1)
+    embeddingVariant: Literal["legacy", "v2"] = "v2"
+    embeddingAggressive: bool = False
+    autoProfile: bool = False
     sharpness: bool = False
     colorRestore: bool = False
     denoise: bool = False

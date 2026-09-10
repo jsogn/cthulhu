@@ -1,44 +1,11 @@
-"""身份层输出（重封装）与队列参数契约的回归测试。"""
+"""音轨保留与队列参数契约的回归测试。"""
 
 from __future__ import annotations
 
-import subprocess
+import pytest
 
 from cthulhu_backend import db, jobs, samples, services
 from cthulhu_backend.media import ffmpeg
-
-
-def _video_stream(path: str) -> bytes:
-    cmd = [
-        ffmpeg.FFMPEG_BIN, "-v", "error", "-i", path,
-        "-map", "0:v", "-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "h264", "-",
-    ]
-    return subprocess.run(cmd, capture_output=True, check=True).stdout
-
-
-def _audio_stream(path: str) -> bytes:
-    cmd = [
-        ffmpeg.FFMPEG_BIN, "-v", "error", "-i", path,
-        "-map", "0:a", "-c:a", "copy", "-f", "adts", "-",
-    ]
-    return subprocess.run(cmd, capture_output=True, check=True).stdout
-
-
-def test_remux_keeps_audio_and_video_bit_identical(tmp_path) -> None:
-    db.init_db()
-    src = str(tmp_path / "in.mp4")
-    out = str(tmp_path / "out.mp4")
-    video = samples.make_video_frames(10, 64, 64, seed=1)
-    audio = samples.make_audio(1.0, seed=2)
-    ffmpeg.encode_video_with_audio(video, audio, src, fps=30)
-
-    report = services.run_desensitize(src, out, output_mode="remux")
-
-    assert report["mode"] == "remux"
-    assert report["similarity_after"]["content_cosine"] == 1.0
-    assert report["psnr_db"] is None
-    assert _video_stream(src) == _video_stream(out)
-    assert _audio_stream(src) == _audio_stream(out)
 
 
 def test_reencode_without_audio_remix_keeps_audio(tmp_path) -> None:
@@ -75,6 +42,39 @@ def test_echo_defeat_without_audio_remix_keeps_audio(tmp_path) -> None:
     assert decoded is not None and len(decoded[0]) > 0
 
 
+def test_echo_defeat_skips_slowdown_for_silent_source(tmp_path) -> None:
+    """源无音轨时回声水印不存在：不得为它把成片放慢 3%（帧数/时长保持不变）。"""
+    db.init_db()
+    src = str(tmp_path / "silent.mp4")
+    out = str(tmp_path / "silent_out.mp4")
+    ffmpeg.encode_video(samples.make_video_frames(30, 64, 64, seed=11), src, fps=30)
+
+    result = services.run_desensitize(src, out, audio_remix=True, echo_defeat=True)
+
+    in_info = ffmpeg.video_info(src)
+    out_info = ffmpeg.video_info(out)
+    assert result["frames"] == 30
+    assert result["out_frames"] == 30
+    assert out_info["duration"] == pytest.approx(in_info["duration"], abs=0.1)
+
+
+def test_echo_defeat_slows_down_when_audio_present(tmp_path) -> None:
+    """有音轨时回声清除仍按设计同步放慢，并如实上报成片帧数。"""
+    db.init_db()
+    src = str(tmp_path / "with_audio.mp4")
+    out = str(tmp_path / "with_audio_out.mp4")
+    video = samples.make_video_frames(30, 64, 64, seed=12)
+    audio = samples.make_audio(1.0, seed=13)
+    ffmpeg.encode_video_with_audio(video, audio, src, fps=30)
+
+    result = services.run_desensitize(src, out, audio_remix=True, echo_defeat=True)
+
+    # 1/0.97 ≈ 1.031：30 帧入 → 31 帧出。
+    assert result["frames"] == 30
+    assert result["out_frames"] == 31
+    assert ffmpeg.video_info(out)["duration"] > ffmpeg.video_info(src)["duration"]
+
+
 def test_timing_change_without_audio_remix_aligns_audio(tmp_path) -> None:
     """音频处理关闭但视频变速时，音轨仍须保留（对齐逻辑由管线保证）。"""
     db.init_db()
@@ -102,7 +102,6 @@ def test_queue_accepts_full_snake_case_options(tmp_path) -> None:
 
     options = {
         "output": out,
-        "output_mode": "reencode",
         "reorder": False,
         "speed": 1.0,
         "recrop": 0.0,

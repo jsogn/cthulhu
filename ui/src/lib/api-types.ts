@@ -41,6 +41,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purify/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Purify Status
+         * @description 潜空间净化能力状态：依赖、权重缓存、策略与推理设备。
+         */
+        get: operations["purify_status_api_purify_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/purify/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purify Install
+         * @description 一键准备净化权重（10MB 级 TAESD）；立即返回，前端轮询状态直到 ready。
+         */
+        post: operations["purify_install_api_purify_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collusion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collusion
+         * @description 共谋平均：同一内容的多份不同水印副本对齐后平均（研究/授权测试）。
+         */
+        post: operations["collusion_api_collusion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/similarity": {
         parameters: {
             query?: never;
@@ -253,23 +313,6 @@ export interface paths {
         put?: never;
         /** Desensitize */
         post: operations["desensitize_api_desensitize_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/repair": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Repair */
-        post: operations["repair_api_repair_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -629,15 +672,31 @@ export interface components {
             file: string;
         };
         /**
+         * CollusionRequest
+         * @description 共谋平均请求：同一内容的多份不同水印副本。
+         */
+        CollusionRequest: {
+            /** Paths */
+            paths: string[];
+            /** Output */
+            output: string;
+            /**
+             * Mode
+             * @default mean
+             * @enum {string}
+             */
+            mode: "mean" | "median";
+            /**
+             * Max Frames
+             * @default 600
+             */
+            max_frames: number;
+        };
+        /**
          * DesensitizeRequest
          * @description 直接调用 /api/desensitize 的请求体：在选项集之上补充路径。
          */
         DesensitizeRequest: {
-            /**
-             * Output Mode
-             * @default reencode
-             */
-            output_mode: string;
             /**
              * Reorder
              * @default false
@@ -953,6 +1012,68 @@ export interface components {
              * @default false
              */
             native_filters: boolean;
+            /**
+             * Purify Strength
+             * @default 0
+             */
+            purify_strength: number;
+            /**
+             * Purify Detail
+             * @default 1
+             */
+            purify_detail: number;
+            /**
+             * Purify Detail Sigma
+             * @default 0
+             */
+            purify_detail_sigma: number;
+            /**
+             * Purify Detail Wide
+             * @default false
+             */
+            purify_detail_wide: boolean;
+            /**
+             * Purify Temporal
+             * @default 0
+             */
+            purify_temporal: number;
+            /**
+             * Purify Max Edge
+             * @default 256
+             */
+            purify_max_edge: number;
+            /**
+             * Purify Batch
+             * @default 8
+             */
+            purify_batch: number;
+            /**
+             * Embedding Attack
+             * @default
+             * @enum {string}
+             */
+            embedding_attack: "" | "auto" | "luma" | "chroma" | "both";
+            /**
+             * Embedding Strength
+             * @default 0
+             */
+            embedding_strength: number;
+            /**
+             * Embedding Variant
+             * @default v2
+             * @enum {string}
+             */
+            embedding_variant: "legacy" | "v2";
+            /**
+             * Embedding Aggressive
+             * @default false
+             */
+            embedding_aggressive: boolean;
+            /**
+             * Auto Profile
+             * @default false
+             */
+            auto_profile: boolean;
             /** Path */
             path: string;
             /** Output */
@@ -1004,35 +1125,6 @@ export interface components {
             /** Paths */
             paths: string[];
         };
-        /** RegionSpec */
-        RegionSpec: {
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
-            /** W */
-            w: number;
-            /** H */
-            h: number;
-            /** Start */
-            start?: number | null;
-            /** End */
-            end?: number | null;
-        };
-        /** RepairRequest */
-        RepairRequest: {
-            /** Path */
-            path: string;
-            /** Output */
-            output: string;
-            /** Regions */
-            regions: components["schemas"]["RegionSpec"][];
-            /**
-             * Crf
-             * @default 23
-             */
-            crf: number;
-        };
         /** ScanRequest */
         ScanRequest: {
             /** Path */
@@ -1044,7 +1136,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "detect" | "desensitize" | "repair";
+            kind: "detect" | "desensitize";
             /** Path */
             path: string;
             /**
@@ -1240,6 +1332,68 @@ export interface components {
              */
             ssimTarget: number;
             /**
+             * Purifystrength
+             * @default 0
+             */
+            purifyStrength: number;
+            /**
+             * Purifydetail
+             * @default 1
+             */
+            purifyDetail: number;
+            /**
+             * Purifydetailsigma
+             * @default 0
+             */
+            purifyDetailSigma: number;
+            /**
+             * Purifydetailwide
+             * @default false
+             */
+            purifyDetailWide: boolean;
+            /**
+             * Purifytemporal
+             * @default 0
+             */
+            purifyTemporal: number;
+            /**
+             * Purifymaxedge
+             * @default 256
+             */
+            purifyMaxEdge: number;
+            /**
+             * Purifybatch
+             * @default 8
+             */
+            purifyBatch: number;
+            /**
+             * Embeddingattack
+             * @default
+             * @enum {string}
+             */
+            embeddingAttack: "" | "auto" | "luma" | "chroma" | "both";
+            /**
+             * Embeddingstrength
+             * @default 0
+             */
+            embeddingStrength: number;
+            /**
+             * Embeddingvariant
+             * @default v2
+             * @enum {string}
+             */
+            embeddingVariant: "legacy" | "v2";
+            /**
+             * Embeddingaggressive
+             * @default false
+             */
+            embeddingAggressive: boolean;
+            /**
+             * Autoprofile
+             * @default false
+             */
+            autoProfile: boolean;
+            /**
              * Sharpness
              * @default false
              */
@@ -1342,6 +1496,85 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PathRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purify_status_api_purify_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    purify_install_api_purify_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    collusion_api_collusion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollusionRequest"];
             };
         };
         responses: {
@@ -1746,41 +1979,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DesensitizeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    repair_api_repair_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RepairRequest"];
             };
         };
         responses: {

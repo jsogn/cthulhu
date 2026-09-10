@@ -10,7 +10,6 @@ import {
   type JobInfo,
   type JobTaskInfo,
 } from "@/lib/backend";
-import { useMaterialsStore } from "@/stores/materials";
 import { toast } from "@/stores/toasts";
 
 interface QueueState {
@@ -43,14 +42,7 @@ export const useQueueStore = create<QueueState>((set) => ({
           (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0),
         ),
       }));
-      // 检测任务完成后把真实报告回写素材库。
       if (job.status === "done") {
-        for (const task of job.tasks) {
-          if (task.kind === "detect" && task.result) {
-            const report = task.result as { bitstream: { score: number; flags: string[] } };
-            useMaterialsStore.getState().applyDetectResult(task.path, report);
-          }
-        }
         toast(`任务完成：${job.name}`);
         try {
           new Notification(`Cthulhu · 任务完成`, { body: job.name });

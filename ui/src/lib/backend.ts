@@ -38,7 +38,7 @@ export interface ImportedVideo {
   video?: LibraryVideoInfo | null;
 }
 
-/** 把浏览器拖入的 File 导入本地引擎素材库，返回可供播放/检测的路径。 */
+/** 把浏览器拖入的 File 导入本地引擎素材库，返回可供播放/处理的路径。 */
 export function importFile(
   file: File,
   onProgress?: (percent: number) => void,
@@ -144,6 +144,82 @@ export async function ffmpegInstallState(): Promise<FfmpegInstallState> {
   return res.json();
 }
 
+export interface PurifyStatus {
+  available: boolean;
+  reason: string;
+  model_id: string;
+  model_cached: boolean;
+  bundled: boolean;
+  variant: string | null;
+  allow_download: boolean;
+  device: string;
+  state: "unavailable" | "missing" | "downloading" | "ready" | "error" | "unknown";
+  progress: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  error: string | null;
+  model_dir: string;
+  /** 潜空间引擎（10MB TAESD）：默认快档，内置即就绪。 */
+  latent?: {
+    engine: "latent";
+    model_id: string;
+    cached: boolean;
+    bundled: boolean;
+    path: string;
+  };
+}
+
+/** 查询潜空间净化运行时与权重状态（依赖/权重缓存/设备）。 */
+export async function purifyStatus(): Promise<PurifyStatus> {
+  const res = await apiFetch("/api/purify/status");
+  if (!res.ok) throw new Error(`查询净化状态失败（${res.status}）`);
+  return res.json();
+}
+
+/** 触发净化权重准备（10MB TAESD）；返回当前状态，前端轮询直到 ready。 */
+export async function installPurify(): Promise<PurifyStatus> {
+  const res = await apiFetch("/api/purify/install", { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(
+      (data as { detail?: string } | null)?.detail ?? `净化模型安装启动失败（${res.status}）`,
+    );
+  }
+  return res.json();
+}
+
+export interface CollusionResult {
+  paths: string[];
+  output: string;
+  copies: number;
+  frames: number;
+  mode: "mean" | "median";
+  fps: number | null;
+  resolution: number[];
+  quality: { psnr_db: number; ssim: number }[];
+  estimated_watermark_reduction: number;
+}
+
+/** 共谋平均：同一内容的多份不同水印副本对齐后平均。 */
+export async function runCollusion(
+  paths: string[],
+  output: string,
+  mode: "mean" | "median" = "mean",
+): Promise<CollusionResult> {
+  const res = await apiFetch("/api/collusion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths, output, mode }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(
+      (data as { detail?: string } | null)?.detail ?? `共谋平均失败（${res.status}）`,
+    );
+  }
+  return res.json();
+}
+
 export type BackendEvent = { type: string } & Record<string, unknown>;
 
 // 检测引擎返回的报告结构（与后端 /api/detect 对齐）。
@@ -219,6 +295,8 @@ export interface DesensitizeReport {
   input: string;
   output: string;
   frames: number;
+  /** 成片帧数：回声清除等同步变速会改变时长，与输入帧数可能不同。 */
+  out_frames?: number;
   similarity_before: { content_cosine: number; motion_cosine: number };
   similarity_after: { content_cosine: number; motion_cosine: number };
   vmaf: number | null;
@@ -244,7 +322,7 @@ export interface DesensitizeJobResult {
   metrics_pending?: boolean;
 }
 
-export type JobKind = "detect" | "desensitize" | "repair";
+export type JobKind = "detect" | "desensitize";
 
 export interface JobTaskSpec {
   kind: JobKind;
@@ -603,7 +681,7 @@ export async function clearJobs(scope: "finished" | "all" = "finished"): Promise
   return data.removed;
 }
 
-/** 读取持久化素材库（含缓存的检测报告，最新导入在前）。 */
+/** 读取持久化素材库（含缓存的素材元数据，最新导入在前）。 */
 export async function fetchLibrary(): Promise<LibraryFile[]> {
   const res = await apiFetch("/api/library");
   if (!res.ok) throw new Error(`读取素材库失败（${res.status}）`);

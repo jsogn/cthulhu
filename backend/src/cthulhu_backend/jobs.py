@@ -80,37 +80,9 @@ def _run_desensitize(
     return result
 
 
-def _run_repair(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
-    result = services.run_repair(
-        path,
-        options["output"],
-        options.get("regions", []),
-        options.get("crf", 23),
-        progress_cb=progress,
-        stop=stop,
-        pause=pause,
-    )
-    try:
-        services.record_variant(
-            path,
-            result.get("output") or os.path.expanduser(options["output"]),
-            {
-                "regions": options.get("regions", []),
-                "crf": options.get("crf", 23),
-                "_app_version": APP_VERSION,
-            },
-            seed=0,
-            kind="repaired",
-        )
-    except Exception:  # noqa: BLE001, S110 - 记录失败不影响任务结果
-        pass
-    return result
-
-
 RUNNERS = {
     "detect": _run_detect,
     "desensitize": _run_desensitize,
-    "repair": _run_repair,
 }
 
 
@@ -140,8 +112,7 @@ class JobQueue:
     def start(self) -> None:
         # worker 缺失或已随旧事件循环结束（如测试的多 portal 场景）时，重建队列与任务。
         if self._worker is None or self._worker.done():
-            # 重建队列前先把尚未消费的排队项搬过去：restore() 入队的续跑任务
-            # 不能被新队列静默丢弃，否则进程重启后任务会永远停在「排队中」。
+            # 重建队列前先把尚未消费的排队项搬过去，避免已入队任务被静默丢弃。
             pending: list[tuple[int, int, str]] = []
             while not self._inbox.empty():
                 try:
@@ -333,20 +304,18 @@ class JobQueue:
         return job
 
     def restore(self) -> None:
-        """启动时载入持久化任务，未完成任务自动重新入队续跑。"""
+        """启动时载入持久化任务；中断任务标记为失败，不静默从头重跑。"""
         for job in db.load_jobs():
             if job["status"] in {"queued", "running"}:
                 for task in job["tasks"]:
                     if task["status"] in {"queued", "running"}:
-                        task["status"] = "queued"
+                        task["status"] = "failed"
                         task["percent"] = 0
-                        task["error"] = None
-                job["status"] = "queued"
-                if "续跑" not in job["name"]:
-                    job["name"] = f"{job['name']} · 续跑"
+                        task["progress_note"] = "进程重启中断"
+                        task["error"] = "进程重启中断，当前版本不支持断点续跑；请手动重试"
+                job["status"] = "failed"
                 db.save_job(job)
                 self._jobs[job["id"]] = job
-                self._enqueue(job)
             else:
                 self._jobs[job["id"]] = job
 

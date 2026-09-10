@@ -1,16 +1,10 @@
 import { useEffect } from "react";
 import { useCleanActions } from "@/components/workbench/useCleanActions";
-import { useDetectionFlow } from "@/components/workbench/useDetectionFlow";
 import { useOutputsFlow } from "@/components/workbench/useOutputsFlow";
 import { useTemplateFlow } from "@/components/workbench/useTemplateFlow";
-import type {
-  DesensitizeJobResult,
-  DetectReport,
-  JobInfo,
-  OutputInfo,
-} from "@/lib/backend";
+import type { DesensitizeJobResult, OutputInfo } from "@/lib/backend";
 import { useCleanPanel } from "@/stores/cleanPanel";
-import { useMaterialsStore, type RiskLevel } from "@/stores/materials";
+import { useMaterialsStore } from "@/stores/materials";
 import { useQueueStore } from "@/stores/queue";
 import { toast } from "@/stores/toasts";
 
@@ -38,21 +32,7 @@ function rememberHandledTask(id: string): void {
   }
 }
 
-/** 正在排队 / 执行 / 暂停中的检测任务所覆盖的路径（用于防止重复提交）。 */
-function pendingDetectPaths(jobs: JobInfo[]): Set<string> {
-  return new Set(
-    jobs
-      .flatMap((job) => job.tasks)
-      .filter(
-        (task) =>
-          task.kind === "detect" &&
-          (task.status === "queued" || task.status === "running" || task.status === "paused"),
-      )
-      .map((task) => task.path),
-  );
-}
-
-/** 右栏上下文面板：按 模板/检测/产物/清洗动作 四条流组合。 */
+/** 右栏上下文面板：按 模板/产物/清洗动作 三条流组合。 */
 export function useContextPanel(
   onStartCompare: (left: string, right: string, leftLabel: string, rightLabel: string) => void,
 ) {
@@ -60,21 +40,12 @@ export function useContextPanel(
     state.materials.find((m) => m.id === state.activeId),
   );
   const jobs = useQueueStore((state) => state.jobs);
-  const hashOn = useCleanPanel((state) => state.hashOn);
-  const setHashOn = useCleanPanel((state) => state.setHashOn);
-  const setDctOn = useCleanPanel((state) => state.setDctOn);
-
-  const risk = (material?.risk ?? "待检测") as RiskLevel;
-  const score = material?.score ?? 0;
-  const report = (material as { report?: DetectReport } | undefined)?.report ?? null;
-  const detecting = !!material?.path && pendingDetectPaths(jobs).has(material.path);
 
   useEffect(() => {
     void useCleanPanel.getState().loadSettings();
   }, []);
 
   const templateFlow = useTemplateFlow();
-  const detectionFlow = useDetectionFlow({ material, report, detecting });
   const outputsFlow = useOutputsFlow(material);
   const cleanActions = useCleanActions(material);
 
@@ -108,13 +79,6 @@ export function useContextPanel(
 
   return {
     material,
-    risk,
-    score,
-    report,
-    detecting,
-    detectSubmitting: detectionFlow.detectSubmitting,
-    audio: detectionFlow.audio,
-    audioMissing: detectionFlow.audioMissing,
     templateList: templateFlow.templateList,
     cleanSubmitting: cleanActions.cleanSubmitting,
     outputs: outputsFlow.outputs,
@@ -124,15 +88,10 @@ export function useContextPanel(
     setPendingDelete: outputsFlow.setPendingDelete,
     playerPath: outputsFlow.playerPath,
     setPlayerPath: outputsFlow.setPlayerPath,
-    hashOn,
-    setHashOn,
-    setDctOn,
-    detectNow: detectionFlow.detectNow,
     runClean: cleanActions.runClean,
     showVariant: outputsFlow.showVariant,
     compareOriginal,
     confirmDelete: outputsFlow.confirmDelete,
-    runRepairJob: cleanActions.runRepairJob,
     applyTemplateById: templateFlow.applyTemplateById,
   };
 }

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Code, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RegionOverlay } from "@/components/workbench/RegionOverlay";
 import { frameUrl, mediaUrl } from "@/lib/backend";
 import { fmtFrames } from "@/lib/format";
 import type { Material } from "@/stores/materials";
@@ -175,7 +174,6 @@ export function PreviewPane({
   };
 
   const onComparePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest(".sel-box")) return;
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
     setComparePct(Math.max(0, Math.min(100, percentFrom(e, el).x)));
@@ -285,8 +283,6 @@ export function PreviewPane({
               />
             </div>
           )}
-
-          <RegionOverlay mediaBoxRef={mediaBoxRef} />
         </div>
       </div>
 

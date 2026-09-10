@@ -411,8 +411,18 @@ def cleanse_matrix(
     }
     report = harness.run_cleanse_matrix(clean, variants, levels, bits=bits, seed=seed)
     for name, entry in report.items():
+        if not isinstance(entry, dict) or "levels" not in entry:
+            continue
         level_text = " ".join(f"{k}={v:.3f}" for k, v in entry["levels"].items())
-        typer.echo(f"{name:<10} 编码后={entry['encoded_ber']:.3f} | {level_text}")
+        quality_text = " ".join(
+            f"{k}[{q['psnr_db']:.1f}dB/{q['ssim']:.3f}]"
+            for k, q in entry["quality"].items()
+        )
+        typer.echo(f"{name:<10} 编码后={entry['encoded_ber']:.3f} | {level_text} | {quality_text}")
+    summary = report.get("summary", {})
+    typer.echo(
+        f"FNR={summary.get('fnr')} 分层={summary.get('fnr_by_content')}"
+    )
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=2)
@@ -471,6 +481,36 @@ def desensitize(
         seed=seed,
     )
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+@app.command()
+def purify_status() -> None:
+    """查看潜空间净化运行时与模型状态（依赖/权重/设备）。"""
+    from cthulhu_backend.transform import purify
+
+    typer.echo(json.dumps(purify.model_status(), ensure_ascii=False, indent=2))
+
+
+@app.command()
+def purify_install() -> None:
+    """一键准备净化权重（内置 10MB TAESD；缺失时才下载，阻塞直到完成）。"""
+    from cthulhu_backend.transform import purify
+
+    if not purify.allow_download():
+        typer.echo(f"已禁用模型下载（{purify.ALLOW_DOWNLOAD_ENV}=0）", err=True)
+        raise typer.Exit(code=2)
+
+    def on_progress(fraction: float, note: str) -> None:
+        typer.echo(f"[{fraction * 100:5.1f}%] {note}")
+
+    purify.set_control(progress=on_progress)
+    try:
+        status = purify.install_model(wait=True)
+    finally:
+        purify.clear_control()
+    typer.echo(json.dumps(status, ensure_ascii=False, indent=2))
+    if not status.get("available") or status.get("state") == "error":
+        raise typer.Exit(code=2)
 
 
 def main() -> None:

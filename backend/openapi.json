@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "暗水印清洗台后端",
-    "version": "0.4.2"
+    "version": "0.6.0"
   },
   "paths": {
     "/api/health": {
@@ -49,6 +49,89 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Detect Api Detect Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/purify/status": {
+      "get": {
+        "summary": "Purify Status",
+        "description": "潜空间净化能力状态：依赖、权重缓存、策略与推理设备。",
+        "operationId": "purify_status_api_purify_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Purify Status Api Purify Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/purify/install": {
+      "post": {
+        "summary": "Purify Install",
+        "description": "一键准备净化权重（10MB 级 TAESD）；立即返回，前端轮询状态直到 ready。",
+        "operationId": "purify_install_api_purify_install_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Purify Install Api Purify Install Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collusion": {
+      "post": {
+        "summary": "Collusion",
+        "description": "共谋平均：同一内容的多份不同水印副本对齐后平均（研究/授权测试）。",
+        "operationId": "collusion_api_collusion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollusionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Collusion Api Collusion Post"
                 }
               }
             }
@@ -529,46 +612,6 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Desensitize Api Desensitize Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/repair": {
-      "post": {
-        "summary": "Repair",
-        "operationId": "repair_api_repair_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RepairRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Repair Api Repair Post"
                 }
               }
             }
@@ -1511,13 +1554,49 @@
         ],
         "title": "Body_import_video_api_import_post"
       },
+      "CollusionRequest": {
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "minItems": 2,
+            "title": "Paths"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "median"
+            ],
+            "title": "Mode",
+            "default": "mean"
+          },
+          "max_frames": {
+            "type": "integer",
+            "maximum": 6000.0,
+            "minimum": 2.0,
+            "title": "Max Frames",
+            "default": 600
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paths",
+          "output"
+        ],
+        "title": "CollusionRequest",
+        "description": "共谋平均请求：同一内容的多份不同水印副本。"
+      },
       "DesensitizeRequest": {
         "properties": {
-          "output_mode": {
-            "type": "string",
-            "title": "Output Mode",
-            "default": "reencode"
-          },
           "reorder": {
             "type": "boolean",
             "title": "Reorder",
@@ -1951,6 +2030,91 @@
             "title": "Native Filters",
             "default": false
           },
+          "purify_strength": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purify Strength",
+            "default": 0.0
+          },
+          "purify_detail": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purify Detail",
+            "default": 1.0
+          },
+          "purify_detail_sigma": {
+            "type": "number",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Purify Detail Sigma",
+            "default": 0.0
+          },
+          "purify_detail_wide": {
+            "type": "boolean",
+            "title": "Purify Detail Wide",
+            "default": false
+          },
+          "purify_temporal": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purify Temporal",
+            "default": 0.0
+          },
+          "purify_max_edge": {
+            "type": "integer",
+            "maximum": 2048.0,
+            "minimum": 0.0,
+            "title": "Purify Max Edge",
+            "default": 256
+          },
+          "purify_batch": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Purify Batch",
+            "default": 8
+          },
+          "embedding_attack": {
+            "type": "string",
+            "enum": [
+              "",
+              "auto",
+              "luma",
+              "chroma",
+              "both"
+            ],
+            "title": "Embedding Attack",
+            "default": ""
+          },
+          "embedding_strength": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Embedding Strength",
+            "default": 0.0
+          },
+          "embedding_variant": {
+            "type": "string",
+            "enum": [
+              "legacy",
+              "v2"
+            ],
+            "title": "Embedding Variant",
+            "default": "v2"
+          },
+          "embedding_aggressive": {
+            "type": "boolean",
+            "title": "Embedding Aggressive",
+            "default": false
+          },
+          "auto_profile": {
+            "type": "boolean",
+            "title": "Auto Profile",
+            "default": false
+          },
           "path": {
             "type": "string",
             "title": "Path"
@@ -2103,89 +2267,6 @@
         ],
         "title": "ProductsRequest"
       },
-      "RegionSpec": {
-        "properties": {
-          "x": {
-            "type": "number",
-            "title": "X"
-          },
-          "y": {
-            "type": "number",
-            "title": "Y"
-          },
-          "w": {
-            "type": "number",
-            "title": "W"
-          },
-          "h": {
-            "type": "number",
-            "title": "H"
-          },
-          "start": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start"
-          },
-          "end": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End"
-          }
-        },
-        "type": "object",
-        "required": [
-          "x",
-          "y",
-          "w",
-          "h"
-        ],
-        "title": "RegionSpec"
-      },
-      "RepairRequest": {
-        "properties": {
-          "path": {
-            "type": "string",
-            "title": "Path"
-          },
-          "output": {
-            "type": "string",
-            "title": "Output"
-          },
-          "regions": {
-            "items": {
-              "$ref": "#/components/schemas/RegionSpec"
-            },
-            "type": "array",
-            "title": "Regions"
-          },
-          "crf": {
-            "type": "integer",
-            "maximum": 51.0,
-            "minimum": 0.0,
-            "title": "Crf",
-            "default": 23
-          }
-        },
-        "type": "object",
-        "required": [
-          "path",
-          "output",
-          "regions"
-        ],
-        "title": "RepairRequest"
-      },
       "ScanRequest": {
         "properties": {
           "path": {
@@ -2205,8 +2286,7 @@
             "type": "string",
             "enum": [
               "detect",
-              "desensitize",
-              "repair"
+              "desensitize"
             ],
             "title": "Kind"
           },
@@ -2416,6 +2496,91 @@
             "type": "number",
             "title": "Ssimtarget",
             "default": 0.94
+          },
+          "purifyStrength": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purifystrength",
+            "default": 0.0
+          },
+          "purifyDetail": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purifydetail",
+            "default": 1.0
+          },
+          "purifyDetailSigma": {
+            "type": "number",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Purifydetailsigma",
+            "default": 0.0
+          },
+          "purifyDetailWide": {
+            "type": "boolean",
+            "title": "Purifydetailwide",
+            "default": false
+          },
+          "purifyTemporal": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purifytemporal",
+            "default": 0.0
+          },
+          "purifyMaxEdge": {
+            "type": "integer",
+            "maximum": 2048.0,
+            "minimum": 0.0,
+            "title": "Purifymaxedge",
+            "default": 256
+          },
+          "purifyBatch": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Purifybatch",
+            "default": 8
+          },
+          "embeddingAttack": {
+            "type": "string",
+            "enum": [
+              "",
+              "auto",
+              "luma",
+              "chroma",
+              "both"
+            ],
+            "title": "Embeddingattack",
+            "default": ""
+          },
+          "embeddingStrength": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Embeddingstrength",
+            "default": 0.0
+          },
+          "embeddingVariant": {
+            "type": "string",
+            "enum": [
+              "legacy",
+              "v2"
+            ],
+            "title": "Embeddingvariant",
+            "default": "v2"
+          },
+          "embeddingAggressive": {
+            "type": "boolean",
+            "title": "Embeddingaggressive",
+            "default": false
+          },
+          "autoProfile": {
+            "type": "boolean",
+            "title": "Autoprofile",
+            "default": false
           },
           "sharpness": {
             "type": "boolean",

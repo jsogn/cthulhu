@@ -196,7 +196,7 @@ async function startBackend() {
     const backendDir = path.resolve(__dirname, "..", "backend");
     backendProcess = spawnBackend(
       "uv",
-      ["run", "uvicorn", "cthulhu_backend.main:app", "--port", String(port)],
+      ["run", "--extra", "purify", "uvicorn", "cthulhu_backend.main:app", "--port", String(port)],
       {
         cwd: backendDir,
         stdio: "inherit",
@@ -205,6 +205,16 @@ async function startBackend() {
           CTHULHU_AUTH_TOKEN: authToken,
           CTHULHU_FFMPEG_INSTALL_DIR: path.join(getCacheDir(), "ffmpeg"),
           CTHULHU_CRASH_LOG: crashLog,
+          ...(fs.existsSync(path.resolve(__dirname, "..", "packaging", "models"))
+            ? {
+                CTHULHU_PURIFY_MODEL_DIR: path.resolve(
+                  __dirname,
+                  "..",
+                  "packaging",
+                  "models",
+                ),
+              }
+            : {}),
         },
       },
     );

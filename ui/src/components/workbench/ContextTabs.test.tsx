@@ -31,7 +31,7 @@ describe("ContextTabs", () => {
         <ContextTabs setTab={setTab} />
       </Tabs>,
     );
-    await user.click(screen.getByRole("tab", { name: "检测参考" }));
-    expect(setTab).toHaveBeenCalledWith("检测参考");
+    await user.click(screen.getByRole("tab", { name: "处理产物" }));
+    expect(setTab).toHaveBeenCalledWith("处理产物");
   });
 });

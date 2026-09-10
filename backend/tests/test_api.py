@@ -27,6 +27,34 @@ def test_health():
     assert client.get("/api/health").json()["ok"] is True
 
 
+def test_purify_status_reports_capability():
+    response = client.get("/api/purify/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload["available"], bool)
+    assert isinstance(payload["model_cached"], bool)
+    assert isinstance(payload["bundled"], bool)
+    assert isinstance(payload["allow_download"], bool)
+    assert payload["model_id"]
+    assert payload["state"] in {"unavailable", "missing", "downloading", "ready", "error"}
+    assert 0.0 <= payload["progress"] <= 1.0
+    assert payload["model_dir"]
+
+
+def test_purify_install_rejects_when_download_disabled(monkeypatch):
+    monkeypatch.setenv("CTHULHU_PURIFY_ALLOW_DOWNLOAD", "0")
+    response = client.post("/api/purify/install")
+    assert response.status_code == 409
+
+
+def test_collusion_requires_two_copies():
+    response = client.post(
+        "/api/collusion",
+        json={"paths": ["/a.mp4"], "output": "/out.mp4"},
+    )
+    assert response.status_code == 422
+
+
 def test_detect_missing_file_returns_404():
     response = client.post("/api/detect", json={"path": "/no/such/file.mp4"})
     assert response.status_code == 404
@@ -128,23 +156,6 @@ def test_desensitize_all_quality_switches(tmp_path):
     )
     assert response.status_code == 200
     assert output.exists()
-
-
-@needs_ffmpeg
-def test_repair_delogo(tmp_path):
-    source = _video(tmp_path, "r.mp4", seed=90)
-    output = tmp_path / "rout.mp4"
-    response = client.post(
-        "/api/repair",
-        json={
-            "path": str(source),
-            "output": str(output),
-            "regions": [{"x": 0.2, "y": 0.2, "w": 0.3, "h": 0.2, "start": 0.0, "end": 0.3}],
-        },
-    )
-    assert response.status_code == 200
-    assert output.exists()
-    assert response.json()["regions"] == 1
 
 
 @needs_ffmpeg
@@ -408,19 +419,6 @@ def test_detect_reports_stage_progress(tmp_path):
     assert notes and notes == sorted(notes) and notes[-1] > 90
 
 
-@needs_ffmpeg
-def test_repair_delogo_stops_before_start(tmp_path):
-    """取消标志置位时，修复任务在启动 ffmpeg 前立即中断。"""
-    source = _video(tmp_path, "c.mp4", seed=97)
-    with pytest.raises(InterruptedError):
-        ffmpeg.repair_delogo(
-            str(source),
-            str(tmp_path / "c-out.mp4"),
-            [{"x": 0.2, "y": 0.2, "w": 0.3, "h": 0.2}],
-            stop=lambda: True,
-        )
-
-
 def test_desensitize_rejects_camel_case_alias():
     """camelCase 别名已下线：直接端点只接受 snake_case。"""
     response = client.post(
@@ -428,6 +426,69 @@ def test_desensitize_rejects_camel_case_alias():
         json={"path": "/nope.mp4", "output": "/out.mp4", "audioRemix": False},
     )
     assert response.status_code == 422
+
+
+def test_desensitize_forwards_purify_options(monkeypatch, tmp_path):
+    """直接端点必须把净化选项原样透传（历史上整组 purify_* 被静默忽略）。"""
+    from cthulhu_backend import services
+
+    captured: dict = {}
+
+    def fake_run(path: str, output: str, **options) -> dict:
+        captured.update(options)
+        return {"output": output, "purify_note": "applied"}
+
+    monkeypatch.setattr(services, "run_desensitize", fake_run)
+    source = tmp_path / "in.mp4"
+    source.write_bytes(b"x")
+    response = client.post(
+        "/api/desensitize",
+        json={
+            "path": str(source),
+            "output": str(tmp_path / "out.mp4"),
+            "purify_strength": 0.1,
+            "purify_detail": 1.0,
+            "purify_detail_sigma": 1.5,
+            "purify_max_edge": 256,
+            "purify_batch": 8,
+            "embedding_attack": "both",
+            "auto_profile": True,
+        },
+    )
+    assert response.status_code == 200
+    assert captured["purify_strength"] == 0.1
+    assert captured["purify_detail"] == 1.0
+    assert captured["purify_detail_sigma"] == 1.5
+    assert captured["purify_max_edge"] == 256
+    assert captured["purify_batch"] == 8
+    assert captured["embedding_attack"] == "both"
+    assert captured["auto_profile"] is True
+
+
+def test_desensitize_tolerates_deprecated_purify_keys(monkeypatch) -> None:
+    """下线扩散引擎后，旧模板里的 engine/steps/guidance 必须被忽略而不是 422。"""
+    captured: dict = {}
+
+    def fake_run(path, output, **options):
+        captured.update(options)
+        return {"output": output}
+
+    monkeypatch.setattr(services, "run_desensitize", fake_run)
+    response = client.post(
+        "/api/desensitize",
+        json={
+            "path": "/tmp/in.mp4",
+            "output": "/tmp/out.mp4",
+            "purify_strength": 0.15,
+            "purify_engine": "diffusion",
+            "purify_steps": 30,
+            "purify_guidance": 0.0,
+        },
+    )
+    assert response.status_code == 200
+    assert captured["purify_strength"] == 0.15
+    for key in ("purify_engine", "purify_steps", "purify_guidance"):
+        assert key not in captured
 
 
 def test_create_job_rejects_unknown_desensitize_option():
@@ -446,3 +507,42 @@ def test_create_job_rejects_unknown_desensitize_option():
         },
     )
     assert response.status_code == 422
+
+
+def test_create_job_rejects_invalid_purify_strength():
+    response = client.post(
+        "/api/jobs",
+        json={
+            "name": "bad-purify",
+            "tasks": [
+                {
+                    "kind": "desensitize",
+                    "path": "/nope.mp4",
+                    "options": {"output": "/out.mp4", "purify_strength": 2.0},
+                },
+            ],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_job_rejects_invalid_blackbox_stack_options():
+    for options in (
+        {"purify_detail": 1.5},
+        {"purify_temporal": -0.1},
+        {"embedding_variant": "v3"},
+    ):
+        response = client.post(
+            "/api/jobs",
+            json={
+                "name": "bad-blackbox",
+                "tasks": [
+                    {
+                        "kind": "desensitize",
+                        "path": "/nope.mp4",
+                        "options": {"output": "/out.mp4", **options},
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 422

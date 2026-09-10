@@ -39,8 +39,8 @@ def _wait(client: TestClient, job_id: str, timeout: float = 60.0) -> dict:
     raise TimeoutError("任务未在期限内结束")
 
 
-def test_restore_requeues_interrupted_job(client):
-    """进程中断的未完成任务在重启后自动重新入队续跑。"""
+def test_restore_marks_interrupted_job_failed(client):
+    """进程中断的未完成任务标记为失败，不静默从头重跑。"""
     job_id = uuid.uuid4().hex[:12]
     db.save_job({
         "id": job_id,
@@ -62,15 +62,15 @@ def test_restore_requeues_interrupted_job(client):
     fresh = JobQueue()
     fresh.restore()
     restored = fresh._jobs[job_id]
-    assert restored["status"] == "queued"
-    assert restored["tasks"][0]["status"] == "queued"
-    assert restored["tasks"][0]["error"] is None
-    assert "续跑" in restored["name"]
+    assert restored["status"] == "failed"
+    assert restored["tasks"][0]["status"] == "failed"
+    assert "进程重启中断" in restored["tasks"][0]["error"]
+    assert restored["tasks"][0]["progress_note"] == "进程重启中断"
     db.delete_jobs("all")
 
 
-def test_restore_then_start_dispatches_restored_job():
-    """restore 之后 start 不能重建空队列丢弃恢复任务（引擎重启续跑回归）。"""
+def test_restore_does_not_auto_restart_interrupted_job():
+    """restore 之后 start 不会把中断任务重新跑一遍。"""
     job_id = uuid.uuid4().hex[:12]
     db.save_job({
         "id": job_id,
@@ -92,17 +92,12 @@ def test_restore_then_start_dispatches_restored_job():
     queue = JobQueue()
 
     async def drive():
-        # 与 lifespan 相同的顺序：先恢复入队、再启动调度。
+        # 与 lifespan 相同的顺序：先恢复、再启动调度。
         queue.restore()
         queue.start()
         try:
-            deadline = time.time() + 10
-            while time.time() < deadline:
-                job = queue.get(job_id)
-                if job is not None and job["status"] in {"done", "failed", "canceled"}:
-                    return job
-                await asyncio.sleep(0.05)
-            raise TimeoutError("恢复的任务未被调度")
+            await asyncio.sleep(0.2)
+            return queue.get(job_id)
         finally:
             await queue.stop()
 
@@ -110,9 +105,9 @@ def test_restore_then_start_dispatches_restored_job():
         job = asyncio.run(drive())
     finally:
         db.delete_jobs("all")
-    # 源文件不存在，任务应快速失败而非永远停在「排队中」。
-    assert job["status"] == "failed", "恢复的任务单未进入终态"
-    assert job["tasks"][0]["status"] == "failed", "恢复的子任务未被执行到失败"
+    assert job["status"] == "failed"
+    assert job["tasks"][0]["status"] == "failed"
+    assert "进程重启中断" in job["tasks"][0]["error"]
     assert job["tasks"][0]["error"], "失败子任务缺少错误信息"
 
 

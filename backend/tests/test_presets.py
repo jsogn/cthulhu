@@ -65,6 +65,18 @@ def test_preset_payloads_cover_all_clean_options() -> None:
         "qualityProtect",
         "psnrTarget",
         "ssimTarget",
+        "purifyStrength",
+        "purifyDetail",
+        "purifyDetailSigma",
+        "purifyDetailWide",
+        "purifyTemporal",
+        "purifyMaxEdge",
+        "purifyBatch",
+        "embeddingAttack",
+        "embeddingStrength",
+        "embeddingVariant",
+        "embeddingAggressive",
+        "autoProfile",
         "sharpness",
         "colorRestore",
         "denoise",
@@ -80,72 +92,73 @@ def test_preset_payloads_cover_all_clean_options() -> None:
         assert set(preset["payload"]) == expected
 
 
-def test_pure_watermark_preset_excludes_fingerprint_layer_weapons() -> None:
-    """「清除推荐」档只保留破坏嵌入水印信号的原语，不含判重指纹/双目标武器。"""
-    preset = next(p for p in db.PRESET_TEMPLATES if p["name"] == "清除推荐")
-    payload = preset["payload"]
-    fingerprint_layer = {
-        "rotate",
-        "hashAttack",
-        "recropOn",
-        "regradeOn",
-        "hsvJitter",
-        "warp",
-        "perspective",
-        "jitter",
-        "nonintRatio",
-        "flowDisturb",
-        "textureInject",
-        "multiscale",
-        "complexityTrap",
-        "facePerturb",
-        "temporalBlur",
-        "lpcAttack",
-        "copyAttack",
-        "antiReembed",
-        "spoof",
+def test_template_payload_roundtrips_purify_options(monkeypatch, tmp_path) -> None:
+    """模板保存/加载必须原样保留净化与嵌入域配置，不能被 extra=ignore 丢弃。"""
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "templates.db"))
+    db.init_db()
+    payload = {
+        "purifyStrength": 0.25,
+        "purifySteps": 30,
+        "purifyGuidance": 0.0,
+        "purifyDetail": 0.6,
+        "purifyTemporal": 0.3,
+        "embeddingAttack": "chroma",
+        "embeddingStrength": 0.4,
+        "embeddingVariant": "v2",
+        "embeddingAggressive": True,
     }
-    for field in fingerprint_layer:
-        assert not payload.get(field), f"{field} 是判重指纹/双目标武器，不应出现在清除推荐档"
-    watermark_core = {
-        "requant",
-        "noise",
-        "dctStep",
-        "temporalSub",
-        "nativeTemporal",
-        "fftPhase",
-        "dwtDetail",
-        "denoise",
+    created = db.create_template("净化模板", payload)
+    loaded = next(t for t in db.list_templates() if t["id"] == created["id"])
+    for key, value in payload.items():
+        assert loaded["payload"][key] == value
+
+
+def test_deep_watermark_presets_all_enable_rebuild() -> None:
+    """四个内置模板都以大平台深度水印为目标：必须启用画面重建并给出档位。"""
+    presets = {p["name"]: p["payload"] for p in db.PRESET_TEMPLATES}
+    assert set(presets) == {
+        "画质优先（推荐）",
+        "平衡去水印",
+        "强力去水印",
+        "深度清剿（最狠）",
     }
-    for field in watermark_core:
-        assert payload.get(field), f"{field} 应开启，保证暗水印破坏力"
+    for name, payload in presets.items():
+        assert payload["purifyStrength"] > 0, f"{name} 未启用画面重建"
+        assert payload["purifyDetail"] > 0, f"{name} 未开启细节回注"
+        assert payload["purifyMaxEdge"] in {128, 192, 256, 512}, name
+        assert payload["purifyBatch"] >= 8, name
 
 
-def test_weak_weapons_removed_from_presets() -> None:
-    """光流退出常规预置；像素重写（伪超分+CLAHE）经实测对基准库无效，全兵器也不带。"""
-    strong = next(p for p in db.PRESET_TEMPLATES if p["name"] == "深度清除")
-    assert not strong["payload"].get("flowDisturb")
-    assert not strong["payload"].get("fftMag")
-    assert not strong["payload"].get("textureInject")
-    assert not strong["payload"].get("nonintRatio")
-    assert not strong["payload"].get("multiscale")
-    assert not strong["payload"].get("temporalBlur")
-    assert strong["payload"].get("temporalSub") == 1.2
-    full = next(p for p in db.PRESET_TEMPLATES if p["name"] == "全部武器（实验）")
-    assert full["payload"].get("temporalSub") == 1.2
-    assert full["payload"].get("nativeTemporal") is True
+def test_quality_first_preset_matches_panel_default() -> None:
+    """「画质优先（推荐）」必须与面板默认值一致，否则用户会看到两套参数。"""
+    payload = next(
+        p for p in db.PRESET_TEMPLATES if p["name"] == "画质优先（推荐）"
+    )["payload"]
+    assert payload["purifyMaxEdge"] == 512
+    assert payload["purifyDetailWide"] is True
+    assert payload["purifyDetailSigma"] == 0.0
+    assert payload["autoProfile"] is True
 
 
-def test_balanced_preset_prefers_listening_quality() -> None:
-    """LPC 对回声水印收益与听感代价不匹配，常规档按听感优先移除。"""
-    balanced = next(p for p in db.PRESET_TEMPLATES if p["name"] == "防重复清除")
-    assert not balanced["payload"].get("lpcAttack")
-    strong = next(p for p in db.PRESET_TEMPLATES if p["name"] == "深度清除")
-    assert not strong["payload"].get("lpcAttack")
+def test_strong_presets_get_harsher_than_balanced() -> None:
+    """强力/深度两档必须比平衡档更狠：更小的长边 + 时序减法 + 嵌入域增强重写。"""
+    presets = {p["name"]: p["payload"] for p in db.PRESET_TEMPLATES}
+    balanced = presets["平衡去水印"]
+    for name in ("强力去水印", "深度清剿（最狠）"):
+        payload = presets[name]
+        assert payload["purifyMaxEdge"] < balanced["purifyMaxEdge"], name
+        assert payload["purifyTemporal"] > 0, f"{name} 未开时序减法"
+        assert payload["embeddingStrength"] > 0, f"{name} 未开嵌入域重写"
+        assert payload["embeddingAggressive"] is True, name
+        assert payload["embeddingAttack"] == "both", name
+
+
+def test_all_presets_keep_audio_cleanup_and_denoise() -> None:
+    """音频三件套与空间降噪是默认安全网，任何模板都不得关闭。"""
     for preset in db.PRESET_TEMPLATES:
-        assert preset["payload"].get("denoise"), (
-            f"{preset['name']} 应默认开空间降噪（removegrain 是 SS/QIM/DWT 主要破坏者）"
-        )
+        payload = preset["payload"]
+        assert payload["audioRemix"] and payload["echoDefeat"], preset["name"]
+        assert payload["denoise"], preset["name"]
 
 
 def test_preset_migration_rebuilds_presets_and_keeps_user_templates(monkeypatch, tmp_path) -> None:

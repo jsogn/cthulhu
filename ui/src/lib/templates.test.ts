@@ -25,6 +25,35 @@ describe("payloadOf", () => {
     expect(payload.denoise).toBe(false);
   });
 
+  it("净化与嵌入域字段原样回填", () => {
+    const payload = payloadOf(
+      template({
+        purifyStrength: 0.25,
+        purifyDetail: 0.7,
+        purifyDetailSigma: 1.8,
+        purifyTemporal: 0.25,
+        purifyMaxEdge: 320,
+        purifyBatch: 8,
+        embeddingAttack: "luma",
+        embeddingStrength: 0.6,
+        embeddingVariant: "legacy",
+        embeddingAggressive: true,
+        autoProfile: true,
+      }),
+    );
+    expect(payload.purifyStrength).toBe(0.25);
+    expect(payload.purifyDetail).toBe(0.7);
+    expect(payload.purifyDetailSigma).toBe(1.8);
+    expect(payload.purifyTemporal).toBe(0.25);
+    expect(payload.purifyMaxEdge).toBe(320);
+    expect(payload.purifyBatch).toBe(8);
+    expect(payload.embeddingAttack).toBe("luma");
+    expect(payload.embeddingStrength).toBe(0.6);
+    expect(payload.embeddingVariant).toBe("legacy");
+    expect(payload.embeddingAggressive).toBe(true);
+    expect(payload.autoProfile).toBe(true);
+  });
+
   it("新版完整参数优先于兼容默认", () => {
     const payload = payloadOf(
       template({ audioRemix: true, codec: "H.265", resolution: "1280x720", recropOn: true }),
@@ -42,5 +71,19 @@ describe("DEFAULT_TEMPLATE", () => {
     expect(DEFAULT_TEMPLATE.codec).toBe("H.264");
     expect(DEFAULT_TEMPLATE.resolution).toBe("保持原始分辨率");
     expect(DEFAULT_TEMPLATE.audioRemix).toBe(false);
+    expect(DEFAULT_TEMPLATE.hashEpsilon).toBe(0.08);
+    expect(DEFAULT_TEMPLATE.hashMode).toBe("phash");
+    expect(DEFAULT_TEMPLATE.nativeTemporal).toBe(true);
+    expect(DEFAULT_TEMPLATE.purifyStrength).toBe(0);
+    expect(DEFAULT_TEMPLATE.purifyDetail).toBe(1);
+    expect(DEFAULT_TEMPLATE.purifyDetailSigma).toBe(1.5);
+    expect(DEFAULT_TEMPLATE.purifyTemporal).toBe(0);
+    expect(DEFAULT_TEMPLATE.purifyMaxEdge).toBe(256);
+    expect(DEFAULT_TEMPLATE.purifyBatch).toBe(8);
+    expect(DEFAULT_TEMPLATE.embeddingAttack).toBe("");
+    expect(DEFAULT_TEMPLATE.embeddingStrength).toBe(0);
+    expect(DEFAULT_TEMPLATE.embeddingVariant).toBe("v2");
+    expect(DEFAULT_TEMPLATE.embeddingAggressive).toBe(false);
+    expect(DEFAULT_TEMPLATE.autoProfile).toBe(false);
   });
 });

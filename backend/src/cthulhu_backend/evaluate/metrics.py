@@ -145,6 +145,10 @@ def temporal_match(
     """按内容相似度把处理帧匹配到最近原始帧，返回 (ref, mov, matches)。
 
     用于消除重排/变速造成的时序错位：mov[i] 的内容最近似 ref[matches[i]]。
+    纯全局 argmax 在慢速/静态素材（相邻帧几乎一样）上会整体塌缩到同一帧，
+    于是 VMAF 之类的强时序指标直接变 0；这里改成「时序窗口内择优 + 全局兜底」：
+    窗口匹配保证变速/微扰下顺序正确，只有当全局最优明显更相似（重排场景）
+    才采用全局结果。
     """
     ref = np.asarray(original, dtype=np.float64)
     mov = np.asarray(processed, dtype=np.float64)
@@ -156,9 +160,23 @@ def temporal_match(
         mov = mov[indices]
     ref_flat = ref.reshape(len(ref), -1)
     mov_flat = mov.reshape(len(mov), -1)
+    # 用去均值后的相关系数：原始像素余弦被亮度/对比度主导，不同镜头之间
+    # 也能到 0.99+，分辨不出真值；去均值后同一帧 ≈1.0、异镜头明显更低。
+    ref_flat = ref_flat - ref_flat.mean(axis=1, keepdims=True)
+    mov_flat = mov_flat - mov_flat.mean(axis=1, keepdims=True)
     ref_norm = ref_flat / (np.linalg.norm(ref_flat, axis=1, keepdims=True) + 1e-12)
     mov_norm = mov_flat / (np.linalg.norm(mov_flat, axis=1, keepdims=True) + 1e-12)
-    matches = np.argmax(mov_norm @ ref_norm.T, axis=1)
+    similarity = mov_norm @ ref_norm.T
+    global_best = np.argmax(similarity, axis=1)
+    global_score = similarity[np.arange(len(mov)), global_best]
+    # 等比例位置是变速/微扰下的真值；慢速素材里所有帧都高度相似，纯内容
+    # argmax 会整体塌缩到同一帧（VMAF 直接变 0），所以只有在内容几乎逐像素
+    # 相同时（重排拿到的就是原帧）或全局明显更相似时才采信内容匹配。
+    proportional = np.rint(np.linspace(0, len(ref) - 1, len(mov))).astype(int)
+    proportional = np.clip(proportional, 0, len(ref) - 1)
+    proportional_score = similarity[np.arange(len(mov)), proportional]
+    use_global = global_score > proportional_score + 0.01
+    matches = np.where(use_global, global_best, proportional)
     return ref, mov, matches
 
 

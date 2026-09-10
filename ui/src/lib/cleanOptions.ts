@@ -10,24 +10,6 @@ export const FIXED_CROP = 0.03;
 
 /** 从清洗设置单源组装后端清洗参数（每次调用生成独立随机种子）。 */
 export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
-  // 只换壳模式不经过任何对抗/处理管线，记录与展示都不应包含无效参数。
-  if (state.outputMode === "remux") {
-    return {
-      reorder: false,
-      speed: 1.0,
-      recrop: 0,
-      perturb: 0,
-      regrade: false,
-      output_mode: "remux",
-      audio_remix: false,
-      echo_defeat: false,
-      sharpness: false,
-      color_restore: false,
-      denoise: false,
-      anti_reembed: false,
-      seed: Math.floor(Math.random() * 1_000_000),
-    };
-  }
   return {
     reorder: false,
     speed: 1.0,
@@ -35,7 +17,6 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     perturb: FIXED_PERTURB,
     regrade: state.regradeOn,
     ...(state.regradeOn ? { hsv_jitter: 6, chroma_levels: 32 } : {}),
-    output_mode: state.outputMode,
     audio_remix: state.audioClean,
     echo_defeat: state.echoDefeat,
     skip_vmaf: true,
@@ -53,7 +34,7 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
       : {}),
     ...(state.requantOn ? { requant: state.requant } : {}),
     ...(state.noiseOn ? { noise: state.noise } : {}),
-    ...(state.dctOn ? { dct_step: 12 } : {}),
+    ...(state.dctOn ? { dct_step: state.dctStep } : {}),
     ...(state.audioStrongOn ? { audio_strong: true } : {}),
     ...(state.temporalSubOn ? { temporal_sub: state.temporalSub } : {}),
     ...(state.temporalSubOn && state.nativeTemporalOn ? { native_temporal: true } : {}),
@@ -72,6 +53,26 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     ...(state.temporalBlurOn ? { temporal_blur: state.temporalBlur } : {}),
     ...(state.lpcOn ? { lpc_attack: state.lpc } : {}),
     ...(state.neuralOn ? { copy_attack: state.neural } : {}),
+    ...(state.purifyOn
+      ? {
+          purify_strength: state.purifyStrength,
+          purify_detail: state.purifyDetail,
+          purify_detail_sigma: state.purifyDetailSigma,
+          purify_detail_wide: state.purifyDetailWide,
+          purify_temporal: state.purifyTemporal,
+          purify_max_edge: state.purifyMaxEdge,
+          purify_batch: state.purifyBatch,
+        }
+      : {}),
+    ...(state.embeddingOn
+      ? {
+          embedding_attack: state.embeddingAttack,
+          embedding_strength: state.embeddingStrength,
+          embedding_variant: state.embeddingVariant,
+          embedding_aggressive: state.embeddingAggressive,
+        }
+      : {}),
+    ...(state.autoProfile ? { auto_profile: true } : {}),
     ...(state.qualityProtectOn
       ? {
           quality_protect: true,
@@ -104,4 +105,16 @@ export function cleanOutputPath(
       : `${srcName}_清洗_${ts}${suffix}.mp4`;
   const baseDir = exportDir || "~/Documents/Cthulhu";
   return `${baseDir.replace(/\/+$/, "")}/${fileName}`;
+}
+
+/** 共谋平均输出路径：以第一个副本命名，标注共谋平均与时间戳。 */
+export function collusionOutputPath(
+  srcPath: string,
+  exportDir: string,
+  ts: string,
+): string {
+  const srcStem = srcPath.replace(/\.(mp4|mov|mkv|avi|flv|ts)$/i, "");
+  const srcName = srcStem.split(/[\\/]/).pop() ?? srcStem;
+  const baseDir = exportDir || "~/Documents/Cthulhu";
+  return `${baseDir.replace(/\/+$/, "")}/${srcName}_共谋平均_${ts}.mp4`;
 }

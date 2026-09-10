@@ -171,8 +171,6 @@ export default function ImportDialog() {
             res,
             fps,
             size: item.size,
-            risk: "待检测",
-            score: 0,
             tags: ["本地"],
             frame: thumbUrl(path, 320),
             path,
@@ -218,7 +216,7 @@ export default function ImportDialog() {
     toast(parts.join("，"));
   };
 
-  const detectLocal = async () => {
+  const importLocal = async () => {
     const path = localPath.trim();
     if (!path) {
       toast("请输入本机视频文件路径");
@@ -239,8 +237,7 @@ export default function ImportDialog() {
         res: `${video.width}×${video.height}`,
         fps: `${video.fps}fps`,
         size: fmtSize(record.size),
-        risk: "待检测",
-        score: 0,
+        codec: video.codec,
         tags: ["本地"],
         frame: thumbUrl(path, 320),
         path,
@@ -250,7 +247,7 @@ export default function ImportDialog() {
       select(material.id);
       setOpen(false);
       setLocalPath("");
-      toast(`已导入：${name}（待检测，可在检测参考页手动检测）`);
+      toast(`已导入：${name}`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "导入失败，请确认路径与文件格式");
     }
@@ -270,8 +267,7 @@ export default function ImportDialog() {
           res: `${file.video.width}×${file.video.height}`,
           fps: `${file.video.fps}fps`,
           size: fmtSize(file.size),
-          risk: "待检测",
-          score: 0,
+          codec: file.video.codec,
           tags: ["本地", "文件夹"],
           frame: thumbUrl(file.path, 320),
           path: file.path,
@@ -347,11 +343,11 @@ export default function ImportDialog() {
             value={localPath}
             onChange={(e) => setLocalPath(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") detectLocal();
+              if (e.key === "Enter") importLocal();
             }}
           />
-          <Button size="sm" variant="secondary" disabled={!localPath.trim()} onClick={detectLocal}>
-            检测并导入
+          <Button size="sm" variant="secondary" disabled={!localPath.trim()} onClick={importLocal}>
+            导入
           </Button>
           <Button size="sm" variant="secondary" disabled={folderScanning} onClick={chooseFolder}>
             {folderScanning ? "扫描中…" : "选择文件夹"}

@@ -17,9 +17,9 @@ import { useQueueStore } from "@/stores/queue";
 import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<string, string> = {
-  detect: "检测参考",
+  detect: "检测",
   desensitize: "清洗去重",
-  repair: "可见水印修复",
+  repair: "修复（历史）",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -92,7 +92,7 @@ export default function JobsView() {
       <div className="view-head">
         <div>
           <div className="view-title">任务中心</div>
-          <div className="view-desc">所有检测、清洗与修复任务都在这里统一管理</div>
+          <div className="view-desc">所有清洗与修复任务都在这里统一管理</div>
         </div>
         <div className="flex gap-2">
           <Button

@@ -7,9 +7,7 @@ import { DeleteProductDialog } from "@/components/workbench/dialogs/DeleteProduc
 import { ProductPlayerDialog } from "@/components/workbench/dialogs/ProductPlayerDialog";
 import { VariantDetailDialog } from "@/components/workbench/dialogs/VariantDetailDialog";
 import { CleanPane } from "@/components/workbench/panes/CleanPane";
-import { DetectPane } from "@/components/workbench/panes/DetectPane";
 import { ProductsPane } from "@/components/workbench/panes/ProductsPane";
-import { RegionsPane } from "@/components/workbench/panes/RegionsPane";
 import { useContextPanel } from "@/components/workbench/useContextPanel";
 
 export interface ContextProps {
@@ -27,22 +25,8 @@ export function ContextPanel({ tab, setTab, onStartCompare }: ContextProps) {
       <Tabs value={tab} onValueChange={(value) => setTab(value as WorkbenchTab)} className="min-h-0 flex-1">
         <ContextTabs setTab={setTab} />
 
-        <DetectPane
-          material={ctx.material ?? null}
-          report={ctx.report}
-          risk={ctx.risk}
-          score={ctx.score}
-          detecting={ctx.detecting}
-          detectSubmitting={ctx.detectSubmitting}
-          audio={ctx.audio}
-          audioMissing={ctx.audioMissing}
-          hashOn={ctx.hashOn}
-          setHashOn={ctx.setHashOn}
-          setDctOn={ctx.setDctOn}
-          onDetect={() => void ctx.detectNow()}
-        />
-        <RegionsPane onRunRepair={() => void ctx.runRepairJob()} />
         <CleanPane
+          material={ctx.material ?? null}
           templateList={ctx.templateList}
           applyTemplateById={ctx.applyTemplateById}
           cleanSubmitting={ctx.cleanSubmitting}

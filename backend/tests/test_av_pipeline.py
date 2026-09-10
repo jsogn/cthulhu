@@ -14,6 +14,7 @@ from cthulhu_backend import db, pipeline, samples, services
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
+from cthulhu_backend.schemas import DesensitizeOptions
 
 needs_ffmpeg = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="需要 ffmpeg/ffprobe")
 
@@ -301,6 +302,127 @@ def test_echo_defeat_destroys_audio_echo_watermark(tmp_path):
     video_stream = next(s for s in streams if s.get("codec_type") == "video")
     audio_stream = next(s for s in streams if s.get("codec_type") == "audio")
     assert abs(float(video_stream["duration"]) - float(audio_stream["duration"])) < 0.15
+
+
+def test_shot_rounding_does_not_accumulate_av_drift():
+    """多镜头变速必须累计取整：逐镜头独立 round 会在等长镜头上累积音画偏移。
+
+    50 个等长镜头、0.97 倍速时独立取整会得到 6200 帧（比精确值多 14 帧，
+    约 467ms）。音频是按整段均匀拉伸的，视频多出来的部分就是音画不同步。
+    """
+    shots = [(index * 120, (index + 1) * 120) for index in range(50)]
+    segments, _, out_lens, _, total = pipeline._build_segments(
+        shots, DesensitizeOptions(), 0.97, np.random.default_rng(1)
+    )
+
+    assert len(segments) == 50
+    assert all(length >= 1 for length in out_lens)
+    assert sum(out_lens) == total
+    assert total == round(50 * 120 / 0.97)
+
+
+@needs_ffmpeg
+def test_echo_defeat_keeps_audio_video_content_in_sync(tmp_path):
+    """回声清除的 3% 放慢必须让音画内容一起变慢：不能只拉伸音轨或只重采样画面。
+
+    用同刻的白闪帧（视频）与短促脉冲（音频）当锚点：先测输入里的锚点偏差，
+    再测成片里的偏差，要求「起止锚点之间不产生漂移」，否则长视频会累计成
+    数秒级不同步。多镜头的分段取整由 test_shot_rounding_does_not_accumulate_av_drift
+    单独守住（这里刻意走单段路径，避免分镜检测差异让锚点本身掉帧）。
+    """
+    fps = 30.0
+    sample_rate = 16000
+    seconds = 8.0
+    total_frames = int(seconds * fps)
+    marks = [int(0.5 * fps), int(2.5 * fps), int(5.0 * fps), int(7.5 * fps)]
+
+    frames = samples.make_video_frames(total_frames, 160, 120, seed=21)
+    source_frames = frames.copy()
+    for mark in marks:
+        source_frames[mark] = 1.0
+
+    audio = samples.make_audio(total_frames / fps, sample_rate=sample_rate, seed=22)
+    for mark in marks:
+        start = round(mark / fps * sample_rate)
+        length = int(0.02 * sample_rate)
+        t = np.arange(length) / sample_rate
+        audio[start : start + length] += 1.5 * np.sin(2 * np.pi * 1500 * t)
+    audio = np.clip(audio, -1, 1)
+
+    src = str(tmp_path / "sync.mp4")
+    out = str(tmp_path / "sync_out.mp4")
+    ffmpeg.encode_video_with_audio(source_frames, audio, src, fps=fps)
+
+    services.run_desensitize(
+        src,
+        out,
+        audio_remix=True,
+        audio_strong=True,
+        echo_defeat=True,
+        regrade=False,
+        sharpness=False,
+        color_restore=False,
+        denoise=False,
+        seed=5,
+    )
+
+    def flash_times(path: str) -> list[float]:
+        decoded, _ = ffmpeg.decode_video(path)
+        luma = decoded.reshape(len(decoded), -1).mean(axis=1)
+        threshold = luma.mean() + 0.4 * (luma.max() - luma.mean())
+        times: list[float] = []
+        run: list[int] = []
+        for index, value in enumerate(luma):
+            if value > threshold:
+                # 相邻白闪帧属于同一次闪光，取最先出现的帧当锚点。
+                if run and index - run[-1] <= 2:
+                    run.append(index)
+                    continue
+                run = [index]
+                times.append(index / fps)
+        return times
+
+    def pulse_times(path: str) -> list[float]:
+        decoded = ffmpeg.decode_audio(path)
+        assert decoded is not None
+        signal, rate = decoded
+        # 只保留 1.2~1.8kHz：把 1.5kHz 脉冲从和声底噪里分离出来，否则峰值
+        # 会被背景和弦带着走，测出的“同步偏差”是检测器噪声而不是真实错位。
+        spectrum = np.fft.rfft(signal)
+        freqs = np.fft.rfftfreq(len(signal), 1 / rate)
+        spectrum[(freqs < 1200) | (freqs > 1800)] = 0
+        band = np.abs(np.fft.irfft(spectrum))
+        window = max(1, int(0.003 * rate))
+        envelope = np.convolve(band, np.ones(window) / window, mode="same")
+        peaks: list[float] = []
+        guard = int(0.5 * rate)
+        work = envelope.copy()
+        for _ in marks:
+            index = int(np.argmax(work))
+            peaks.append(index / rate)
+            work[max(0, index - guard) : index + guard] = 0.0
+        return sorted(peaks)
+
+    source_flash, source_pulse = flash_times(src), pulse_times(src)
+    output_flash, output_pulse = flash_times(out), pulse_times(out)
+    assert len(source_flash) == len(marks)
+    assert len(output_flash) == len(marks)
+    assert len(source_pulse) == len(marks)
+    assert len(output_pulse) == len(marks)
+
+    input_offsets = [
+        video - pulse for video, pulse in zip(source_flash, source_pulse, strict=True)
+    ]
+    output_offsets = [
+        video - pulse for video, pulse in zip(output_flash, output_pulse, strict=True)
+    ]
+    # 每个锚点的音画偏差相对输入最多漂移 1 帧（33ms，来自帧量化）；首尾锚点
+    # 之间的跨度同样夹在 1 帧内，说明两条轨是按同一因子一起变慢的。
+    assert max(
+        abs(out - src_offset)
+        for out, src_offset in zip(output_offsets, input_offsets, strict=True)
+    ) <= 1.2 / fps
+    assert max(output_offsets) - min(output_offsets) <= 1.2 / fps
 
 
 @needs_ffmpeg

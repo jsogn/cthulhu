@@ -23,7 +23,7 @@ const variant: VariantInfo = {
   id: "v1",
   source: "/src/素材.mp4",
   output: "/out/清洗.mp4",
-  options: { output_mode: "reencode", rotate: 0.2, requant: 96, noise: 0.003 },
+  options: { rotate: 0.2, requant: 96, noise: 0.003 },
   seed: 42,
   template_id: null,
   metrics: { ssim: 0.93 },

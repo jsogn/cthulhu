@@ -1,7 +1,8 @@
 {
   "name": "cthulhu-electron",
-  "version": "0.4.2",
-  "description": "Cthulhu · 推广素材处理桌面工具（去重 / 暗水印 / 多版本）",
+  "version": "0.6.0",
+  "packageManager": "pnpm@11.25.0",
+  "description": "Cthulhu · 数字水印与内容指纹研究实验台（仅限研究学习与授权测试）",
   "author": "cthulhu",
   "private": true,
   "type": "module",

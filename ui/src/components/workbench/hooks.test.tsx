@@ -8,8 +8,6 @@ vi.mock("@/lib/backend", () => ({
   fetchOutputs: vi.fn(),
   deleteOutput: vi.fn(),
   listVariants: vi.fn(),
-  analyzeAudio: vi.fn(),
-  enqueueJob: vi.fn(),
 }));
 
 import { fetchOutputs, listTemplates, type TemplateInfo } from "@/lib/backend";
@@ -26,8 +24,6 @@ function material(overrides: Partial<Material> = {}): Material {
     res: "1280×720",
     fps: "30",
     size: "10MB",
-    risk: "待检测",
-    score: 0,
     tags: [],
     frame: "/frame.png",
     path: "/tmp/素材.mp4",

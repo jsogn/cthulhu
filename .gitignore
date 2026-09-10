@@ -19,10 +19,21 @@ backend/models/
 # 运行时产物
 output/
 
+# 研究实验目录（第三方代码、权重、数据与输出不入库）
+research/.venv/
+research/vendor/
+research/models/
+research/data/
+research/output/
+
 # 打包输出
 packaging/build/
 packaging/dist/
 packaging/backend-dist/
+
+# 内置扩散净化权重（约 2.4GB，由 packaging/fetch_purify_model.py 生成）
+packaging/models/
+
 
 # 原生加速库由本地脚本编译，不入库
 backend/src/cthulhu_backend/native/*.dylib

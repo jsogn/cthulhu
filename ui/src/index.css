@@ -734,28 +734,6 @@ body {
   clip-path: inset(0 50% 0 0);
 }
 
-.repair-veil {
-  position: absolute;
-  border: 1.5px dashed var(--primary);
-  background: color-mix(in oklch, var(--primary) 18%, transparent);
-  pointer-events: none;
-  transition:
-    opacity 0.2s,
-    left 0.05s,
-    top 0.05s,
-    width 0.05s,
-    height 0.05s;
-}
-
-.repair-veil span {
-  position: absolute;
-  top: -22px;
-  left: 0;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--primary);
-}
-
 .compare-handle {
   position: absolute;
   top: 0;
@@ -820,41 +798,6 @@ body {
 .compare-handle-knob svg {
   width: 16px;
   height: 16px;
-}
-
-.sel-box {
-  position: absolute;
-  border: 1.5px solid var(--primary);
-  cursor: move;
-}
-
-.sel-box:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.sel-label {
-  position: absolute;
-  top: -20px;
-  left: -1px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.sel-resize {
-  position: absolute;
-  right: -5px;
-  bottom: -5px;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  background: var(--card);
-  border: 1.5px solid var(--primary);
-  cursor: nwse-resize;
 }
 
 .preview-foot {
@@ -1197,43 +1140,6 @@ body {
   font-size: 12px;
   color: var(--muted-foreground);
   line-height: 1.6;
-}
-
-.undo-row {
-  display: flex;
-  gap: 6px;
-}
-
-.region-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.region-card.active {
-  border-color: var(--primary);
-  background: color-mix(in oklch, var(--primary) 5%, transparent);
-}
-
-.region-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.region-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.region-tools {
-  display: flex;
-  gap: 4px;
 }
 
 .pane-cta {

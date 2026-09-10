@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from scipy.ndimage import zoom
@@ -22,10 +23,12 @@ from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.pipeline import (
     _DesensitizeState,
     _encode_desensitize,
+    _mux_output,
     _prepare_desensitize,
 )
 from cthulhu_backend.schemas import DesensitizeOptions
 from cthulhu_backend.similarity import embedding
+from cthulhu_backend.transform import purify
 from cthulhu_backend.watermark import detect
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".ts", ".webm", ".m4v"}
@@ -37,40 +40,6 @@ IDENTICAL_SIMILARITY = {
     "ssim_mean": 1.0,
     "reduction": {"content": 0.0, "motion": 0.0, "dhash": 0.0},
 }
-
-
-def _run_remux(path: str, output: str) -> dict:
-    """身份层输出：只重写容器与元数据，像素与音轨逐位不变。"""
-    subprocess.run(
-        [
-            ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
-            "-i", path,
-            "-map", "0",
-            "-c", "copy",
-            "-movflags", "+faststart",
-            "-metadata", "comment=Cthulhu identity remux",
-            output,
-        ],
-        capture_output=True,
-        check=True,
-    )
-    info = ffmpeg.video_info(output)
-    return {
-        "input": path,
-        "output": output,
-        "mode": "remux",
-        "frames": max(1, round(info["duration"] * info["fps"])),
-        "similarity_before": IDENTICAL_SIMILARITY,
-        "similarity_after": IDENTICAL_SIMILARITY,
-        "psnr_db": None,
-        "ssim": 1.0,
-        "vmaf": None,
-        "vmaf_aligned": None,
-        "quality_metrics_na": True,
-        "stability_ratio": 1.0,
-        "export_health": _export_health(output),
-        "note": "重封装：仅重写容器与元数据，画面与音轨未做任何改动。",
-    }
 
 
 DEMO_LIBRARY_DIR = Path(os.environ.get("CTHULHU_DEMO_LIBRARY", str(Path(__file__).resolve().parents[2] / "data" / "demo-library")))
@@ -458,8 +427,48 @@ def _result_template(
         "transform_strategy": state.strategy.name,
         "preset": opts.preset,
         "frames": state.total_in,
+        # 成片帧数：回声清除等同步变速会改变时长，元数据必须如实反映产物，
+        # 否则调用方按 frames 算时长会与文件对不上。
+        "out_frames": state.total_out,
+        "purify_note": _purify_note(opts, state),
+        "quality_gate_note": _quality_gate_note(opts, state),
+        "profile_note": getattr(state, "profile_note", "off"),
+        "profile_metrics": getattr(state, "profile_metrics", None),
         **{key: None for key in _RESULT_METRIC_KEYS},
     }
+
+
+def _purify_note(opts: DesensitizeOptions, state) -> str:
+    """净化状态说明：关闭 / 已应用 / 依赖缺位跳过 / 中途加载失败回退。"""
+    del opts
+    note = getattr(state, "purify_note", "off")
+    options = getattr(state, "transform_options", None)
+    if note in {"applied", "will_download"} and options is not None:
+        extras: list[str] = ["潜空间重建"]
+        detail = getattr(options, "purify_detail", 0.0)
+        temporal = getattr(options, "purify_temporal", 0.0)
+        if detail > 0:
+            sigma = getattr(options, "purify_detail_sigma", 0.0)
+            wide = bool(getattr(options, "purify_detail_wide", False))
+            if sigma > 0:
+                band = f"σ{sigma:.1f}"
+            else:
+                band = "σ自动·宽带回注+字幕增强" if wide else "σ自动"
+            extras.append(f"detail={detail:.2f}@{band}")
+        if temporal > 0:
+            extras.append(f"temporal={temporal:.2f}")
+        if extras:
+            return f"{note} ({', '.join(extras)})"
+    return note
+
+
+def _quality_gate_note(opts: DesensitizeOptions, state) -> str:
+    """画质门控状态：门控只作用于策略层之后的攻击层，净化不在门控范围内。"""
+    if not opts.quality_protect:
+        return "off"
+    if getattr(state, "purify_enabled", False):
+        return "applied: attack layer only (purify excluded)"
+    return "applied"
 
 
 def _deferred_measure(
@@ -485,6 +494,11 @@ def _deferred_measure(
     except Exception:  # noqa: BLE001 - 指标失败不影响已完成的产物
         return
     payload = {key: report.get(key) for key in _RESULT_METRIC_KEYS}
+    payload["purify_note"] = report.get("purify_note")
+    payload["quality_gate_note"] = report.get("quality_gate_note")
+    payload["profile_note"] = report.get("profile_note")
+    payload["profile_metrics"] = report.get("profile_metrics")
+    payload["quality_gate_note"] = report.get("quality_gate_note")
     for _ in range(10):
         if db.update_variant_metrics(output, payload):
             return
@@ -516,6 +530,8 @@ def run_desensitize(
     供任务队列在忙碌期间错峰计算指标。
     """
     opts = DesensitizeOptions(**options)
+    if opts.purify_strength > 0:
+        purify.reset_failure()
     path = _require_file(path)
     output = os.path.expanduser(output)
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
@@ -524,18 +540,19 @@ def run_desensitize(
         if should_stop and should_stop():
             raise InterruptedError("任务已取消")
 
-    if opts.output_mode == "remux":
-        check_cancelled()
-        return _run_remux(path, output)
-    if opts.output_mode not in {"", "reencode"}:
-        raise ValueError(f"未知输出方式：{opts.output_mode}（可选 reencode / remux）")
-
     if progress_cb:
         progress_cb(5, "准备处理")
     if not ffmpeg.has_encoder(opts.codec):
         raise ValueError(f"当前 FFmpeg 缺少视频编码器 {opts.codec}，请更换输出编码或安装完整版 FFmpeg")
-    state = _prepare_desensitize(path, opts, progress_cb, check_cancelled)
-    _encode_desensitize(path, output, opts, state, progress_cb, should_stop, pause)
+    process_path = path
+    state = _prepare_desensitize(process_path, opts, progress_cb, check_cancelled)
+    _encode_desensitize(process_path, output, opts, state, progress_cb, should_stop, pause)
+    # 净化在分块处理中途失败时，把线程本地的失败原因固化进状态，
+    # 这样异步指标线程/结果模板也能拿到同一条降级说明。
+    if opts.purify_strength > 0:
+        failure = purify.last_failure()
+        if failure:
+            state.purify_note = f"fallback: {failure}"
     if not compute_metrics:
         return {
             **_result_template(path, output, opts, state),
@@ -595,28 +612,134 @@ def _measure_desensitize(
     return report
 
 
-def run_repair(
-    path: str,
+def _resize_frames(frames: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    from PIL import Image
+
+    from cthulhu_backend.parallel import map_frames
+
+    width, height = size
+
+    def resize(frame: np.ndarray) -> np.ndarray:
+        image = Image.fromarray(frame, mode="RGB")
+        return np.asarray(image.resize((width, height), Image.BICUBIC), dtype=np.uint8)
+
+    return map_frames(resize, frames)
+
+
+def _frames_to_u8(frames: np.ndarray) -> np.ndarray:
+    """decode_video 可能返回 [0,1] float；统一转 uint8 再参与平均/编码。"""
+    if frames.dtype == np.uint8:
+        return frames
+    return (np.clip(frames, 0.0, 1.0) * 255.0).round().astype(np.uint8)
+
+
+def run_collusion(
+    paths: list[str],
     output: str,
-    regions: list[dict],
-    crf: int = 23,
+    *,
+    mode: str = "mean",
+    max_frames: int = 600,
     progress_cb=None,
-    stop=None,
+    should_stop=None,
     pause=None,
 ) -> dict:
-    """可见水印区域修复（FFmpeg delogo）。"""
-    path = _require_file(path)
+    """共谋平均：同一内容的多份不同水印副本对齐后平均，冲掉各副本水印。
+
+    报告结论：8/16/32 副本平均 → BA 0.599/0.575/0.542，PSNR 65~67dB、
+    SSIM≈1.0；需要同一内容、不同水印的副本，属于研究/授权测试用途。
+    """
+    if len(paths) < 2:
+        raise ValueError("共谋平均至少需要 2 个副本")
+    if len(paths) > 32:
+        raise ValueError("共谋平均最多支持 32 个副本")
+    if mode not in {"mean", "median"}:
+        raise ValueError(f"未知共谋模式：{mode}（可选 mean / median）")
+    sources = [_require_file(path) for path in paths]
     output = os.path.expanduser(output)
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
-    ffmpeg.repair_delogo(path, output, regions, crf, progress_cb=progress_cb, stop=stop, pause=pause)
-    if stop and stop():
-        raise InterruptedError("任务已取消")
+
+    def check_cancelled() -> None:
+        if should_stop and should_stop():
+            raise InterruptedError("任务已取消")
+        if pause is not None:
+            while pause.is_set():
+                if should_stop and should_stop():
+                    raise InterruptedError("任务已取消")
+                time.sleep(0.2)
+
+    decoded: list[np.ndarray] = []
+    target_size: tuple[int, int] | None = None
+    fps: float | None = None
+    for index, source in enumerate(sources):
+        check_cancelled()
+        if progress_cb:
+            progress_cb(
+                5 + int(index / len(sources) * 55),
+                f"解码副本 {index + 1}/{len(sources)}",
+            )
+        frames, info = ffmpeg.decode_video(
+            source, grayscale=False, out_dtype="uint8", max_frames=max_frames
+        )
+        frames = _frames_to_u8(frames)
+        if len(frames) == 0:
+            raise ValueError(f"副本没有可解码帧：{source}")
+        width, height = int(info["width"]), int(info["height"])
+        if target_size is None:
+            target_size = (width, height)
+            fps = float(info["fps"])
+        elif (width, height) != target_size:
+            frames = _resize_frames(frames, target_size)
+        decoded.append(frames)
+
+    count = min(len(frames) for frames in decoded)
+    if count < 2:
+        raise ValueError("副本帧数不足，无法共谋平均")
+    if progress_cb:
+        progress_cb(65, f"平均 {len(decoded)} 个副本")
+    stack = np.stack([frames[:count].astype(np.float32) for frames in decoded], axis=0)
+    averaged = np.median(stack, axis=0) if mode == "median" else np.mean(stack, axis=0)
+    result_frames = np.clip(averaged, 0, 255).round().astype(np.uint8)
+
+    check_cancelled()
+    if progress_cb:
+        progress_cb(75, "编码共谋结果")
+    with tempfile.TemporaryDirectory(prefix="cthulhu-collusion-") as tmp:
+        video_only = os.path.join(tmp, "video.mp4")
+        ffmpeg.encode_video(result_frames, video_only, fps=fps or 30.0, crf=18)
+        _mux_output(
+            sources[0],
+            output,
+            video_only,
+            count,
+            None,
+            16000,
+            DesensitizeOptions(),
+            SimpleNamespace(output_fps=fps or 30.0, audio_tempo=None),
+        )
+    if progress_cb:
+        progress_cb(95, "计算画质")
+    reference_float = result_frames.astype(np.float32) / 255.0
+    quality = [
+        {
+            "psnr_db": round(
+                metrics.psnr(frames[:count].astype(np.float32) / 255.0, reference_float), 2
+            ),
+            "ssim": round(
+                metrics.ssim(frames[:count].astype(np.float32) / 255.0, reference_float), 4
+            ),
+        }
+        for frames in decoded
+    ]
     return {
-        "input": path,
+        "paths": sources,
         "output": output,
-        "regions": len(regions),
-        "vmaf": None if (stop and stop()) else ffmpeg.vmaf_score(output, path),
-        "vmaf_aligned": None if (stop and stop()) else metrics.aligned_vmaf(output, path),
+        "copies": len(sources),
+        "frames": count,
+        "mode": mode,
+        "fps": fps,
+        "resolution": list(target_size or (0, 0)),
+        "quality": quality,
+        "estimated_watermark_reduction": round(1.0 / math.sqrt(len(sources)), 4),
     }
 
 

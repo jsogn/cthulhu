@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cleanOutputPath,
+  collusionOutputPath,
   FIXED_CROP,
   FIXED_PERTURB,
   makeCleanOptions,
@@ -14,22 +15,6 @@ function panelState(overrides: Partial<CleanPanelState> = {}): CleanPanelState {
 }
 
 describe("makeCleanOptions", () => {
-  it("remux 模式只换壳，不携带任何对抗参数", () => {
-    const options = makeCleanOptions(panelState({ outputMode: "remux" }));
-    expect(options.output_mode).toBe("remux");
-    expect(options.reorder).toBe(false);
-    expect(options.speed).toBe(1);
-    expect(options.recrop).toBe(0);
-    expect(options.regrade).toBe(false);
-    expect(options.audio_remix).toBe(false);
-    expect(options.echo_defeat).toBe(false);
-    expect(options.sharpness).toBe(false);
-    expect(options.color_restore).toBe(false);
-    expect(options.denoise).toBe(false);
-    expect(options.anti_reembed).toBe(false);
-    expect(typeof options.seed).toBe("number");
-  });
-
   it("经典指纹原语按开关映射为后端参数", () => {
     const options = makeCleanOptions(
       panelState({
@@ -54,6 +39,11 @@ describe("makeCleanOptions", () => {
     expect(options.dct_step).toBe(12);
     expect(options.anti_reembed).toBeUndefined();
     expect(options.audio_strong).toBe(true);
+  });
+
+  it("DCT 量化步长使用面板值而不是写死 12", () => {
+    const options = makeCleanOptions(panelState({ dctOn: true, dctStep: 20 }));
+    expect(options.dct_step).toBe(20);
   });
 
   it("H.265 映射 libx265，H.264 映射 libx264", () => {
@@ -148,6 +138,49 @@ describe("makeCleanOptions", () => {
     expect(options.ssim_target).toBe(0.96);
     expect(makeCleanOptions(panelState()).quality_protect).toBeUndefined();
   });
+
+  it("潜空间净化与嵌入域定向按开关映射为后端参数", () => {
+    const options = makeCleanOptions(
+      panelState({
+        purifyOn: true,
+        purifyStrength: 0.3,
+        purifyDetail: 0.65,
+        purifyDetailSigma: 1.8,
+        purifyTemporal: 0.35,
+        purifyMaxEdge: 320,
+        purifyBatch: 8,
+        embeddingOn: true,
+        embeddingAttack: "auto",
+        embeddingStrength: 0.5,
+        embeddingVariant: "v2",
+        embeddingAggressive: true,
+        autoProfile: true,
+      }),
+    );
+    expect(options.purify_strength).toBe(0.3);
+    expect(options.purify_detail).toBe(0.65);
+    expect(options.purify_detail_sigma).toBe(1.8);
+    expect(options.purify_temporal).toBe(0.35);
+    expect(options.purify_max_edge).toBe(320);
+    expect(options.purify_batch).toBe(8);
+    expect(options.embedding_attack).toBe("auto");
+    expect(options.embedding_strength).toBe(0.5);
+    expect(options.embedding_variant).toBe("v2");
+    expect(options.embedding_aggressive).toBe(true);
+    expect(options.auto_profile).toBe(true);
+    const off = makeCleanOptions(panelState());
+    expect(off.purify_strength).toBeUndefined();
+    expect(off.purify_detail).toBeUndefined();
+    expect(off.purify_detail_sigma).toBeUndefined();
+    expect(off.purify_temporal).toBeUndefined();
+    expect(off.purify_max_edge).toBeUndefined();
+    expect(off.purify_batch).toBeUndefined();
+    expect(off.embedding_attack).toBeUndefined();
+    expect(off.embedding_strength).toBeUndefined();
+    expect(off.embedding_variant).toBeUndefined();
+    expect(off.embedding_aggressive).toBeUndefined();
+  });
+
 });
 
 describe("cleanOutputPath", () => {
@@ -163,6 +196,17 @@ describe("cleanOutputPath", () => {
   it("未配置导出目录时回退默认目录", () => {
     expect(cleanOutputPath("/素材/a.mp4", "原文件名 + 时间戳", "", "20240101")).toBe(
       "~/Documents/Cthulhu/a_清洗_20240101.mp4",
+    );
+  });
+});
+
+describe("collusionOutputPath", () => {
+  it("以第一个副本命名并标注共谋平均", () => {
+    expect(collusionOutputPath("/素材/视频.mp4", "/导出", "20240101")).toBe(
+      "/导出/视频_共谋平均_20240101.mp4",
+    );
+    expect(collusionOutputPath("/素材/视频.mov", "", "20240101")).toBe(
+      "~/Documents/Cthulhu/视频_共谋平均_20240101.mp4",
     );
   });
 });

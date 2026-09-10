@@ -93,12 +93,12 @@ export default function App() {
               if (loaded) {
                 toast(
                   "已恢复素材库",
-                  "上次导入的素材已就绪，继续检测或清洗即可",
+                  "上次导入的素材已就绪，继续清洗即可",
                 );
               } else {
                 toast(
                   "欢迎使用 Cthulhu",
-                  "拖入或导入你自己的视频，即可开始检测与清洗",
+                  "拖入或导入你自己的视频，即可开始清洗",
                 );
               }
             }
@@ -122,7 +122,7 @@ export default function App() {
       if (health.ok && !health.ffmpeg) {
         toast(
           "未检测到 FFmpeg",
-          "检测、清洗与修复功能将不可用，请在「设置」查看安装指引",
+          "清洗与修复功能将不可用，请在「设置」查看安装指引",
         );
       }
     });

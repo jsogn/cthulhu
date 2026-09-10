@@ -23,7 +23,13 @@ from cthulhu_backend.events import broker
 from cthulhu_backend.jobs import job_queue
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.media import installer as ffmpeg_installer
-from cthulhu_backend.schemas import DesensitizeOptions, DesensitizeRequest, TemplatePayload
+from cthulhu_backend.schemas import (
+    CollusionRequest,
+    DesensitizeOptions,
+    DesensitizeRequest,
+    TemplatePayload,
+)
+from cthulhu_backend.transform import purify
 from cthulhu_backend.watermark import detect as watermark_detect
 
 router = APIRouter(prefix="/api")
@@ -115,25 +121,9 @@ class ScanRequest(BaseModel):
 
 
 class TaskSpec(BaseModel):
-    kind: Literal["detect", "desensitize", "repair"]
+    kind: Literal["detect", "desensitize"]
     path: str
     options: dict = {}
-
-
-class RegionSpec(BaseModel):
-    x: float
-    y: float
-    w: float
-    h: float
-    start: float | None = None
-    end: float | None = None
-
-
-class RepairRequest(BaseModel):
-    path: str
-    output: str
-    regions: list[RegionSpec]
-    crf: int = Field(23, ge=0, le=51)
 
 
 class ExportRequest(BaseModel):
@@ -172,6 +162,41 @@ async def detect(request: PathRequest) -> dict:
         raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
     await broker.publish({"type": "task:done", "task": "detect", "path": request.path})
     return report
+
+
+@router.get("/purify/status")
+async def purify_status() -> dict:
+    """潜空间净化能力状态：依赖、权重缓存、策略与推理设备。"""
+    return await asyncio.to_thread(purify.model_status)
+
+
+@router.post("/purify/install", status_code=202)
+async def purify_install() -> dict:
+    """一键准备净化权重（10MB 级 TAESD）；立即返回，前端轮询状态直到 ready。"""
+    if not purify.allow_download():
+        raise HTTPException(
+            status_code=409,
+            detail=f"已禁用模型下载（{purify.ALLOW_DOWNLOAD_ENV}=0）",
+        )
+    status = await asyncio.to_thread(purify.install_model)
+    if not status.get("available"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"净化运行时不可用：{status.get('reason') or status.get('error')}",
+        )
+    return status
+
+
+@router.post("/collusion")
+async def collusion(request: CollusionRequest) -> dict:
+    """共谋平均：同一内容的多份不同水印副本对齐后平均（研究/授权测试）。"""
+    return await asyncio.to_thread(
+        services.run_collusion,
+        request.paths,
+        request.output,
+        mode=request.mode,
+        max_frames=request.max_frames,
+    )
 
 
 @router.post("/similarity")
@@ -462,51 +487,15 @@ def audio_analyze(request: PathRequest) -> dict:
 @router.post("/desensitize")
 async def desensitize(request: DesensitizeRequest) -> dict:
     await broker.publish({"type": "task:start", "task": "desensitize", "path": request.path})
+    # 选项统一按模型 dump 转发：逐字段手写转发曾经漏掉整组净化参数
+    # （purify_* 在 2026-09 加入后此端点静默忽略），新增字段不必再改这里。
+    options = request.model_dump(exclude={"path", "output"})
     try:
         report = await asyncio.to_thread(
             services.run_desensitize,
             request.path,
             request.output,
-            output_mode=request.output_mode,
-            reorder=request.reorder,
-            speed=request.speed,
-            recrop=request.recrop,
-            regrade=request.regrade,
-            perturb=request.perturb,
-            audio_remix=request.audio_remix,
-            sharpness=request.sharpness,
-            color_restore=request.color_restore,
-            denoise=request.denoise,
-            anti_reembed=request.anti_reembed,
-            banner=request.banner,
-            seed=request.seed,
-            codec=request.codec,
-            lossless=request.lossless,
-            spoof=request.spoof,
-            bitrate_kbps=request.bitrate_kbps,
-            gop=request.gop,
-            resolution=request.resolution,
-            fps_out=request.fps_out,
-            rotate=request.rotate,
-            phash_attack=request.phash_attack,
-            phash_epsilon=request.phash_epsilon,
-            phash_iters=request.phash_iters,
-            multi_hash_attack=request.multi_hash_attack,
-            median=request.median,
-            noise=request.noise,
-            requant=request.requant,
-            dct_step=request.dct_step,
-            drop_every=request.drop_every,
-            jitter=request.jitter,
-            perspective=request.perspective,
-            warp=request.warp,
-            chroma_levels=request.chroma_levels,
-            subtract_beta=request.subtract_beta,
-            saliency=request.saliency,
-            audio_strong=request.audio_strong,
-            echo_defeat=request.echo_defeat,
-            skip_vmaf=request.skip_vmaf,
-            filter_scale=request.filter_scale,
+            **options,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
@@ -516,20 +505,6 @@ async def desensitize(request: DesensitizeRequest) -> dict:
         raise HTTPException(status_code=500, detail=_friendly_detail(exc)) from exc
     await broker.publish({"type": "task:done", "task": "desensitize", "path": request.path})
     return report
-
-
-@router.post("/repair")
-async def repair(request: RepairRequest) -> dict:
-    try:
-        return await asyncio.to_thread(
-            services.run_repair,
-            request.path,
-            request.output,
-            [region.model_dump() for region in request.regions],
-            request.crf,
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_friendly_detail(exc)) from exc
 
 
 @router.post("/export")

@@ -16,7 +16,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import pairwise
 from typing import Any
 
@@ -30,7 +30,7 @@ from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.numeric import channel_stats
 from cthulhu_backend.schemas import DesensitizeOptions
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import extra_attacks, regenerate, shots, strategies
+from cthulhu_backend.transform import extra_attacks, profile, purify, regenerate, shots, strategies
 from cthulhu_backend.watermark import common as watermark_common
 
 MAX_WORKING_BYTES = 256 * 1024**2  # 低内存机器兜底：256MiB
@@ -226,6 +226,8 @@ class _DesensitizeState:
     seg_out_lens: list[int]
     strategy: Any
     transform_options: Any
+    shot_options: list[Any] | None
+    seg_shot_indices: list[int] | None
     transform_context: Any
     frame_dtype: str
     native_chain: list[str]
@@ -265,6 +267,10 @@ class _DesensitizeState:
     phase_b: float
     phase_c: float
     phase_d: float
+    purify_note: str
+    purify_enabled: bool
+    profile_note: str = "off"
+    profile_metrics: dict | None = None
 
 
 def _geometry_chain(state: _DesensitizeState, offset: int) -> list[str]:
@@ -336,6 +342,8 @@ def _apply_attacks(
         frames = adversarial.attack_frames_joint(
             frames, epsilon=state.phash_epsilon, iterations=state.phash_iters
         )
+    # 门控参考帧在策略层之后取得，因此只约束后续攻击层（旋转/底层原语/哈希），
+    # 不会把净化结果拉回原图；净化自身的画质代价由指标遍如实报告。
     if original is not None:
         frames = extra_attacks.quality_gate(
             original, frames, state.psnr_target, state.ssim_target
@@ -360,6 +368,21 @@ def _parallel_workers() -> int:
     return 1
 
 
+def _purify_progress(
+    base: int,
+    count: int,
+    fraction: float,
+    total_out: int,
+) -> tuple[int, str]:
+    """把批次内进度换算成整段视频的全局帧数与百分比。"""
+    total = max(1, int(total_out))
+    bounded = max(0.0, min(1.0, float(fraction)))
+    processed = round(base + bounded * max(1, count))
+    processed = max(0, min(total, processed))
+    percent = 8 + int(processed / total * 82)
+    return min(90, percent), f"潜空间净化 {processed}/{total}"
+
+
 def _transform_chunk_worker(payload: dict) -> np.ndarray:
     """进程池工作项：解码块 → 变换 → 攻击，返回按序待编码的帧。"""
     import dataclasses as dc
@@ -375,7 +398,8 @@ def _transform_chunk_worker(payload: dict) -> np.ndarray:
     ctx = state.transform_context
     if ctx.mid_rng is not None:
         ctx = dc.replace(ctx, mid_rng=np.random.default_rng(payload["chunk_seed"] ^ 0x51A))
-    frames = state.strategy.apply(frames, output_ids, ctx, state.transform_options)
+    options = payload.get("options", state.transform_options)
+    frames = state.strategy.apply(frames, output_ids, ctx, options)
     return _apply_attacks(state, frames, output_ids, rng=rng)
 
 
@@ -437,7 +461,7 @@ def _build_segments(
     opts: DesensitizeOptions,
     speed: float,
     rng: np.random.Generator,
-) -> tuple[list[tuple[int, int, int]], list[float], list[int], int]:
+) -> tuple[list[tuple[int, int, int]], list[float], list[int], list[int], int]:
     """逐镜头切点漂移/变速与重排，输出编码区间（消耗 rng 流，顺序敏感）。"""
     shot_offsets: list[tuple[int, int]] = []
     shot_factors: list[float] = []
@@ -458,7 +482,12 @@ def _build_segments(
     segments: list[tuple[int, int, int]] = []
     seg_factors: list[float] = []
     seg_out_lens: list[int] = []
+    seg_shot_indices: list[int] = []
     cursor = 0
+    # 累计取整（Bresenham）：逐镜头独立 round 会把每段的舍入误差留成常驻偏差，
+    # 等长镜头下最多每段 ±0.5 帧，50 段就能累积成半秒音画不同步。改为「先累计
+    # 精确输出长度、再取整到帧」，任意切点处的偏差都被夹在一帧以内。
+    exact_out = 0.0
     for shot_index in order:
         orig_start, orig_end = shot_ranges[int(shot_index)]
         drop_start, drop_end = shot_offsets[int(shot_index)]
@@ -466,12 +495,18 @@ def _build_segments(
         eff_len = (orig_end - orig_start) - drop_start - drop_end
         factor = speed * shot_factors[int(shot_index)]
         retimed = speed != 1.0 or opts.shot_retime
-        out_len = max(1, round(eff_len / factor)) if retimed else eff_len
+        if retimed:
+            exact_out += eff_len / factor
+            out_len = max(1, round(exact_out) - cursor)
+        else:
+            out_len = eff_len
+            exact_out = cursor + eff_len
         segments.append((cursor, eff_start, eff_len))
         seg_factors.append(factor)
         seg_out_lens.append(out_len)
+        seg_shot_indices.append(int(shot_index))
         cursor += out_len
-    return segments, seg_factors, seg_out_lens, cursor
+    return segments, seg_factors, seg_out_lens, seg_shot_indices, cursor
 
 
 def _regrade_curves(
@@ -522,7 +557,8 @@ def _prepare_desensitize(
     speed = opts.speed
     # 回声水印清除：音画按同一 factor 同步放慢，音频用 atempo 保调拉伸，
     # 移动回声时延以破坏检测，同时保持音画内容对齐。
-    if opts.echo_defeat:
+    # 源无音轨时回声水印不存在：此时变速只会白白拉长成片，直接跳过。
+    if opts.echo_defeat and ffmpeg.has_audio(path):
         speed = speed * 0.97
         if speed < 0.5:
             raise ValueError("echo_defeat 需要有效变速 factor ≥ 0.5")
@@ -545,31 +581,30 @@ def _prepare_desensitize(
     # ---------- 分析遍：抽样镜头边界 + 预生成逐帧随机参数 ----------
     if progress_cb:
         progress_cb(8, "扫描镜头结构")
-    need_shots = opts.reorder or opts.shot_retime or opts.cut_jitter > 0
-    # 400 帧灰度抽样只为镜头检测服务；仅色彩还原时不再解码整段抽样帧
-    # （旧实现会解码后直接丢弃）。镜头边界按文件身份缓存，同素材重洗复用。
+    # 自动画像也按镜头工作：镜头边界仍用灰度 400 帧抽样检测（缓存优先），
+    # 颜色画像另取 60 帧，避免把 400 帧彩色序列常驻内存。
+    need_shots = (
+        opts.reorder or opts.shot_retime or opts.cut_jitter > 0 or opts.auto_profile
+    )
+    sampled_gray = np.empty((0,), dtype=np.float32)
+    sampled_starts = [0]
     if need_shots:
         shot_ranges = analysis_cache.get_shot_boundaries(path)
-        if (
+        if not (
             shot_ranges
             and shot_ranges[0][0] == 0
             and shot_ranges[-1][1] == total_in
         ):
-            sampled = np.empty((0,), dtype=np.float32)
-            sampled_starts = [0]
-        else:
-            sampled, _, sampled_starts = ffmpeg.decode_sampled(
+            sampled_gray, _, sampled_starts = ffmpeg.decode_sampled(
                 path, cap=400, return_starts=True
             )
-            shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
+            shot_ranges = _plan_shots(sampled_gray, sampled_starts, total_in, True)
             analysis_cache.put_shot_boundaries(path, shot_ranges)
     else:
-        sampled = np.empty((0,), dtype=np.float32)
-        sampled_starts = [0]
-        shot_ranges = _plan_shots(sampled, sampled_starts, total_in, need_shots)
+        shot_ranges = _plan_shots(sampled_gray, sampled_starts, total_in, False)
 
     rng = np.random.default_rng(opts.seed)
-    segments, seg_factors, seg_out_lens, total_out = _build_segments(
+    segments, seg_factors, seg_out_lens, seg_shot_indices, total_out = _build_segments(
         shot_ranges, opts, speed, rng
     )
 
@@ -681,19 +716,85 @@ def _prepare_desensitize(
     )
     saliency_obj = extra_attacks.saliency_layout(opts.seed, opts.saliency)
 
+    sampled_color: np.ndarray | None = None
+    color_starts: list[int] = [0]
+    if opts.auto_profile:
+        sampled_color, _, color_starts = ffmpeg.decode_sampled(
+            path, cap=60, grayscale=False, return_starts=True
+        )
+
     if opts.color_restore:
         cached_stats = analysis_cache.get_color_stats(path)
         if cached_stats is not None:
             ref_mean, ref_std = cached_stats
         else:
-            color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
+            color_sampled = sampled_color
+            if color_sampled is None or len(color_sampled) == 0:
+                color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
             ref_mean, ref_std = channel_stats(color_sampled)
-            del color_sampled
+            if color_sampled is not sampled_color:
+                del color_sampled
             analysis_cache.put_color_stats(path, ref_mean, ref_std)
     else:
         ref_mean = np.zeros(3, dtype=np.float32)
         ref_std = np.zeros(3, dtype=np.float32)
-    del sampled
+    del sampled_gray
+
+    # 潜空间净化：可选依赖缺位时降级回经典档，结果里记录降级原因。
+    purify_strength_eff = opts.purify_strength
+    purify_detail_eff = opts.purify_detail
+    purify_temporal_eff = opts.purify_temporal
+    purify_note = "off"
+    if opts.purify_strength > 0:
+        available, reason = purify.preflight()
+        if available:
+            purify_note = "will_download" if reason == "will_download" else "applied"
+        else:
+            purify_strength_eff = 0.0
+            purify_detail_eff = 0.0
+            purify_temporal_eff = 0.0
+            purify_note = f"skipped: {reason}"
+
+    # 内容画像：黑盒按镜头做复杂度/运动/时序一致性自适应；嵌入域按已知方案映射。
+    profile_note = "off"
+    profile_metrics = None
+    shot_profiles: list[profile.Profile] = []
+    embedding_attack_eff = opts.embedding_attack
+    if opts.auto_profile and sampled_color is not None and len(sampled_color) > 0:
+        prof = profile.profile_frames(sampled_color)
+        shot_profiles = profile.profile_shots(
+            sampled_color,
+            color_starts,
+            shot_ranges,
+            fallback=prof,
+        )
+        profile_metrics = {
+            **prof.as_dict(),
+            "shot_count": len(shot_profiles),
+            "shots": [
+                {"start": start, "end": end, **shot_prof.as_dict()}
+                for (start, end), shot_prof in zip(
+                    shot_ranges, shot_profiles, strict=False
+                )
+            ],
+        }
+        profile_note = "applied"
+        embedding_attack_eff = prof.suggested_attack
+        if purify_strength_eff > 0:
+            # 自动画像只在用户预算内调强度与时序；细节回注/带宽是画质档位参数，
+            # 不参与自适应（砍它会直接糊掉字幕，见 research §19.2）。
+            purify_strength_eff = min(
+                opts.purify_strength, prof.suggested_purify_strength
+            )
+            purify_temporal_eff = min(
+                opts.purify_temporal, prof.suggested_purify_temporal
+            )
+    elif embedding_attack_eff == "auto":
+        embedding_attack_eff = "both"
+    if purify_strength_eff <= 0:
+        purify_detail_eff = 0.0
+        purify_temporal_eff = 0.0
+    del sampled_color
 
     # 变换策略：与分块无关的选项与上下文一次性组装，分块内只调用 apply。
     strategy = strategies.get_strategy(opts.transform_strategy)
@@ -705,7 +806,37 @@ def _prepare_desensitize(
         sharpness=sharpness_eff,
         denoise=denoise_eff,
         spoof=opts.spoof,
+        purify_strength=purify_strength_eff,
+        purify_detail=purify_detail_eff,
+        purify_detail_sigma=opts.purify_detail_sigma,
+        purify_detail_wide=opts.purify_detail_wide,
+        purify_temporal=purify_temporal_eff,
+        purify_max_edge=opts.purify_max_edge,
+        purify_batch=opts.purify_batch,
+        embedding_attack=embedding_attack_eff,
+        embedding_strength=opts.embedding_strength,
+        embedding_variant=opts.embedding_variant,
+        embedding_aggressive=opts.embedding_aggressive,
     )
+    shot_options: list[strategies.TransformOptions] | None = None
+    if opts.auto_profile and shot_profiles:
+        shot_options = []
+        for shot_prof in shot_profiles:
+            shot_strength = (
+                min(opts.purify_strength, shot_prof.suggested_purify_strength)
+                if purify_strength_eff > 0
+                else 0.0
+            )
+            shot_options.append(
+                replace(
+                    transform_options,
+                    purify_strength=shot_strength,
+                    purify_temporal=min(
+                        opts.purify_temporal, shot_prof.suggested_purify_temporal
+                    ),
+                    embedding_attack=shot_prof.suggested_attack,
+                )
+            )
     transform_context = strategies.TransformContext(
         gammas=gammas,
         deltas=deltas,
@@ -782,6 +913,8 @@ def _prepare_desensitize(
         and opts.drop_every <= 0
         and not opts.multi_hash_attack
         and not opts.dhash_attack
+        and opts.purify_strength <= 0
+        and opts.embedding_strength <= 0
     )
 
     state = _DesensitizeState(
@@ -797,6 +930,8 @@ def _prepare_desensitize(
         seg_out_lens=seg_out_lens,
         strategy=strategy,
         transform_options=transform_options,
+        shot_options=shot_options,
+        seg_shot_indices=seg_shot_indices,
         transform_context=transform_context,
         frame_dtype=frame_dtype,
         native_chain=[],
@@ -836,6 +971,10 @@ def _prepare_desensitize(
         phase_b=phase_b,
         phase_c=phase_c,
         phase_d=phase_d,
+        purify_note=purify_note,
+        purify_enabled=purify_strength_eff > 0,
+        profile_note=profile_note,
+        profile_metrics=profile_metrics,
     )
     if native_temporal_ok:
         beta = opts.temporal_sub
@@ -919,7 +1058,10 @@ def _mux_output(
     if audio_signal is not None:
         # 以实际写出的帧数对齐音轨时长：等长重混下仅当视频做统一变速
         # 时才需要拉伸，且拉伸比例与视频统一变速因子一致，保持内容对齐。
-        if not opts.echo_defeat:
+        # audio_tempo 是「音画同步变速是否真的生效」的唯一判据：源无音轨时
+        # 即使勾了回声清除也不会变速，此处必须随之走等长重采样。
+        tempo = state.audio_tempo
+        if tempo is None:
             target_len = round(out_index / state.output_fps * sample_rate)
             if target_len != len(audio_signal):
                 audio_signal = resample_poly(audio_signal, target_len, len(audio_signal))
@@ -931,10 +1073,10 @@ def _mux_output(
             "-i", temp_video,
             "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "-",
         ]
-        if opts.echo_defeat:
+        if tempo is not None:
             # atempo 保调拉伸放在 mux 滤镜里完成，与视频 factor 一致，
             # Python 侧不重采样，避免二次变速造成漂移。
-            mux_cmd += ["-af", f"atempo={state.audio_tempo:.5f}"]
+            mux_cmd += ["-af", f"atempo={tempo:.5f}"]
         mux_cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", output]
         subprocess.run(
             mux_cmd,
@@ -944,11 +1086,7 @@ def _mux_output(
         )
         return
     # 未做音频处理时音轨原样透传；源无音轨则直接落盘视频。
-    source_streams = ffmpeg.probe(path).get("streams", [])
-    has_audio = any(
-        stream.get("codec_type") == "audio" for stream in source_streams
-    )
-    if has_audio:
+    if ffmpeg.has_audio(path):
         copy_cmd = [
             ffmpeg.FFMPEG_BIN, "-y", "-v", "error",
             "-i", temp_video, "-i", path,
@@ -1148,6 +1286,31 @@ def _encode_desensitize(
         )
     )
     out_index = 0
+    # 净化控制面走线程本地，不进入 TransformContext：避免把 stop/pause 回调
+    # 塞进多进程池的任务载荷导致 pickle 失败。base/count 由每批处理前更新。
+    purify_progress_state = {"base": 0, "count": 1}
+
+    def purify_progress(fraction: float, note: str) -> None:
+        if not progress_cb or not state.total_out:
+            return
+        if note.startswith("下载"):
+            percent = 8 + int(purify_progress_state["base"] / state.total_out * 82)
+            progress_cb(min(90, percent), note)
+        else:
+            percent, global_note = _purify_progress(
+                purify_progress_state["base"],
+                purify_progress_state["count"],
+                fraction,
+                state.total_out,
+            )
+            progress_cb(percent, global_note)
+
+    if state.purify_enabled:
+        purify.set_control(
+            should_stop=should_stop,
+            pause=pause,
+            progress=purify_progress,
+        )
 
     try:
         if state.use_yuv_path:
@@ -1159,10 +1322,16 @@ def _encode_desensitize(
             # 消除逐块 decode_video_range 从头重复解码丢弃的 O(N²) 开销。
             # 武器阶段 CPU 密集，多进程并行处理帧块；首块在主进程处理以
             # 预计算 deep/copy/face 的一次性 SPSA 场并分发到后续进程。
-            worker_count = _parallel_workers()
+            # 净化管线持有大模型且推理不跨进程回流失败原因：净化任务强制单进程。
+            worker_count = 1 if state.purify_enabled else _parallel_workers()
             par_chunk = max(8, state.chunk // worker_count) if worker_count > 1 else state.chunk
             for seg_index, (seg_start, orig_start, seg_len) in enumerate(state.segments):
                 check_cancelled()
+                seg_options = state.transform_options
+                if state.shot_options is not None and state.seg_shot_indices is not None:
+                    shot_index = state.seg_shot_indices[seg_index]
+                    if 0 <= shot_index < len(state.shot_options):
+                        seg_options = state.shot_options[shot_index]
                 decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
                 pool = None
                 try:
@@ -1174,14 +1343,17 @@ def _encode_desensitize(
                         output_ids: list[int],
                         seed: int,
                         rng: np.random.Generator,
+                        options: Any,
                     ):
                         import dataclasses as dc
 
                         ctx = state.transform_context
                         if ctx.mid_rng is not None:
                             ctx = dc.replace(ctx, mid_rng=np.random.default_rng(seed ^ 0x51A))
+                        purify_progress_state["base"] = out_index
+                        purify_progress_state["count"] = len(batch)
                         frames = state.strategy.apply(
-                            batch, output_ids, ctx, state.transform_options
+                            batch, output_ids, ctx, options
                         )
                         return _apply_attacks(state, frames, output_ids, rng=rng)
 
@@ -1199,7 +1371,7 @@ def _encode_desensitize(
                     pos, batch = next(batches)
                     output_ids = list(range(seg_start + pos, seg_start + pos + len(batch)))
                     rng0 = np.random.default_rng(base_seed ^ pos)
-                    emit(process(batch, output_ids, base_seed ^ pos, rng0))
+                    emit(process(batch, output_ids, base_seed ^ pos, rng0, seg_options))
                     spsa_fields = _collect_spsa_fields(state, rng0)
 
                     if worker_count > 1:
@@ -1215,6 +1387,7 @@ def _encode_desensitize(
                             batches=batches,
                             base_seed=base_seed,
                             seg_start=seg_start,
+                            seg_options=seg_options,
                         ):
                             for pos, batch in batches:
                                 check_cancelled()
@@ -1222,6 +1395,7 @@ def _encode_desensitize(
                                 yield {
                                     "state": state,
                                     "batch": batch,
+                                    "options": seg_options,
                                     "output_ids": list(
                                         range(seg_start + pos, seg_start + pos + len(batch))
                                     ),
@@ -1245,6 +1419,7 @@ def _encode_desensitize(
                                     output_ids,
                                     base_seed ^ pos,
                                     rng0,
+                                    seg_options,
                                 )
                             )
                 finally:
@@ -1258,6 +1433,11 @@ def _encode_desensitize(
             # 避免逐块随机访问解码的 O(N²) 开销。
             for si, (seg_start, orig_start, seg_len) in enumerate(state.segments):
                 check_cancelled()
+                seg_options = state.transform_options
+                if state.shot_options is not None and state.seg_shot_indices is not None:
+                    shot_index = state.seg_shot_indices[si]
+                    if 0 <= shot_index < len(state.shot_options):
+                        seg_options = state.shot_options[shot_index]
                 factor = state.seg_factors[si]
                 seg_out_len = state.seg_out_lens[si]
                 seg_out_index = 0
@@ -1286,8 +1466,10 @@ def _encode_desensitize(
                                 batch_len - 1,
                             )
                             frames = np.asarray(batch)[sources]
+                            purify_progress_state["base"] = out_index
+                            purify_progress_state["count"] = len(frames)
                             frames = state.strategy.apply(
-                                frames, output_ids, state.transform_context, state.transform_options
+                                frames, output_ids, state.transform_context, seg_options
                             )
                             frames = _apply_attacks(state, frames, output_ids)
                             encoder.write(frames)
@@ -1320,3 +1502,6 @@ def _encode_desensitize(
             encoder.abort()
         shutil.rmtree(task_temp, ignore_errors=True)
         raise
+    finally:
+        if state.purify_enabled:
+            purify.clear_control()

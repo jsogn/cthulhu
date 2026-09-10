@@ -6,7 +6,6 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -122,6 +121,16 @@ def probe(path: str) -> dict:
         check=True,
     ).stdout
     return json.loads(out)
+
+
+def has_audio(path: str) -> bool:
+    """源文件是否含音轨：无音轨时音频类武器（回声清除等）没有作用对象。"""
+    try:
+        info = probe(path)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        # 探测失败按「有音轨」处理：宁可多走一次变速，也不静默跳过用户勾选的武器。
+        return True
+    return any(stream.get("codec_type") == "audio" for stream in info.get("streams", []))
 
 
 def video_info(path: str) -> dict:
@@ -771,82 +780,6 @@ def vmaf_score(distorted: str, reference: str, subsample: int | None = None) -> 
             os.unlink(log_path)
         except OSError:
             pass
-
-
-def repair_delogo(
-    path: str,
-    output: str,
-    regions: list[dict],
-    crf: int = 23,
-    progress_cb=None,
-    stop=None,
-    pause=None,
-) -> None:
-    """FFmpeg delogo 可见水印修复：按归一化区域与时间范围逐段抹除并重编码。
-
-    经 -progress 输出汇报真实进度；stop 触发时终止进程，pause 触发时
-    挂起/恢复进程（POSIX 平台），让取消与暂停即时生效。
-    """
-    if stop and stop():
-        raise InterruptedError("任务已取消")
-    info = video_info(path)
-    filters = []
-    for region in regions:
-        x = round(region["x"] * info["width"])
-        y = round(region["y"] * info["height"])
-        w = max(4, round(region["w"] * info["width"]))
-        h = max(4, round(region["h"] * info["height"]))
-        enable = ""
-        if region.get("start") is not None or region.get("end") is not None:
-            start = region.get("start", 0)
-            end = region.get("end", info["duration"])
-            enable = f":enable='between(t,{start},{end})'"
-        filters.append(f"delogo=x={x}:y={y}:w={w}:h={h}:show=0{enable}")
-    cmd = [
-        FFMPEG_BIN, "-y", "-v", "error",
-        "-progress", "pipe:1", "-nostats",
-        "-i", path, "-vf", ",".join(filters),
-    ]
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", "yuv420p"]
-    if any(stream.get("codec_type") == "audio" for stream in probe(path)["streams"]):
-        cmd += ["-c:a", "copy"]
-    cmd += [output]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stderr_drain = _StderrDrain(proc.stderr)
-    total = float(info.get("duration") or 0)
-    last_percent = 0
-    for raw_line in proc.stdout:
-        if stop and stop():
-            proc.terminate()
-            proc.wait()
-            raise InterruptedError("任务已取消")
-        if pause is not None and pause.is_set():
-            if progress_cb:
-                progress_cb(last_percent, "已暂停")
-            if hasattr(signal, "SIGSTOP"):
-                proc.send_signal(signal.SIGSTOP)
-            while pause.is_set() and not (stop and stop()):
-                time.sleep(0.1)
-            if stop and stop():
-                proc.terminate()
-                proc.wait()
-                raise InterruptedError("任务已取消")
-            if hasattr(signal, "SIGSTOP"):
-                proc.send_signal(signal.SIGCONT)
-            if progress_cb:
-                progress_cb(last_percent, "已恢复")
-        line = raw_line.decode(errors="ignore").strip()
-        if line.startswith("out_time_us=") and total > 0:
-            elapsed = int(line.split("=", 1)[1]) / 1_000_000
-            percent = min(92, max(0, round(elapsed / total * 100)))
-            if progress_cb and percent != last_percent:
-                last_percent = percent
-                progress_cb(percent, "逐帧修复中")
-    returncode = proc.wait()
-    stderr_drain.join()
-    stderr = stderr_drain.text()
-    if returncode != 0:
-        raise subprocess.CalledProcessError(returncode, cmd, stderr=stderr)
 
 
 def extract_frame(path: str, time_seconds: float) -> bytes:

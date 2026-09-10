@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,19 +18,32 @@ import {
   type LayerKind,
   type QualityKind,
 } from "@/components/workbench/WeaponTags";
-import type { TemplateInfo } from "@/lib/backend";
+import {
+  installPurify,
+  purifyStatus,
+  type PurifyStatus,
+  type TemplateInfo,
+} from "@/lib/backend";
 import { FIXED_CROP } from "@/lib/cleanOptions";
-import { cn } from "@/lib/utils";
 import { useCleanPanel } from "@/stores/cleanPanel";
+import type { Material } from "@/stores/materials";
 
 interface CleanPaneProps {
+  material: Material | null;
   templateList: TemplateInfo[];
   applyTemplateById: (id: string) => void;
   cleanSubmitting: boolean;
   runClean: () => void;
 }
 
+const formatBytes = (bytes: number) => {
+  if (!bytes) return "0 MB";
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  return `${Math.round(bytes / 1e6)} MB`;
+};
+
 export function CleanPane({
+  material,
   templateList,
   applyTemplateById,
   cleanSubmitting,
@@ -38,8 +51,6 @@ export function CleanPane({
 }: CleanPaneProps) {
   const {
     templateId,
-    outputMode,
-    setOutputMode,
     audioClean,
     setAudioClean,
     echoDefeat,
@@ -64,6 +75,8 @@ export function CleanPane({
     setNoise,
     dctOn,
     setDctOn,
+    dctStep,
+    setDctStep,
     audioStrongOn,
     setAudioStrongOn,
     recropOn,
@@ -144,6 +157,27 @@ export function CleanPane({
     setPsnrTarget,
     ssimTarget,
     setSsimTarget,
+    purifyOn,
+    setPurifyOn,
+    purifyTemporal,
+    setPurifyTemporal,
+    purifyMaxEdge,
+    setPurifyMaxEdge,
+    purifyDetailWide,
+    setPurifyDetailWide,
+    setPurifyBatch,
+    embeddingOn,
+    setEmbeddingOn,
+    embeddingAttack,
+    setEmbeddingAttack,
+    embeddingStrength,
+    setEmbeddingStrength,
+    embeddingVariant,
+    setEmbeddingVariant,
+    embeddingAggressive,
+    setEmbeddingAggressive,
+    autoProfile,
+    setAutoProfile,
     codec,
     setCodec,
     lossless,
@@ -152,6 +186,78 @@ export function CleanPane({
     setResolution,
   } = useCleanPanel();
 
+  const [purifyState, setPurifyState] = useState<PurifyStatus | null>(null);
+  const [purifyError, setPurifyError] = useState<string | null>(null);
+  const [purifyBusy, setPurifyBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void purifyStatus()
+      .then((status) => {
+        if (active) {
+          setPurifyState(status);
+          setPurifyError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setPurifyError(error instanceof Error ? error.message : "净化状态查询失败");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (purifyState?.state !== "downloading") return;
+    const timer = window.setInterval(() => {
+      void purifyStatus()
+        .then(setPurifyState)
+        .catch(() => {
+          // 轮询失败保持上次进度，下一次继续尝试。
+        });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [purifyState?.state]);
+
+  const handleInstallPurify = async () => {
+    setPurifyBusy(true);
+    setPurifyError(null);
+    try {
+      setPurifyState(await installPurify());
+    } catch (error) {
+      setPurifyError(error instanceof Error ? error.message : "模型下载启动失败");
+    } finally {
+      setPurifyBusy(false);
+    }
+  };
+
+  const purifyPercent = Math.round((purifyState?.progress ?? 0) * 100);
+  const purifyDownloading = purifyState?.state === "downloading";
+  // 只有一份权重：内置的 10MB TAESD（sd-turbo 与扩散引擎已下线）。
+  const purifyReady = purifyState?.latent?.cached ?? false;
+  const purifyPerformance =
+    purifyMaxEdge === 192 && !purifyDetailWide
+      ? "extreme"
+      : purifyMaxEdge === 512 && purifyDetailWide
+        ? "quality"
+        : "fast";
+  const applyPurifyPerformance = (value: string) => {
+    if (value === "extreme") {
+      setPurifyMaxEdge(192);
+      setPurifyBatch(8);
+      setPurifyDetailWide(false);
+    } else if (value === "quality") {
+      setPurifyMaxEdge(512);
+      setPurifyBatch(8);
+      setPurifyDetailWide(true);
+    } else {
+      setPurifyMaxEdge(256);
+      setPurifyBatch(8);
+      setPurifyDetailWide(false);
+    }
+  };
   const switchCard = (
     label: string,
     desc: ReactNode,
@@ -179,6 +285,33 @@ export function CleanPane({
     <TabsContent value="清洗去重" className="tab-pane">
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-2.5">
+          {material ? (
+            <>
+              <div className="section-title">文件信息</div>
+              <div className="kv-card">
+                <div className="kv-row">
+                  <span>文件名</span>
+                  <b className="truncate">{material.name}</b>
+                </div>
+                <div className="kv-row">
+                  <span>编码 / 分辨率</span>
+                  <b>
+                    {material.codec ?? "—"} · {material.res}
+                  </b>
+                </div>
+                <div className="kv-row">
+                  <span>帧率 / 时长</span>
+                  <b>
+                    {material.fps} · {material.dur}
+                  </b>
+                </div>
+                <div className="kv-row">
+                  <span>文件大小</span>
+                  <b>{material.size}</b>
+                </div>
+              </div>
+            </>
+          ) : null}
           <div className="field">
             <span className="field-label">模板</span>
             <Select value={templateId} onValueChange={applyTemplateById}>
@@ -207,47 +340,192 @@ export function CleanPane({
               覆盖空域、DCT 频域、时域、色度与音频回声等常见水印；未知方案建议加强对抗档。
             </p>
           </div>
-          <div className="field">
-            <span className="field-label">清洗方式</span>
-            <div className="inline-flex w-full rounded-lg bg-muted/50 p-0.5">
-              <button
-                type="button"
-                onClick={() => setOutputMode("reencode")}
-                aria-pressed={outputMode === "reencode"}
-                className={cn(
-                  "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  outputMode === "reencode"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                重新编码
-              </button>
-              <button
-                type="button"
-                onClick={() => setOutputMode("remux")}
-                aria-pressed={outputMode === "remux"}
-                className={cn(
-                  "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  outputMode === "remux"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                重新封装
-              </button>
+          <div className="flex min-w-0 flex-col gap-2.5">
+            <div className="section-title">去水印 · 画面重建</div>
+            {switchCard(
+              "画面重建（去暗水印）",
+              "按画面内容重新生成一遍，抹掉嵌进去的暗水印；字幕与人脸是否清楚由下方档位决定",
+              "wm",
+              "fast",
+              "mild",
+              purifyOn,
+              setPurifyOn,
+              purifyOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">清晰度档位</span>
+                    <Select
+                      value={purifyPerformance}
+                      onValueChange={applyPurifyPerformance}
+                    >
+                      <SelectTrigger className="form-input h-8 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="quality">画质优先（默认）</SelectItem>
+                        <SelectItem value="fast">平衡</SelectItem>
+                        <SelectItem value="extreme">清除优先</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="form-help">
+                      {purifyPerformance === "quality"
+                        ? "画面清晰、人脸与字幕正常；水印清除较弱，适合要成片质量的场景"
+                        : purifyPerformance === "fast"
+                          ? "画面略软，清除率比画质优先更好，是人人都能接受的中间档"
+                          : "水印清除最彻底；画面会明显变软、字幕可能难以辨认"}
+                    </div>
+                  </div>
+                  <div className="form-help">
+                    {purifyDetailWide
+                      ? "细节带宽按分辨率自动放大到字幕笔画尺度（1080p≈6.5），字幕可读、水印会部分回流"
+                      : "细节带宽按分辨率自动换算（1080p≈2.6），清除率优先；要更清晰的画面请选「画面优先 · 512」"}
+                    ，并自动做一次轻度锐化
+                  </div>
+                  <div className="field">
+                    <span className="field-label">
+                      时序一致性减法 {purifyTemporal.toFixed(2)}
+                    </span>
+                    <Slider
+                      value={[purifyTemporal]}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onValueChange={(values) => setPurifyTemporal(values[0] ?? 0)}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            {/* 开箱即用：模型随包内置，就绪时不显示任何状态提示；
+                只有缺失/下载中/出错/运行时不可用等异常状态才展示。 */}
+            {!purifyReady ? (
+              <div className="rounded-md bg-muted/50 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {purifyDownloading
+                      ? `模型下载中 ${purifyPercent}% · ${formatBytes(
+                          purifyState?.downloaded_bytes ?? 0,
+                        )} / ${formatBytes(purifyState?.total_bytes ?? 0)}`
+                      : purifyState?.state === "unavailable"
+                        ? `运行时不可用：${purifyState.reason}`
+                        : purifyState?.state === "error"
+                          ? `模型安装失败：${purifyState.error ?? "未知错误"}`
+                          : purifyState?.latent?.bundled
+                            ? "潜空间模型未就绪"
+                            : "潜空间模型未内置（开发环境可下载约 10MB）"}
+                  </span>
+                  {!purifyDownloading &&
+                  purifyState?.available &&
+                  purifyState?.allow_download ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={purifyBusy}
+                      onClick={() => void handleInstallPurify()}
+                    >
+                      {purifyBusy ? "启动中…" : "下载模型"}
+                    </Button>
+                  ) : null}
+                </div>
+                {purifyDownloading ? (
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${purifyPercent}%` }}
+                    />
+                  </div>
+                ) : null}
+                {purifyError ? (
+                  <div className="mt-1 text-xs text-destructive">{purifyError}</div>
+                ) : null}
+                {purifyState && !purifyState.allow_download ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    已禁用自动下载，可用 CTHULHU_PURIFY_MODEL_DIR 预置权重
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {switchCard(
+              "嵌入域定向重写",
+              "按水印画像改写低频：VideoSeal 类打 Y 亮度，WAM 类打 Cb/Cr 色度",
+              "wm",
+              "fast",
+              "mild",
+              embeddingOn,
+              setEmbeddingOn,
+              embeddingOn ? (
+                <>
+                  <div className="field">
+                    <span className="field-label">目标域</span>
+                    <Select
+                      value={embeddingAttack}
+                      onValueChange={(value) =>
+                        setEmbeddingAttack(value as "luma" | "chroma" | "both")
+                      }
+                    >
+                      <SelectTrigger className="form-input h-8 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">自动（已知方案按画像，未知 both）</SelectItem>
+                        <SelectItem value="luma">Y 亮度低频（VideoSeal 类）</SelectItem>
+                        <SelectItem value="chroma">Cb/Cr 色度低频（WAM 类）</SelectItem>
+                        <SelectItem value="both">两者同时</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="field">
+                    <span className="field-label">重写强度 {embeddingStrength.toFixed(2)}</span>
+                    <Slider
+                      value={[embeddingStrength]}
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      onValueChange={(values) => setEmbeddingStrength(values[0] ?? 0.25)}
+                    />
+                  </div>
+                  <div className="switch">
+                    <div>
+                      <div className="switch-label">精确频带重写</div>
+                      <div className="switch-desc">
+                        按实测水印频带精确改写低频并加随机量化；关闭则退回粗略的高斯平滑替换
+                      </div>
+                    </div>
+                    <Switch
+                      checked={embeddingVariant === "v2"}
+                      onCheckedChange={(checked) =>
+                        setEmbeddingVariant(checked ? "v2" : "legacy")
+                      }
+                    />
+                  </div>
+                  <div className="switch">
+                    <div>
+                      <div className="switch-label">增强重写（更强，画质代价更高）</div>
+                      <div className="switch-desc">
+                        破坏固定分块对齐，并覆盖色度子采样网格；画质代价更高
+                      </div>
+                    </div>
+                    <Switch
+                      checked={embeddingAggressive}
+                      onCheckedChange={setEmbeddingAggressive}
+                    />
+                  </div>
+                </>
+              ) : undefined,
+            )}
+            <div className="switch">
+              <div>
+                <div className="switch-label">自动画像（内容复杂度自适应）</div>
+                <div className="switch-desc">
+                  按镜头纹理/运动/时序一致性自适应净化强度与时序减法；画面档位（边缘、
+                  细节带宽、字幕增强）按预设执行，不参与自适应
+                </div>
+                <WeaponTags layer="quality" cost="fast" quality="none" />
+              </div>
+              <Switch checked={autoProfile} onCheckedChange={setAutoProfile} />
             </div>
-            <div className="form-help">
-              {outputMode === "remux"
-                ? "仅重写封装格式与元数据，画面音轨原样保留、画质无损，速度最快，但不会清除内容指纹"
-                : "重新解码并压缩画面与音轨，下方对抗设置真正生效，清洗更彻底"}
-            </div>
-          </div>
-          <div
-            className={`flex min-w-0 flex-col gap-2.5${
-              outputMode === "remux" ? " pointer-events-none select-none opacity-45" : ""
-            }`}
-          >
+
+            <div className="section-title">画面变换 · 去同步与色彩微扰</div>
             <div className="switch">
               <div>
                 <div className="switch-label">重新构图（裁剪回缩）</div>
@@ -400,7 +678,7 @@ export function CleanPane({
               <Switch checked={audioStrongOn} onCheckedChange={setAudioStrongOn} />
             </div>
 
-            <div className="section-title">再生重写</div>
+            <div className="section-title">重编码与信号扰动</div>
             {switchCard(
               "哈希签名对抗（pHash/dHash）",
               "签名域可微扰动，翻转感知哈希符号位（专攻模式效果更强）",
@@ -598,14 +876,27 @@ export function CleanPane({
                 </div>
               ) : undefined,
             )}
-            <div className="switch">
-              <div>
-                <div className="switch-label">DCT 系数扰动（重量化+中频）</div>
-                <div className="switch-desc">8×8 DCT 重量化并扰动中频系数</div>
-                <WeaponTags layer="wm" cost="mid" quality="mild" />
-              </div>
-              <Switch checked={dctOn} onCheckedChange={setDctOn} />
-            </div>
+            {switchCard(
+              "DCT 系数扰动（重量化+中频）",
+              "8×8 DCT 重量化并扰动中频系数",
+              "wm",
+              "mid",
+              "mild",
+              dctOn,
+              setDctOn,
+              dctOn ? (
+                <div className="field">
+                  <span className="field-label">量化步长 {dctStep}</span>
+                  <Slider
+                    value={[dctStep]}
+                    min={1}
+                    max={256}
+                    step={1}
+                    onValueChange={(values) => setDctStep(values[0] ?? 12)}
+                  />
+                </div>
+              ) : undefined,
+            )}
             <div className="switch">
               <div>
                 <div className="switch-label">伪水印注入（溯源干扰）</div>

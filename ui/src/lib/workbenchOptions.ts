@@ -1,5 +1,4 @@
 import type { OutputInfo } from "@/lib/backend";
-import type { RiskLevel } from "@/stores/materials";
 
 export const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   cleaned: "清洗",
@@ -30,11 +29,6 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
   const num = (value: unknown) => (typeof value === "number" ? value : 0);
   const enabled = (value: unknown) => value === true || num(value) > 0;
 
-  rows.push({
-    label: "清洗方式",
-    value: options.output_mode === "remux" ? "重新封装 · 只换壳" : "重新编码",
-  });
-
   const activeTags = ANTI_TAG_LABELS.filter(([key]) => enabled(options[key])).map(
     ([, label]) => label,
   );
@@ -55,6 +49,13 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
   if (enabled(options.sharpness)) rows.push({ label: "锐度补偿", value: "开启" });
   if (enabled(options.color_restore)) rows.push({ label: "调色修复", value: "开启" });
   if (enabled(options.denoise)) rows.push({ label: "空间降噪", value: "开启" });
+  if (num(options.purify_strength) > 0) {
+    const edge = num(options.purify_max_edge) || 256;
+    rows.push({
+      label: "潜空间净化",
+      value: `瓶颈重建 @${edge}`,
+    });
+  }
   if (enabled(options.spoof)) rows.push({ label: "反爬伪装", value: "开启" });
   if (num(options.saliency) > 0) rows.push({ label: "显著性伪装", value: "开启" });
   if (num(options.speed) !== 0 && options.speed !== 1) {
@@ -94,8 +95,4 @@ export function outputTimeLabel(mtime: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}`;
-}
-
-export function riskLabel(risk: RiskLevel): string {
-  return risk;
 }

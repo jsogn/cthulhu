@@ -3,10 +3,12 @@ import { create } from "zustand";
 import { getSettings } from "@/lib/backend";
 import type { Codec, TemplatePayload } from "@/lib/templates";
 
-export type OutputMode = "reencode" | "remux";
+export type PresetBase = "balanced" | "aggressive" | "extreme" | "custom";
 
 /** 清洗参数默认值：初始状态与 resetCleanDefaults 共用，避免两处手写漂移。 */
 const CLEAN_DEFAULTS = {
+  presetBase: "custom" as PresetBase,
+  presetModified: false,
   audioClean: false,
   echoDefeat: false,
   rotateOn: false,
@@ -19,6 +21,7 @@ const CLEAN_DEFAULTS = {
   noiseOn: false,
   noise: 0.004,
   dctOn: false,
+  dctStep: 12,
   audioStrongOn: false,
   regradeOn: false,
   recropOn: false,
@@ -59,10 +62,28 @@ const CLEAN_DEFAULTS = {
   qualityProtectOn: false,
   psnrTarget: 38,
   ssimTarget: 0.94,
+  purifyOn: false,
+  purifyStrength: 0.15,
+  purifyDetail: 1.0,
+  /** σ=0：按分辨率自动（引擎负责换算 + 后置锐化）。 */
+  purifyDetailSigma: 0,
+  /** 默认＝画质优先：宽带回注 + 字幕增强（字幕可辨，清除率打折）。 */
+  purifyDetailWide: true,
+  purifyTemporal: 0.0,
+  purifyMaxEdge: 512,
+  purifyBatch: 8,
+  embeddingOn: false,
+  embeddingAttack: "chroma" as "auto" | "luma" | "chroma" | "both",
+  embeddingStrength: 0.25,
+  embeddingVariant: "v2" as "legacy" | "v2",
+  embeddingAggressive: false,
+  autoProfile: false,
 };
 
 /** 清洗设置唯一数据源：面板可写，批量清洗只读，单条/批量共用同一份参数。 */
 export interface CleanPanelState {
+  presetBase: PresetBase;
+  presetModified: boolean;
   audioClean: boolean;
   echoDefeat: boolean;
   rotateOn: boolean;
@@ -75,8 +96,8 @@ export interface CleanPanelState {
   noiseOn: boolean;
   noise: number;
   dctOn: boolean;
+  dctStep: number;
   audioStrongOn: boolean;
-  outputMode: OutputMode;
   regradeOn: boolean;
   recropOn: boolean;
   sharpness: boolean;
@@ -116,6 +137,20 @@ export interface CleanPanelState {
   qualityProtectOn: boolean;
   psnrTarget: number;
   ssimTarget: number;
+  purifyOn: boolean;
+  purifyStrength: number;
+  purifyDetail: number;
+  purifyDetailSigma: number;
+  purifyDetailWide: boolean;
+  purifyTemporal: number;
+  purifyMaxEdge: number;
+  purifyBatch: number;
+  embeddingOn: boolean;
+  embeddingAttack: "auto" | "luma" | "chroma" | "both";
+  embeddingStrength: number;
+  embeddingVariant: "legacy" | "v2";
+  embeddingAggressive: boolean;
+  autoProfile: boolean;
   codec: Codec;
   lossless: boolean;
   resolution: string;
@@ -135,8 +170,8 @@ export interface CleanPanelState {
   setNoiseOn: (value: boolean) => void;
   setNoise: (value: number) => void;
   setDctOn: (value: boolean) => void;
+  setDctStep: (value: number) => void;
   setAudioStrongOn: (value: boolean) => void;
-  setOutputMode: (value: OutputMode) => void;
   setRegradeOn: (value: boolean) => void;
   setRecropOn: (value: boolean) => void;
   setSharpness: (value: boolean) => void;
@@ -176,6 +211,21 @@ export interface CleanPanelState {
   setQualityProtectOn: (value: boolean) => void;
   setPsnrTarget: (value: number) => void;
   setSsimTarget: (value: number) => void;
+  setPurifyOn: (value: boolean) => void;
+  setPurifyStrength: (value: number) => void;
+  setPurifyDetail: (value: number) => void;
+  setPurifyDetailSigma: (value: number) => void;
+  setPurifyDetailWide: (value: boolean) => void;
+  setPurifyTemporal: (value: number) => void;
+  setPurifyMaxEdge: (value: number) => void;
+  setPurifyBatch: (value: number) => void;
+  setEmbeddingOn: (value: boolean) => void;
+  setEmbeddingAttack: (value: "auto" | "luma" | "chroma" | "both") => void;
+  setEmbeddingStrength: (value: number) => void;
+  setEmbeddingVariant: (value: "legacy" | "v2") => void;
+  setEmbeddingAggressive: (value: boolean) => void;
+  applyBlackBoxPreset: (preset: "balanced" | "aggressive" | "extreme") => void;
+  setAutoProfile: (value: boolean) => void;
   setCodec: (value: Codec) => void;
   setLossless: (value: boolean) => void;
   setResolution: (value: string) => void;
@@ -188,9 +238,64 @@ export interface CleanPanelState {
   loadSettings: () => Promise<void>;
 }
 
-export const useCleanPanel = create<CleanPanelState>((set) => ({
+const near = (value: number, target: number) => Math.abs(value - target) < 1e-6;
+
+/** 仅用于模板回填时判断它是否恰好等于某个快捷预设；运行期不靠数值反推。 */
+export function detectPresetBase(state: CleanPanelState): PresetBase {
+  if (
+    state.purifyOn &&
+    near(state.purifyStrength, 0.1) &&
+    near(state.purifyDetail, 1.0) &&
+    near(state.purifyDetailSigma, 0) &&
+    !state.purifyDetailWide &&
+    near(state.purifyTemporal, 0) &&
+    state.purifyMaxEdge === 192 &&
+    state.purifyBatch === 8 &&
+    !state.embeddingOn &&
+    state.autoProfile
+  ) {
+    return "extreme";
+  }
+  if (
+    state.purifyOn &&
+    near(state.purifyStrength, 0.15) &&
+    near(state.purifyDetail, 1.0) &&
+    near(state.purifyDetailSigma, 0) &&
+    state.purifyDetailWide &&
+    near(state.purifyTemporal, 0) &&
+    state.purifyMaxEdge === 512 &&
+    state.purifyBatch === 8 &&
+    !state.embeddingOn &&
+    state.autoProfile
+  ) {
+    return "balanced";
+  }
+  if (
+    state.purifyOn &&
+    near(state.purifyStrength, 0.35) &&
+    near(state.purifyDetail, 1.0) &&
+    near(state.purifyDetailSigma, 0) &&
+    !state.purifyDetailWide &&
+    near(state.purifyTemporal, 0.5) &&
+    state.purifyMaxEdge === 256 &&
+    state.purifyBatch === 8 &&
+    state.embeddingOn &&
+    state.embeddingAttack === "both" &&
+    near(state.embeddingStrength, 0.6) &&
+    state.embeddingVariant === "v2" &&
+    state.embeddingAggressive &&
+    !state.autoProfile
+  ) {
+    return "aggressive";
+  }
+  return "custom";
+}
+
+const presetPatch = (state: CleanPanelState) =>
+  state.presetBase === "custom" ? {} : { presetModified: true };
+
+export const useCleanPanel = create<CleanPanelState>((set, get) => ({
   ...CLEAN_DEFAULTS,
-  outputMode: "reencode",
   codec: "H.264",
   lossless: false,
   resolution: "保持原始分辨率",
@@ -210,8 +315,8 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
   setNoiseOn: (noiseOn) => set({ noiseOn }),
   setNoise: (noise) => set({ noise }),
   setDctOn: (dctOn) => set({ dctOn }),
+  setDctStep: (dctStep) => set({ dctStep }),
   setAudioStrongOn: (audioStrongOn) => set({ audioStrongOn }),
-  setOutputMode: (outputMode) => set({ outputMode }),
   setRegradeOn: (regradeOn) => set({ regradeOn }),
   setRecropOn: (recropOn) => set({ recropOn }),
   setSharpness: (sharpness) => set({ sharpness }),
@@ -251,6 +356,96 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
   setQualityProtectOn: (qualityProtectOn) => set({ qualityProtectOn }),
   setPsnrTarget: (psnrTarget) => set({ psnrTarget }),
   setSsimTarget: (ssimTarget) => set({ ssimTarget }),
+  setPurifyOn: (purifyOn) =>
+    set((state) => ({ purifyOn, ...presetPatch(state) })),
+  setPurifyStrength: (purifyStrength) =>
+    set((state) => ({ purifyStrength, ...presetPatch(state) })),
+  setPurifyDetail: (purifyDetail) =>
+    set((state) => ({ purifyDetail, ...presetPatch(state) })),
+  setPurifyDetailSigma: (purifyDetailSigma) =>
+    set((state) => ({ purifyDetailSigma, ...presetPatch(state) })),
+  setPurifyDetailWide: (purifyDetailWide) =>
+    set((state) => ({ purifyDetailWide, ...presetPatch(state) })),
+  setPurifyTemporal: (purifyTemporal) =>
+    set((state) => ({ purifyTemporal, ...presetPatch(state) })),
+  setPurifyMaxEdge: (purifyMaxEdge) =>
+    set((state) => ({ purifyMaxEdge, ...presetPatch(state) })),
+  setPurifyBatch: (purifyBatch) =>
+    set((state) => ({ purifyBatch, ...presetPatch(state) })),
+  setEmbeddingOn: (embeddingOn) =>
+    set((state) => ({ embeddingOn, ...presetPatch(state) })),
+  setEmbeddingAttack: (embeddingAttack) =>
+    set((state) => ({ embeddingAttack, ...presetPatch(state) })),
+  setEmbeddingStrength: (embeddingStrength) =>
+    set((state) => ({ embeddingStrength, ...presetPatch(state) })),
+  setEmbeddingVariant: (embeddingVariant) =>
+    set((state) => ({ embeddingVariant, ...presetPatch(state) })),
+  setEmbeddingAggressive: (embeddingAggressive) =>
+    set((state) => ({ embeddingAggressive, ...presetPatch(state) })),
+  applyBlackBoxPreset: (preset) =>
+    set(
+      preset === "extreme"
+        ? {
+            presetBase: preset,
+            presetModified: false,
+            purifyOn: true,
+            purifyStrength: 0.10,
+            purifyDetail: 1.0,
+            purifyDetailSigma: 0,
+            purifyDetailWide: false,
+            purifyTemporal: 0.0,
+            purifyMaxEdge: 192,
+            purifyBatch: 8,
+            embeddingOn: false,
+            embeddingAttack: "both",
+            embeddingStrength: 0.25,
+            embeddingVariant: "v2",
+            embeddingAggressive: false,
+            autoProfile: true,
+          }
+        : preset === "aggressive"
+        ? {
+            presetBase: preset,
+            presetModified: false,
+            purifyOn: true,
+            purifyStrength: 0.35,
+            purifyDetail: 1.0,
+            purifyDetailSigma: 0,
+            purifyDetailWide: false,
+            purifyTemporal: 0.5,
+            purifyMaxEdge: 256,
+            purifyBatch: 8,
+            embeddingOn: true,
+            embeddingAttack: "both",
+            embeddingStrength: 0.6,
+            embeddingVariant: "v2",
+            embeddingAggressive: true,
+            autoProfile: false,
+          }
+        : {
+            presetBase: preset,
+            presetModified: false,
+            purifyOn: true,
+            purifyStrength: 0.15,
+            purifyDetail: 1.0,
+            purifyDetailSigma: 0,
+            // B 档：宽带回注（1080p≈6.5）换字幕可读，水印会部分回流。
+            purifyDetailWide: true,
+            purifyTemporal: 0.0,
+            // 画质优先：长边 512（1080p 下 3.75× 放大，画面明显更实）；
+            // 代价是部分公开方案水印回流，追求清除率请选「强力/极速清除」。
+            purifyMaxEdge: 512,
+            purifyBatch: 8,
+            embeddingOn: false,
+            embeddingAttack: "both",
+            embeddingStrength: 0.25,
+            embeddingVariant: "v2",
+            embeddingAggressive: false,
+            autoProfile: true,
+          },
+    ),
+  setAutoProfile: (autoProfile) =>
+    set((state) => ({ autoProfile, ...presetPatch(state) })),
   setCodec: (codec) => set({ codec }),
   setLossless: (lossless) => set({ lossless }),
   setResolution: (resolution) => set({ resolution }),
@@ -258,20 +453,28 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
   setSettingsExportDir: (settingsExportDir) => set({ settingsExportDir }),
   setSettingsNaming: (settingsNaming) => set({ settingsNaming }),
   setSettingsFilterScale: (settingsFilterScale) => set({ settingsFilterScale }),
-  applyTemplatePayload: (payload) =>
+  applyTemplatePayload: (payload) => {
     set({
       audioClean: payload.audioRemix,
       echoDefeat: payload.echoDefeat,
       rotateOn: (payload.rotate ?? 0) > 0,
-      rotate: (payload.rotate ?? 0) > 0 ? (payload.rotate ?? 0.2) : 0.2,
+      rotate:
+        (payload.rotate ?? 0) > 0 ? (payload.rotate ?? CLEAN_DEFAULTS.rotate) : CLEAN_DEFAULTS.rotate,
       hashOn: payload.hashAttack ?? false,
-      hashEps: payload.hashAttack ? (payload.hashEpsilon ?? 0.045) : 0.045,
-      hashMode: (payload.hashMode as "phash" | "dhash" | "joint") ?? "joint",
+      hashEps: payload.hashAttack
+        ? (payload.hashEpsilon ?? CLEAN_DEFAULTS.hashEps)
+        : CLEAN_DEFAULTS.hashEps,
+      hashMode: payload.hashAttack
+        ? ((payload.hashMode as "phash" | "dhash" | "joint") ?? CLEAN_DEFAULTS.hashMode)
+        : CLEAN_DEFAULTS.hashMode,
       requantOn: (payload.requant ?? 0) > 0,
-      requant: (payload.requant ?? 0) > 0 ? (payload.requant ?? 64) : 64,
+      requant:
+        (payload.requant ?? 0) > 0 ? (payload.requant ?? CLEAN_DEFAULTS.requant) : CLEAN_DEFAULTS.requant,
       noiseOn: (payload.noise ?? 0) > 0,
-      noise: (payload.noise ?? 0) > 0 ? (payload.noise ?? 0.004) : 0.004,
+      noise: (payload.noise ?? 0) > 0 ? (payload.noise ?? CLEAN_DEFAULTS.noise) : CLEAN_DEFAULTS.noise,
       dctOn: (payload.dctStep ?? 0) > 0 || (payload.antiReembed ?? false),
+      dctStep:
+        (payload.dctStep ?? 0) > 0 ? (payload.dctStep ?? CLEAN_DEFAULTS.dctStep) : CLEAN_DEFAULTS.dctStep,
       audioStrongOn: payload.audioStrong ?? false,
       regradeOn: payload.regradeOn,
       recropOn: payload.recropOn,
@@ -280,47 +483,106 @@ export const useCleanPanel = create<CleanPanelState>((set) => ({
       aiDenoise: payload.denoise,
       spoof: payload.spoof,
       temporalSubOn: (payload.temporalSub ?? 0) > 0,
-      temporalSub: (payload.temporalSub ?? 0) > 0 ? (payload.temporalSub ?? 0.8) : 0.8,
-      nativeTemporalOn: payload.nativeTemporal ?? false,
+      temporalSub:
+        (payload.temporalSub ?? 0) > 0
+          ? (payload.temporalSub ?? CLEAN_DEFAULTS.temporalSub)
+          : CLEAN_DEFAULTS.temporalSub,
+      nativeTemporalOn: payload.nativeTemporal ?? CLEAN_DEFAULTS.nativeTemporalOn,
       fftOn: (payload.fftPhase ?? 0) > 0 || (payload.fftMag ?? 0) > 0,
-      fftPhase: (payload.fftPhase ?? 0) > 0 ? (payload.fftPhase ?? 0.5) : 0.5,
-      fftMag: (payload.fftMag ?? 0) > 0 ? (payload.fftMag ?? 0.5) : 0.5,
+      fftPhase:
+        (payload.fftPhase ?? 0) > 0 ? (payload.fftPhase ?? CLEAN_DEFAULTS.fftPhase) : CLEAN_DEFAULTS.fftPhase,
+      fftMag: (payload.fftMag ?? 0) > 0 ? (payload.fftMag ?? CLEAN_DEFAULTS.fftMag) : CLEAN_DEFAULTS.fftMag,
       dwtDetailOn: (payload.dwtDetail ?? 0) > 0,
-      dwtDetail: (payload.dwtDetail ?? 0) > 0 ? (payload.dwtDetail ?? 0.8) : 0.8,
+      dwtDetail:
+        (payload.dwtDetail ?? 0) > 0 ? (payload.dwtDetail ?? CLEAN_DEFAULTS.dwtDetail) : CLEAN_DEFAULTS.dwtDetail,
       warpOn: (payload.warp ?? 0) > 0,
-      warp: (payload.warp ?? 0) > 0 ? (payload.warp ?? 0.005) : 0.005,
+      warp: (payload.warp ?? 0) > 0 ? (payload.warp ?? CLEAN_DEFAULTS.warp) : CLEAN_DEFAULTS.warp,
       shearOn: (payload.perspective ?? 0) > 0,
-      shear: (payload.perspective ?? 0) > 0 ? (payload.perspective ?? 0.01) : 0.01,
+      shear:
+        (payload.perspective ?? 0) > 0 ? (payload.perspective ?? CLEAN_DEFAULTS.shear) : CLEAN_DEFAULTS.shear,
       jitterOn: (payload.jitter ?? 0) > 0,
-      jitter: (payload.jitter ?? 0) > 0 ? (payload.jitter ?? 0.005) : 0.005,
+      jitter:
+        (payload.jitter ?? 0) > 0 ? (payload.jitter ?? CLEAN_DEFAULTS.jitter) : CLEAN_DEFAULTS.jitter,
       nonintOn: (payload.nonintRatio ?? 0) > 0,
-      nonintRatio: (payload.nonintRatio ?? 0) > 0 ? (payload.nonintRatio ?? 0.01) : 0.01,
+      nonintRatio:
+        (payload.nonintRatio ?? 0) > 0
+          ? (payload.nonintRatio ?? CLEAN_DEFAULTS.nonintRatio)
+          : CLEAN_DEFAULTS.nonintRatio,
       flowOn: (payload.flowDisturb ?? 0) > 0,
-      flow: (payload.flowDisturb ?? 0) > 0 ? (payload.flowDisturb ?? 2) : 2,
+      flow:
+        (payload.flowDisturb ?? 0) > 0
+          ? (payload.flowDisturb ?? CLEAN_DEFAULTS.flow)
+          : CLEAN_DEFAULTS.flow,
       textureOn: (payload.textureInject ?? 0) > 0 || (payload.complexityTrap ?? 0) > 0,
       texture:
         (payload.textureInject ?? 0) > 0
           ? (payload.textureInject ?? 0.04)
           : (payload.complexityTrap ?? 0) > 0
             ? Math.min(0.05, (payload.complexityTrap ?? 0.06) / 2.5)
-            : 0.04,
+            : CLEAN_DEFAULTS.texture,
       multiscaleOn: (payload.multiscale ?? 0) > 0,
-      multiscale: (payload.multiscale ?? 0) > 0 ? (payload.multiscale ?? 0.02) : 0.02,
+      multiscale:
+        (payload.multiscale ?? 0) > 0
+          ? (payload.multiscale ?? CLEAN_DEFAULTS.multiscale)
+          : CLEAN_DEFAULTS.multiscale,
       faceOn: (payload.facePerturb ?? 0) > 0,
-      face: (payload.facePerturb ?? 0) > 0 ? (payload.facePerturb ?? 0.04) : 0.04,
+      face:
+        (payload.facePerturb ?? 0) > 0
+          ? (payload.facePerturb ?? CLEAN_DEFAULTS.face)
+          : CLEAN_DEFAULTS.face,
       temporalBlurOn: (payload.temporalBlur ?? 0) > 0,
-      temporalBlur: (payload.temporalBlur ?? 0) > 0 ? (payload.temporalBlur ?? 0.25) : 0.25,
+      temporalBlur:
+        (payload.temporalBlur ?? 0) > 0
+          ? (payload.temporalBlur ?? CLEAN_DEFAULTS.temporalBlur)
+          : CLEAN_DEFAULTS.temporalBlur,
       lpcOn: (payload.lpcAttack ?? 0) > 0,
-      lpc: (payload.lpcAttack ?? 0) > 0 ? (payload.lpcAttack ?? 0.85) : 0.85,
+      lpc:
+        (payload.lpcAttack ?? 0) > 0
+          ? (payload.lpcAttack ?? CLEAN_DEFAULTS.lpc)
+          : CLEAN_DEFAULTS.lpc,
       neuralOn: (payload.copyAttack ?? 0) > 0,
-      neural: (payload.copyAttack ?? 0) > 0 ? (payload.copyAttack ?? 0.05) : 0.05,
+      neural:
+        (payload.copyAttack ?? 0) > 0
+          ? (payload.copyAttack ?? CLEAN_DEFAULTS.neural)
+          : CLEAN_DEFAULTS.neural,
       qualityProtectOn: payload.qualityProtect ?? false,
       psnrTarget: payload.psnrTarget ?? 38,
       ssimTarget: payload.ssimTarget ?? 0.94,
+      purifyOn: (payload.purifyStrength ?? 0) > 0,
+      purifyStrength:
+        (payload.purifyStrength ?? 0) > 0
+          ? (payload.purifyStrength ?? CLEAN_DEFAULTS.purifyStrength)
+          : CLEAN_DEFAULTS.purifyStrength,
+      purifyDetail: payload.purifyDetail ?? CLEAN_DEFAULTS.purifyDetail,
+      purifyDetailSigma:
+        payload.purifyDetailSigma ?? CLEAN_DEFAULTS.purifyDetailSigma,
+      purifyDetailWide:
+        payload.purifyDetailWide ?? CLEAN_DEFAULTS.purifyDetailWide,
+      purifyTemporal: payload.purifyTemporal ?? CLEAN_DEFAULTS.purifyTemporal,
+      purifyMaxEdge: payload.purifyMaxEdge ?? CLEAN_DEFAULTS.purifyMaxEdge,
+      purifyBatch: payload.purifyBatch ?? CLEAN_DEFAULTS.purifyBatch,
+      embeddingOn:
+        (payload.embeddingStrength ?? 0) > 0 && (payload.embeddingAttack ?? "") !== "",
+      embeddingAttack:
+        ((payload.embeddingAttack as "auto" | "luma" | "chroma" | "both" | "") || "") ||
+        CLEAN_DEFAULTS.embeddingAttack,
+      embeddingStrength:
+        (payload.embeddingStrength ?? 0) > 0
+          ? (payload.embeddingStrength ?? CLEAN_DEFAULTS.embeddingStrength)
+          : CLEAN_DEFAULTS.embeddingStrength,
+      embeddingVariant: payload.embeddingVariant ?? CLEAN_DEFAULTS.embeddingVariant,
+      embeddingAggressive:
+        payload.embeddingAggressive ?? CLEAN_DEFAULTS.embeddingAggressive,
+      autoProfile: payload.autoProfile ?? false,
       codec: payload.codec,
       lossless: payload.lossless,
       resolution: payload.resolution,
-    }),
+    });
+    set({
+      presetBase: detectPresetBase(get()),
+      presetModified: false,
+    });
+  },
   resetCleanDefaults: () => set(CLEAN_DEFAULTS),
   loadSettings: async () => {
     try {

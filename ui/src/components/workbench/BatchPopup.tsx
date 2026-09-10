@@ -11,8 +11,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { cleanOutputPath, makeCleanOptions } from "@/lib/cleanOptions";
-import { enqueueJob, exportOutputs } from "@/lib/backend";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cleanOutputPath, collusionOutputPath, makeCleanOptions } from "@/lib/cleanOptions";
+import { enqueueJob, exportOutputs, runCollusion } from "@/lib/backend";
 import { useCleanPanel } from "@/stores/cleanPanel";
 import { useMaterialsStore, type Material } from "@/stores/materials";
 import { toast } from "@/stores/toasts";
@@ -25,6 +32,9 @@ export function BatchPopup() {
   const cleanPanel = useCleanPanel();
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [collusionOpen, setCollusionOpen] = useState(false);
+  const [collusionSubmitting, setCollusionSubmitting] = useState(false);
+  const [collusionMode, setCollusionMode] = useState<"mean" | "median">("mean");
   const ids = Object.keys(selected);
 
   if (!ids.length) return null;
@@ -107,6 +117,38 @@ export function BatchPopup() {
     }
   };
 
+  const runCollusionAverage = async () => {
+    if (targets.length < 2 || collusionSubmitting) return;
+    setCollusionSubmitting(true);
+    try {
+      const now = new Date();
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const ts = `${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+        now.getHours(),
+      )}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
+      const output = collusionOutputPath(
+        targets[0].path,
+        cleanPanel.settingsExportDir,
+        ts,
+      );
+      const result = await runCollusion(
+        targets.map((target) => target.path),
+        output,
+        collusionMode,
+      );
+      toast(
+        `共谋平均完成：${result.copies} 副本 · ${result.frames} 帧 · 预计残余 ${(
+          result.estimated_watermark_reduction * 100
+        ).toFixed(0)}%`,
+      );
+      setCollusionOpen(false);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "共谋平均失败");
+    } finally {
+      setCollusionSubmitting(false);
+    }
+  };
+
   return (
     <>
       <div className="batch-popup" role="dialog" aria-label="批量操作">
@@ -114,6 +156,15 @@ export function BatchPopup() {
         <Button size="sm" disabled={!targets.length} onClick={() => setBatchOpen(true)}>
           批量清洗（{targets.length}）
         </Button>
+        {targets.length >= 2 ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setCollusionOpen(true)}
+          >
+            共谋平均（{targets.length}）
+          </Button>
+        ) : null}
         {window.appEnv?.chooseFolder ? (
           <Button variant="secondary" size="sm" onClick={() => void batchExport()}>
             导出产物
@@ -137,11 +188,8 @@ export function BatchPopup() {
           <AlertDialogHeader>
             <AlertDialogTitle>批量清洗 {targets.length} 个素材</AlertDialogTitle>
             <AlertDialogDescription>
-              将使用当前清洗设置（
-              {cleanPanel.outputMode === "remux"
-                ? "重新封装"
-                : "重新编码 · 当前面板参数"}
-              ）清洗所选素材，开始后可在任务中心查看进度。
+              将使用当前清洗设置（重新编码 · 当前面板参数）清洗所选素材，
+              开始后可在任务中心查看进度。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -151,6 +199,49 @@ export function BatchPopup() {
               onClick={() => void runBatchClean()}
             >
               {batchSubmitting ? "入队中…" : "开始清洗"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={collusionOpen} onOpenChange={setCollusionOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>共谋平均 {targets.length} 个副本</AlertDialogTitle>
+            <AlertDialogDescription>
+              仅对同一内容、不同水印的副本有效；分辨率不同会缩放到第一个副本，帧数不同会截断到最短。
+              报告证据：8/16/32 副本 → BA 0.599/0.575/0.542。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="field">
+            <span className="field-label">平均方式</span>
+            <Select
+              value={collusionMode}
+              onValueChange={(value) => setCollusionMode(value as "mean" | "median")}
+            >
+              <SelectTrigger className="form-input h-8 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mean">算术平均（报告口径）</SelectItem>
+                <SelectItem value="median">中位数（更抗对齐误差）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {targets[0] ? (
+            <div className="text-xs text-muted-foreground">
+              输出：{collusionOutputPath(targets[0].path, cleanPanel.settingsExportDir, "时间戳")}
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={collusionSubmitting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={collusionSubmitting}
+              onClick={(event) => {
+                event.preventDefault();
+                void runCollusionAverage();
+              }}
+            >
+              {collusionSubmitting ? "处理中…" : "开始共谋平均"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

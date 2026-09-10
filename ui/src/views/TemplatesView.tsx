@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   WeaponTags,
@@ -51,11 +52,63 @@ import {
 import { useAppStore } from "@/stores/app";
 import { toast } from "@/stores/toasts";
 
+const NUMERIC_KEYS = [
+  "rotate",
+  "warp",
+  "perspective",
+  "jitter",
+  "requant",
+  "noise",
+  "dctStep",
+  "nonintRatio",
+  "temporalSub",
+  "fftPhase",
+  "fftMag",
+  "dwtDetail",
+  "flowDisturb",
+  "textureInject",
+  "multiscale",
+  "facePerturb",
+  "temporalBlur",
+  "lpcAttack",
+  "copyAttack",
+] as const;
+
+type NumericKey = (typeof NUMERIC_KEYS)[number];
+type NumericEnabled = Record<NumericKey, boolean>;
+
+/** 数值武器用独立开关保留上次强度，避免关闭再打开时被重置。 */
+function numericEnabled(payload: TemplatePayload): NumericEnabled {
+  const enabled = Object.fromEntries(
+    NUMERIC_KEYS.map((key) => [key, (payload[key] ?? 0) > 0]),
+  ) as NumericEnabled;
+  if (enabled.fftPhase || enabled.fftMag) {
+    enabled.fftPhase = true;
+    enabled.fftMag = true;
+  }
+  if (enabled.textureInject || (payload.complexityTrap ?? 0) > 0) {
+    enabled.textureInject = true;
+  }
+  return enabled;
+}
+
+/** 编辑旧模板时把单字段兜底成工作台可显示的默认值。 */
+function editablePayload(payload: TemplatePayload): TemplatePayload {
+  const next = { ...payload };
+  if ((next.fftPhase ?? 0) <= 0 && (next.fftMag ?? 0) > 0) next.fftPhase = 0.5;
+  if ((next.fftMag ?? 0) <= 0 && (next.fftPhase ?? 0) > 0) next.fftMag = 0.1;
+  if ((next.textureInject ?? 0) <= 0 && (next.complexityTrap ?? 0) > 0) {
+    next.textureInject = Math.min(0.05, next.complexityTrap / 2.5);
+  }
+  return next;
+}
+
 export default function TemplatesView() {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [form, setForm] = useState<TemplatePayload>({ ...DEFAULT_TEMPLATE });
+  const [enabled, setEnabled] = useState<NumericEnabled>(() => numericEnabled(DEFAULT_TEMPLATE));
   const [editing, setEditing] = useState<TemplateInfo | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TemplateInfo | null>(null);
   const queueTemplate = useAppStore((state) => state.queueTemplate);
@@ -63,6 +116,9 @@ export default function TemplatesView() {
 
   const setField = <K extends keyof TemplatePayload>(key: K, value: TemplatePayload[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  const setNumericEnabled = (key: NumericKey, value: boolean) =>
+    setEnabled((current) => ({ ...current, [key]: value }));
 
   const refresh = async () => {
     try {
@@ -83,10 +139,15 @@ export default function TemplatesView() {
         toast("请先填写模板名称");
         return;
       }
+      const payload = { ...form };
+      for (const key of NUMERIC_KEYS) {
+        if (!enabled[key]) payload[key] = 0;
+      }
+      payload.complexityTrap = enabled.textureInject ? payload.textureInject * 2.5 : 0;
       if (editing) {
-        await updateTemplate(editing.id, finalName, { ...form });
+        await updateTemplate(editing.id, finalName, payload);
       } else {
-        await createTemplate(finalName, { ...form });
+        await createTemplate(finalName, payload);
       }
       await refresh();
       setDialogOpen(false);
@@ -99,16 +160,20 @@ export default function TemplatesView() {
   };
 
   const openCreate = () => {
+    const payload = { ...DEFAULT_TEMPLATE };
     setEditing(null);
     setName("");
-    setForm({ ...DEFAULT_TEMPLATE });
+    setForm(payload);
+    setEnabled(numericEnabled(payload));
     setDialogOpen(true);
   };
 
   const openEdit = (template: TemplateInfo) => {
+    const payload = editablePayload(payloadOf(template));
     setEditing(template);
     setName(template.name);
-    setForm(payloadOf(template));
+    setForm(payload);
+    setEnabled(numericEnabled(payload));
     setDialogOpen(true);
   };
 
@@ -149,13 +214,38 @@ export default function TemplatesView() {
     | "audioStrong"
     | "nativeTemporal"
     | "recropOn"
+    | "regradeOn"
     | "sharpness"
     | "colorRestore"
     | "denoise"
     | "spoof"
     | "qualityProtect"
+    | "autoProfile"
     | "lossless"
   >;
+
+  const weaponCard = (
+    label: string,
+    desc: string,
+    layer: LayerKind,
+    cost: CostKind,
+    quality: QualityKind,
+    checked: boolean,
+    onCheckedChange: (value: boolean) => void,
+    body?: ReactNode,
+  ) => (
+    <div className="switch-card">
+      <div className="switch">
+        <div>
+          <div className="switch-label">{label}</div>
+          <div className="switch-desc">{desc}</div>
+          <WeaponTags layer={layer} cost={cost} quality={quality} />
+        </div>
+        <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
+      </div>
+      {body ? <div className="switch-body">{body}</div> : null}
+    </div>
+  );
 
   const switchRow = (
     label: string,
@@ -164,94 +254,407 @@ export default function TemplatesView() {
     cost: CostKind,
     quality: QualityKind,
     key: SwitchKey,
-  ) => (
-    <div className="switch">
-      <div>
-        <div className="switch-label">{label}</div>
-        <div className="switch-desc">{desc}</div>
-        <WeaponTags layer={layer} cost={cost} quality={quality} />
-      </div>
-      <Switch checked={form[key]} onCheckedChange={(value) => setField(key, value)} />
-    </div>
-  );
+  ) =>
+    weaponCard(label, desc, layer, cost, quality, form[key], (value) =>
+      setField(key, value),
+    );
 
-  const regenRow = (
+  type SliderSpec = {
+    min: number;
+    max: number;
+    step: number;
+    onValue: number;
+    ariaLabel: string;
+    label: (value: number) => string;
+  };
+
+  const sliderRow = (
     label: string,
     desc: string,
     layer: LayerKind,
     cost: CostKind,
     quality: QualityKind,
-    key:
-      | "temporalSub"
-      | "rotate"
-      | "hashEpsilon"
-      | "requant"
-      | "noise"
-      | "dctStep"
-      | "dwtDetail"
-      | "nonintRatio"
-      | "warp"
-      | "perspective"
-      | "jitter"
-      | "flowDisturb"
-      | "multiscale"
-      | "facePerturb"
-      | "temporalBlur"
-      | "lpcAttack"
-      | "copyAttack",
-    onValue: number,
-  ) => (
-    <div className="switch">
-      <div>
-        <div className="switch-label">{label}</div>
-        <div className="switch-desc">{desc}</div>
-        <WeaponTags layer={layer} cost={cost} quality={quality} />
-      </div>
-      <Switch
-        checked={(form[key] ?? 0) > 0}
-        onCheckedChange={(value) => setField(key, value ? onValue : 0)}
-      />
-    </div>
+    key: NumericKey,
+    spec: SliderSpec,
+  ) => {
+    const value = form[key] ?? spec.onValue;
+    return weaponCard(
+      label,
+      desc,
+      layer,
+      cost,
+      quality,
+      enabled[key],
+      (checked) => {
+        setNumericEnabled(key, checked);
+        if (checked && (form[key] ?? 0) <= 0) setField(key, spec.onValue);
+      },
+      enabled[key] ? (
+        <div className="field">
+          <span className="field-label">{spec.label(value)}</span>
+          <Slider
+            aria-label={spec.ariaLabel}
+            value={[value]}
+            min={spec.min}
+            max={spec.max}
+            step={spec.step}
+            onValueChange={(values) => setField(key, values[0] ?? spec.onValue)}
+          />
+        </div>
+      ) : undefined,
+    );
+  };
+
+  const hashRow = weaponCard(
+    "哈希签名对抗（pHash/dHash）",
+    "签名域可微扰动，翻转感知哈希符号位（专攻模式效果更强）",
+    "fp",
+    "mid",
+    "heavy",
+    form.hashAttack,
+    (value) => setField("hashAttack", value),
+    form.hashAttack ? (
+      <>
+        <div className="field">
+          <span className="field-label">目标模式</span>
+          <Select value={form.hashMode} onValueChange={(value) => setField("hashMode", value)}>
+            <SelectTrigger className="form-input h-8 w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="phash">pHash 专攻（推荐）</SelectItem>
+              <SelectItem value="dhash">dHash 专攻</SelectItem>
+              <SelectItem value="joint">联合（pHash+dHash）</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="field">
+          <span className="field-label">扰动预算 ε {form.hashEpsilon.toFixed(3)}</span>
+          <Slider
+            aria-label="哈希扰动预算"
+            value={[form.hashEpsilon]}
+            min={0.02}
+            max={0.12}
+            step={0.01}
+            onValueChange={(values) => setField("hashEpsilon", values[0] ?? 0.08)}
+          />
+        </div>
+      </>
+    ) : undefined,
   );
 
-  const fftRow = (
-    <div className="switch">
-      <div>
-        <div className="switch-label">FFT 扰动（相位+幅度）</div>
-        <div className="switch-desc">打散中高频相位并随机缩放幅值</div>
-        <WeaponTags layer="wm" cost="mid" quality="heavy" />
-      </div>
-      <Switch
-        checked={(form.fftPhase ?? 0) > 0 || (form.fftMag ?? 0) > 0}
-        onCheckedChange={(value) =>
-          setForm((current) => ({
-            ...current,
-            fftPhase: value ? 0.5 : 0,
-            fftMag: value ? 0.1 : 0,
-          }))
-        }
-      />
-    </div>
+  const temporalSubRow = weaponCard(
+    "跨帧估计相减",
+    "估计帧间固定水印并过减，会削弱静态字幕/背景边缘",
+    "wm",
+    "mid",
+    "heavy",
+    enabled.temporalSub,
+    (checked) => {
+      setNumericEnabled("temporalSub", checked);
+      if (checked && (form.temporalSub ?? 0) <= 0) setField("temporalSub", 0.6);
+    },
+    enabled.temporalSub ? (
+      <>
+        <div className="field">
+          <span className="field-label">过减强度 β {form.temporalSub.toFixed(1)}</span>
+          <Slider
+            aria-label="跨帧过减强度"
+            value={[form.temporalSub]}
+            min={0.2}
+            max={1.5}
+            step={0.1}
+            onValueChange={(values) => setField("temporalSub", values[0] ?? 0.6)}
+          />
+        </div>
+        <div className="switch-inline">
+          <div>
+            <div className="switch-label">原生加速(ffmpeg)</div>
+            <div className="switch-desc">8bit 原生链，破坏力更强，不支持分镜重排</div>
+          </div>
+          <Switch
+            aria-label="跨帧估计原生加速"
+            checked={form.nativeTemporal}
+            onCheckedChange={(value) => setField("nativeTemporal", value)}
+          />
+        </div>
+      </>
+    ) : undefined,
   );
 
-  const textureRow = (
-    <div className="switch">
-      <div>
-        <div className="switch-label">纹理/复杂度注入</div>
-        <div className="switch-desc">向低纹理区注入纹理并拉平复杂度分布</div>
-        <WeaponTags layer="fp" cost="slow" quality="heavy" />
+  const fftOn = enabled.fftPhase || enabled.fftMag;
+  const fftRow = weaponCard(
+    "FFT 扰动（相位+幅度）",
+    "打散中高频相位并随机缩放幅值，覆盖 DFT 域两类水印",
+    "wm",
+    "mid",
+    "heavy",
+    fftOn,
+    (checked) => {
+      setEnabled((current) => ({ ...current, fftPhase: checked, fftMag: checked }));
+      if (checked) {
+        if ((form.fftPhase ?? 0) <= 0) setField("fftPhase", 0.5);
+        if ((form.fftMag ?? 0) <= 0) setField("fftMag", 0.1);
+      }
+    },
+    fftOn ? (
+      <>
+        <div className="field">
+          <span className="field-label">相位强度 {form.fftPhase.toFixed(2)}</span>
+          <Slider
+            aria-label="FFT 相位强度"
+            value={[form.fftPhase]}
+            min={0.1}
+            max={1}
+            step={0.05}
+            onValueChange={(values) => setField("fftPhase", values[0] ?? 0.5)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">幅度强度 {form.fftMag.toFixed(2)}</span>
+          <Slider
+            aria-label="FFT 幅度强度"
+            value={[form.fftMag]}
+            min={0.1}
+            max={1}
+            step={0.05}
+            onValueChange={(values) => setField("fftMag", values[0] ?? 0.1)}
+          />
+        </div>
+      </>
+    ) : undefined,
+  );
+
+  const textureRow = weaponCard(
+    "纹理/复杂度注入",
+    "向低纹理区注入纹理并拉平复杂度分布",
+    "fp",
+    "slow",
+    "heavy",
+    enabled.textureInject,
+    (checked) => {
+      setNumericEnabled("textureInject", checked);
+      if (checked && (form.textureInject ?? 0) <= 0 && (form.complexityTrap ?? 0) <= 0) {
+        setForm((current) => ({ ...current, textureInject: 0.04, complexityTrap: 0.1 }));
+      }
+    },
+    enabled.textureInject ? (
+      <div className="field">
+        <span className="field-label">注入强度 {form.textureInject.toFixed(2)}</span>
+        <Slider
+          aria-label="纹理注入强度"
+          value={[form.textureInject]}
+          min={0.01}
+          max={0.05}
+          step={0.005}
+          onValueChange={(values) => {
+            const value = values[0] ?? 0.04;
+            setForm((current) => ({
+              ...current,
+              textureInject: value,
+              complexityTrap: value * 2.5,
+            }));
+          }}
+        />
       </div>
-      <Switch
-        checked={(form.textureInject ?? 0) > 0 || (form.complexityTrap ?? 0) > 0}
-        onCheckedChange={(value) =>
-          setForm((current) => ({
-            ...current,
-            textureInject: value ? 0.04 : 0,
-            complexityTrap: value ? 0.1 : 0,
-          }))
-        }
-      />
-    </div>
+    ) : undefined,
+  );
+
+  const qualityProtectRow = weaponCard(
+    "画质保护（PSNR/SSIM 门控）",
+    `对攻击/重武器层按目标自动回退，PSNR≥${form.psnrTarget}dB、SSIM≥${form.ssimTarget}（原生滤镜链除外）`,
+    "quality",
+    "mid",
+    "none",
+    form.qualityProtect,
+    (value) => setField("qualityProtect", value),
+    form.qualityProtect ? (
+      <>
+        <div className="field">
+          <span className="field-label">PSNR 目标 {form.psnrTarget} dB</span>
+          <Slider
+            aria-label="PSNR 目标"
+            value={[form.psnrTarget]}
+            min={32}
+            max={44}
+            step={1}
+            onValueChange={(values) => setField("psnrTarget", values[0] ?? 38)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">SSIM 目标 {form.ssimTarget.toFixed(2)}</span>
+          <Slider
+            aria-label="SSIM 目标"
+            value={[form.ssimTarget]}
+            min={0.8}
+            max={0.98}
+            step={0.01}
+            onValueChange={(values) => setField("ssimTarget", values[0] ?? 0.94)}
+          />
+        </div>
+      </>
+    ) : undefined,
+  );
+
+  const purifyRow = weaponCard(
+    "画面重建（去暗水印）",
+    "按画面内容重新生成一遍，抹掉嵌进去的暗水印；字幕与人脸是否清楚由下方档位决定",
+    "wm",
+    "fast",
+    "mild",
+    (form.purifyStrength ?? 0) > 0,
+    (checked) => {
+      setField("purifyStrength", checked ? 0.15 : 0);
+    },
+    (form.purifyStrength ?? 0) > 0 ? (
+      <>
+        <div className="field">
+          <span className="field-label">清晰度档位</span>
+          <Select
+            aria-label="净化档位"
+            value={
+              (form.purifyMaxEdge ?? 256) === 192
+                ? "extreme"
+                : (form.purifyMaxEdge ?? 256) === 320
+                  ? "quality"
+                  : "fast"
+            }
+            onValueChange={(value) => {
+              if (value === "extreme") {
+                setField("purifyMaxEdge", 192);
+                setField("purifyBatch", 8);
+              } else if (value === "quality") {
+                setField("purifyMaxEdge", 320);
+                setField("purifyBatch", 8);
+              } else {
+                setField("purifyMaxEdge", 256);
+                setField("purifyBatch", 8);
+              }
+            }}
+          >
+            <SelectTrigger className="form-input h-8 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="extreme">极速 · 192 长边 · 批处理 8</SelectItem>
+              <SelectItem value="fast">推荐 · 256 长边 · 批处理 8</SelectItem>
+              <SelectItem value="quality">保真 · 320 长边 · 批处理 8</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="field">
+          <span className="field-label">
+            细节回注 {(form.purifyDetail ?? 1).toFixed(2)}
+          </span>
+          <Slider
+            aria-label="净化细节回注"
+            value={[form.purifyDetail ?? 1]}
+            min={0}
+            max={1}
+            step={0.05}
+            onValueChange={(values) => setField("purifyDetail", values[0] ?? 1)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">
+            细节带宽 σ {form.purifyDetailSigma ? form.purifyDetailSigma.toFixed(2) : "自动"}
+          </span>
+          <Slider
+            aria-label="净化细节带宽"
+            value={[form.purifyDetailSigma ?? 0]}
+            min={0}
+            max={3}
+            step={0.1}
+            onValueChange={(values) => setField("purifyDetailSigma", values[0] ?? 0)}
+          />
+          <div className="form-help">
+            0 = 按分辨率自动（512p≈1.2、1080p≈2.6）；手动超过 3.0 部分方案水印会回流
+          </div>
+        </div>
+        <div className="field">
+          <span className="field-label">
+            时序一致性减法 {(form.purifyTemporal ?? 0).toFixed(2)}
+          </span>
+          <Slider
+            aria-label="净化时序减法"
+            value={[form.purifyTemporal ?? 0]}
+            min={0}
+            max={1}
+            step={0.05}
+            onValueChange={(values) => setField("purifyTemporal", values[0] ?? 0)}
+          />
+        </div>
+      </>
+    ) : undefined,
+  );
+
+  const embeddingRow = weaponCard(
+    "嵌入域定向重写",
+    "按水印画像改写低频：VideoSeal 类打 Y 亮度，WAM 类打 Cb/Cr 色度",
+    "wm",
+    "fast",
+    "mild",
+    (form.embeddingStrength ?? 0) > 0 && (form.embeddingAttack ?? "") !== "",
+    (checked) => {
+      setField("embeddingAttack", checked ? form.embeddingAttack || "chroma" : "");
+      setField("embeddingStrength", checked ? form.embeddingStrength || 0.25 : 0);
+    },
+    (form.embeddingStrength ?? 0) > 0 && (form.embeddingAttack ?? "") !== "" ? (
+      <>
+        <div className="field">
+          <span className="field-label">目标域</span>
+          <Select
+            value={form.embeddingAttack}
+            onValueChange={(value) =>
+              setField("embeddingAttack", value as TemplatePayload["embeddingAttack"])
+            }
+          >
+            <SelectTrigger className="form-input h-8 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">自动（已知方案按画像，未知 both）</SelectItem>
+              <SelectItem value="luma">Y 亮度低频（VideoSeal 类）</SelectItem>
+              <SelectItem value="chroma">Cb/Cr 色度低频（WAM 类）</SelectItem>
+              <SelectItem value="both">两者同时</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="field">
+          <span className="field-label">
+            重写强度 {(form.embeddingStrength ?? 0.25).toFixed(2)}
+          </span>
+          <Slider
+            aria-label="嵌入域重写强度"
+            value={[form.embeddingStrength ?? 0.25]}
+            min={0.1}
+            max={1}
+            step={0.05}
+            onValueChange={(values) => setField("embeddingStrength", values[0] ?? 0.25)}
+          />
+        </div>
+        <div className="switch">
+          <div>
+            <div className="switch-label">精确频带重写</div>
+            <div className="switch-desc">精确 Top-10 频带 + 随机量化</div>
+          </div>
+          <Switch
+            checked={(form.embeddingVariant ?? "v2") === "v2"}
+            onCheckedChange={(checked) =>
+              setField("embeddingVariant", checked ? "v2" : "legacy")
+            }
+          />
+        </div>
+        <div className="switch">
+          <div>
+            <div className="switch-label">增强重写</div>
+            <div className="switch-desc">随机分块相位 + 多尺度 + 4:2:0 色度对齐</div>
+          </div>
+          <Switch
+            checked={form.embeddingAggressive ?? false}
+            onCheckedChange={(checked) => setField("embeddingAggressive", checked)}
+          />
+        </div>
+      </>
+    ) : undefined,
   );
 
   return (
@@ -290,7 +693,7 @@ export default function TemplatesView() {
                     <b>{payload.denoise ? "开" : "关"} / {payload.audioRemix ? "开" : "关"}</b>
                   </div>
                   <div className="tpl-row">
-                    <span>再生重写</span>
+                    <span>重编码与信号扰动</span>
                     <b>
                       {[
                         payload.temporalSub,
@@ -298,6 +701,13 @@ export default function TemplatesView() {
                         payload.dwtDetail,
                       ].filter((value) => (value ?? 0) > 0).length}{" "}
                       项
+                    </b>
+                  </div>
+                  <div className="tpl-row">
+                    <span>潜空间净化 / 嵌入域</span>
+                    <b>
+                      {(payload.purifyStrength ?? 0) > 0 ? "开" : "关"} /{" "}
+                      {(payload.embeddingStrength ?? 0) > 0 ? "开" : "关"}
                     </b>
                   </div>
                   <div className="tpl-row">
@@ -349,51 +759,287 @@ export default function TemplatesView() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              {switchRow("同步处理音频指纹", "对音轨做等长频谱轻处理，不影响音画同步", "audio", "fast", "none", "audioRemix")}
-              {switchRow("音频回声扰动", "同步放慢约 3% 并保音调，平台效果需实测", "audio", "fast", "mild", "echoDefeat")}
-              {switchRow("强音频重混", "变调+EQ 倾斜+底噪，配合音频指纹开关生效", "audio", "fast", "heavy", "audioStrong")}
               {switchRow("重新构图（裁剪回缩）", "对暗水印无效，用于判重指纹；文字位置不固定，可能裁到字幕，仅确认边缘无文字时使用", "fp", "fast", "heavy", "recropOn")}
+              {sliderRow(
+                "几何微旋转",
+                "低频小幅旋转去同步，破坏哈希与块对齐",
+                "dual",
+                "fast",
+                "mild",
+                "rotate",
+                {
+                  min: 0.1,
+                  max: 2.5,
+                  step: 0.1,
+                  onValue: 0.4,
+                  ariaLabel: "几何微旋转振幅",
+                  label: (value) => `旋转振幅 ${value.toFixed(1)}°`,
+                },
+              )}
+              {sliderRow(
+                "局部平滑扭曲",
+                "粗网格位移场上采样成平滑光流逐帧重采样，破坏空间对齐",
+                "wm",
+                "mid",
+                "mild",
+                "warp",
+                {
+                  min: 0.001,
+                  max: 0.01,
+                  step: 0.001,
+                  onValue: 0.005,
+                  ariaLabel: "局部平滑扭曲位移跨度",
+                  label: (value) => `位移跨度 ${(value * 100).toFixed(1)}% 短边`,
+                },
+              )}
+              {sliderRow(
+                "透视剪切",
+                "逐帧轻微梯形畸变，破坏块对齐与几何同步",
+                "wm",
+                "mid",
+                "mild",
+                "perspective",
+                {
+                  min: 0.005,
+                  max: 0.03,
+                  step: 0.005,
+                  onValue: 0.01,
+                  ariaLabel: "透视剪切强度",
+                  label: (value) => `剪切强度 ${value.toFixed(3)}`,
+                },
+              )}
+              {sliderRow(
+                "平移抖动",
+                "低频正弦漂移（相邻帧 ≤1px），破坏逐帧对齐，观感轻微",
+                "wm",
+                "fast",
+                "mild",
+                "jitter",
+                {
+                  min: 0.005,
+                  max: 0.03,
+                  step: 0.005,
+                  onValue: 0.005,
+                  ariaLabel: "平移抖动幅度",
+                  label: (value) => `抖动幅度 ${(value * 100).toFixed(1)}%`,
+                },
+              )}
+              {switchRow(
+                "色彩微扰（伽马/亮度+色相）",
+                "逐帧伽马/亮度微调并叠加 ±6° 色相抖动，对抗时域与色彩描述子",
+                "dual",
+                "fast",
+                "mild",
+                "regradeOn",
+              )}
 
-              {switchRow("画质保护（PSNR/SSIM 门控）", "对攻击/重武器层按目标自动回退（原生滤镜链除外）", "quality", "mid", "none", "qualityProtect")}
+              <div className="section-title">音频处理</div>
+              {switchRow("同步处理音频指纹", "对音轨做等长频谱轻处理，不影响音画同步", "audio", "fast", "none", "audioRemix")}
+              {switchRow("音频回声扰动", "同步放慢约 3% 并保音调", "audio", "fast", "mild", "echoDefeat")}
+              {sliderRow(
+                "LPCAA 音频攻击",
+                "LPC 残差白化，破坏语音类指纹 · 高强可听出改变",
+                "audio",
+                "fast",
+                "heavy",
+                "lpcAttack",
+                {
+                  min: 0.2,
+                  max: 1,
+                  step: 0.05,
+                  onValue: 0.5,
+                  ariaLabel: "LPCAA 白化强度",
+                  label: (value) => `白化强度 ${value.toFixed(2)}`,
+                },
+              )}
+              {switchRow("强音频重混", "变调+EQ 倾斜+底噪，配合音频指纹开关生效", "audio", "fast", "heavy", "audioStrong")}
+
+              <div className="section-title">去水印 · 画面重建</div>
+              {purifyRow}
+              {embeddingRow}
+              {switchRow(
+                "自动画像（内容复杂度自适应）",
+                "按镜头纹理/运动/时序一致性自适应净化强度与时序减法；边缘、细节带宽与字幕增强按上方档位执行，不参与自适应",
+                "quality",
+                "fast",
+                "none",
+                "autoProfile",
+              )}
+
+              <div className="section-title">重编码与信号扰动</div>
+              {hashRow}
+              {sliderRow(
+                "像素重量化",
+                "把像素压缩到有限级数，破坏低位与细微扰动",
+                "wm",
+                "fast",
+                "none",
+                "requant",
+                {
+                  min: 32,
+                  max: 96,
+                  step: 8,
+                  onValue: 64,
+                  ariaLabel: "像素重量化级数",
+                  label: (value) => `量化级数 ${value}`,
+                },
+              )}
+              {sliderRow(
+                "微噪声",
+                "加性微高斯噪声，破坏扩频水印的低位相关",
+                "wm",
+                "fast",
+                "none",
+                "noise",
+                {
+                  min: 0.001,
+                  max: 0.01,
+                  step: 0.001,
+                  onValue: 0.004,
+                  ariaLabel: "微噪声强度",
+                  label: (value) => `噪声强度 ${value.toFixed(3)}`,
+                },
+              )}
+              {switchRow("空间降噪", "removegrain 轻降噪，破坏扩频/QIM/DWT 水印", "wm", "fast", "none", "denoise")}
+              {sliderRow(
+                "非整缩重采样",
+                "先放大再回压，打散像素网格与块对齐",
+                "dual",
+                "fast",
+                "mild",
+                "nonintRatio",
+                {
+                  min: 0.005,
+                  max: 0.03,
+                  step: 0.005,
+                  onValue: 0.01,
+                  ariaLabel: "非整缩重采样比例",
+                  label: (value) => `缩放比例 ${(value * 100).toFixed(1)}%`,
+                },
+              )}
+              {temporalSubRow}
+              {fftRow}
+              {sliderRow(
+                "小波细节带随机化",
+                "随机化 Haar 对角线细节子带，破坏小波嵌入相关",
+                "wm",
+                "fast",
+                "none",
+                "dwtDetail",
+                {
+                  min: 0.1,
+                  max: 1,
+                  step: 0.05,
+                  onValue: 0.8,
+                  ariaLabel: "小波细节随机化强度",
+                  label: (value) => `随机化强度 ${value.toFixed(2)}`,
+                },
+              )}
+              {sliderRow(
+                "DCT 系数扰动（重量化+中频）",
+                "8×8 DCT 重量化并扰动中频系数",
+                "wm",
+                "mid",
+                "mild",
+                "dctStep",
+                {
+                  min: 1,
+                  max: 256,
+                  step: 1,
+                  onValue: 12,
+                  ariaLabel: "DCT 量化步长",
+                  label: (value) => `量化步长 ${value}`,
+                },
+              )}
+              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测", "wm", "mid", "mild", "spoof")}
+              {sliderRow(
+                "光流一致性破坏",
+                "按运动加权的平滑扰动重采样，改运动指纹",
+                "fp",
+                "fast",
+                "heavy",
+                "flowDisturb",
+                {
+                  min: 0.5,
+                  max: 2.5,
+                  step: 0.1,
+                  onValue: 1.5,
+                  ariaLabel: "光流扰动强度",
+                  label: (value) => `扰动强度 ${value.toFixed(1)}px`,
+                },
+              )}
+              {textureRow}
+              {sliderRow(
+                "神经对抗（DINOv2 判重代理）",
+                "黑盒攻击 DINOv2 判重描述子，压拷贝检测 embedding · 较慢",
+                "fp",
+                "slow",
+                "heavy",
+                "copyAttack",
+                {
+                  min: 0.01,
+                  max: 0.08,
+                  step: 0.01,
+                  onValue: 0.05,
+                  ariaLabel: "神经对抗扰动预算",
+                  label: (value) => `扰动预算 ±${value.toFixed(2)}`,
+                },
+              )}
+              {sliderRow(
+                "多尺度特征扰动（DMFF）",
+                "金字塔各尺度带限扰动，8/16/32 签名同步偏移",
+                "fp",
+                "slow",
+                "heavy",
+                "multiscale",
+                {
+                  min: 0.005,
+                  max: 0.04,
+                  step: 0.005,
+                  onValue: 0.02,
+                  ariaLabel: "多尺度扰动强度",
+                  label: (value) => `扰动强度 ${value.toFixed(2)}`,
+                },
+              )}
+              {sliderRow(
+                "人脸抗AI扰动",
+                "仅在脸部区域注入扰动，破坏人脸识别特征",
+                "face",
+                "mid",
+                "none",
+                "facePerturb",
+                {
+                  min: 0.01,
+                  max: 0.08,
+                  step: 0.01,
+                  onValue: 0.04,
+                  ariaLabel: "人脸扰动强度",
+                  label: (value) => `扰动强度 ${value.toFixed(2)}`,
+                },
+              )}
+              {sliderRow(
+                "时序模糊",
+                "帧间时域平滑，破坏逐帧匹配与帧差结构",
+                "dual",
+                "mid",
+                "heavy",
+                "temporalBlur",
+                {
+                  min: 0.05,
+                  max: 0.5,
+                  step: 0.05,
+                  onValue: 0.25,
+                  ariaLabel: "时序模糊强度",
+                  label: (value) => `模糊强度 ${value.toFixed(2)}`,
+                },
+              )}
+
+              <div className="section-title">画质优化</div>
+              {qualityProtectRow}
               {switchRow("锐度补偿", "抵消清除算法带来的轻微模糊", "quality", "fast", "none", "sharpness")}
               {switchRow("色彩还原", "把处理后亮度均值校准回原片统计", "quality", "fast", "none", "colorRestore")}
-              {switchRow("空间降噪", "removegrain 轻降噪，破坏扩频/QIM/DWT 水印", "wm", "fast", "none", "denoise")}
-              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测", "wm", "mid", "mild", "spoof")}
-              {regenRow("几何微旋转", "低频小幅旋转去同步", "dual", "fast", "mild", "rotate", 0.4)}
-              {switchRow("哈希签名对抗（pHash/dHash）", "签名域可微扰动，翻转哈希符号位", "fp", "mid", "heavy", "hashAttack")}
-              {regenRow("局部平滑扭曲", "粗网格位移场上采样成平滑光流，破坏空间对齐", "wm", "mid", "mild", "warp", 0.005)}
-              {regenRow("透视剪切", "逐帧轻微梯形畸变，破坏块对齐与几何同步", "wm", "mid", "mild", "perspective", 0.01)}
-              {regenRow("平移抖动", "低频正弦漂移（相邻帧 ≤1px），破坏逐帧对齐", "wm", "fast", "mild", "jitter", 0.005)}
-              <div className="field">
-                <span className="field-label">哈希目标模式</span>
-                <Select
-                  value={form.hashMode}
-                  onValueChange={(value) => setField("hashMode", value)}
-                >
-                  <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="phash">pHash 专攻（推荐）</SelectItem>
-                    <SelectItem value="dhash">dHash 专攻</SelectItem>
-                    <SelectItem value="joint">联合（pHash+dHash）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {regenRow("像素重量化", "把像素压缩到有限级数", "wm", "fast", "none", "requant", 64)}
-              {regenRow("微噪声", "加性微高斯噪声", "wm", "fast", "none", "noise", 0.004)}
-              {regenRow("DCT 系数扰动", "8×8 DCT 重量化并扰动中频系数", "wm", "mid", "mild", "dctStep", 12)}
-              {regenRow("非整缩重采样", "先放大再回压，打散像素网格与块对齐", "dual", "fast", "mild", "nonintRatio", 0.01)}
-              {regenRow("跨帧估计相减", "估计帧间固定水印并过减，会削弱静态字幕边缘", "wm", "mid", "heavy", "temporalSub", 0.6)}
-              {switchRow("跨帧估计原生加速", "ffmpeg 原生链，更快且破坏力更强", "wm", "fast", "none", "nativeTemporal")}
-              {fftRow}
-              {regenRow("小波细节带随机化", "随机化 Haar 对角线细节子带", "wm", "fast", "none", "dwtDetail", 0.8)}
-              {regenRow("光流一致性破坏", "按运动加权扰动重采样，改运动指纹", "fp", "fast", "heavy", "flowDisturb", 1.5)}
-              {textureRow}
-              {regenRow("多尺度特征扰动（DMFF）", "金字塔各尺度带限扰动", "fp", "slow", "heavy", "multiscale", 0.02)}
-              {regenRow("人脸抗AI扰动", "仅在脸部区域注入扰动", "face", "mid", "none", "facePerturb", 0.04)}
-              {regenRow("时序模糊", "帧间时域平滑", "dual", "mid", "heavy", "temporalBlur", 0.25)}
-              {regenRow("LPCAA 音频攻击", "LPC 残差白化，破坏语音类指纹", "audio", "fast", "heavy", "lpcAttack", 0.5)}
-              {regenRow("神经对抗（DINOv2 判重代理）", "黑盒攻击拷贝检测描述子", "fp", "slow", "heavy", "copyAttack", 0.05)}
 
+              <div className="section-title">输出编码 · MP4</div>
               <div className="field">
                 <Label>输出编码</Label>
                 <Select value={form.codec} onValueChange={(value) => setField("codec", value as Codec)}>
