@@ -542,6 +542,98 @@ def _regrade_curves(
     return gammas, deltas, gamma_strength, brightness, periods, phases
 
 
+@dataclass
+class _PurifyPlan:
+    """净化与画像的裁决结果：把"用哪档、降到什么强度、是否记降级"集中在一处。"""
+
+    strength: float
+    max_edge: int
+    detail: float
+    temporal: float
+    note: str
+    profile_note: str
+    profile_metrics: dict | None
+    shot_profiles: list
+    embedding_attack: str
+
+
+def _plan_purify(
+    opts,
+    *,
+    sampled_color,
+    color_starts,
+    shot_ranges,
+) -> _PurifyPlan:
+    """净化预检 + 内容画像裁决（research §19.2/§19.7 的档位与自适应规则都在这里）。"""
+    strength_eff = opts.purify_strength
+    max_edge_eff = opts.purify_max_edge
+    detail_eff = opts.purify_detail
+    temporal_eff = opts.purify_temporal
+    note = "off"
+    if opts.purify_strength > 0:
+        available, reason = purify.preflight()
+        if available:
+            note = "will_download" if reason == "will_download" else "applied"
+        else:
+            strength_eff = 0.0
+            detail_eff = 0.0
+            temporal_eff = 0.0
+            note = f"skipped: {reason}"
+
+    profile_note = "off"
+    profile_metrics = None
+    shot_profiles: list[profile.Profile] = []
+    embedding_attack_eff = opts.embedding_attack
+    if opts.auto_profile and sampled_color is not None and len(sampled_color) > 0:
+        prof = profile.profile_frames(sampled_color, opts.known_scheme)
+        shot_profiles = profile.profile_shots(
+            sampled_color,
+            color_starts,
+            shot_ranges,
+            fallback=prof,
+            scheme=opts.known_scheme,
+        )
+        profile_metrics = {
+            **prof.as_dict(),
+            "shot_count": len(shot_profiles),
+            "shots": [
+                {"start": start, "end": end, **shot_prof.as_dict()}
+                for (start, end), shot_prof in zip(
+                    shot_ranges, shot_profiles, strict=False
+                )
+            ],
+        }
+        profile_note = "applied"
+        embedding_attack_eff = prof.suggested_attack
+        if strength_eff > 0:
+            # 自动画像只在用户预算内调强度与时序；细节回注/带宽是画质档位参数，
+            # 不参与自适应（砍它会直接糊掉字幕，见 research §19.2）。
+            strength_eff = min(opts.purify_strength, prof.suggested_purify_strength)
+            temporal_eff = min(opts.purify_temporal, prof.suggested_purify_temporal)
+            # 已知方案时限制清晰度档位：亮度类必须压到 192 才有效，色度类 256
+            # 就够（research §19.7）。用户选了更大边缘则按其设置收窄；0（不缩放）
+            # 视作无上限。
+            if prof.suggested_purify_max_edge:
+                current = max_edge_eff if max_edge_eff > 0 else 10**9
+                max_edge_eff = min(current, prof.suggested_purify_max_edge)
+    elif embedding_attack_eff == "auto":
+        embedding_attack_eff = "both"
+    if strength_eff <= 0:
+        detail_eff = 0.0
+        temporal_eff = 0.0
+    return _PurifyPlan(
+        strength=strength_eff,
+        max_edge=max_edge_eff,
+        detail=detail_eff,
+        temporal=temporal_eff,
+        note=note,
+        profile_note=profile_note,
+        profile_metrics=profile_metrics,
+        shot_profiles=shot_profiles,
+        embedding_attack=embedding_attack_eff,
+    )
+
+
 def _prepare_desensitize(
     path: str,
     opts: DesensitizeOptions,
@@ -733,68 +825,22 @@ def _prepare_desensitize(
         ref_std = np.zeros(3, dtype=np.float32)
     del sampled_gray
 
-    # 潜空间净化：可选依赖缺位时降级回经典档，结果里记录降级原因。
-    purify_strength_eff = opts.purify_strength
-    purify_max_edge_eff = opts.purify_max_edge
-    purify_detail_eff = opts.purify_detail
-    purify_temporal_eff = opts.purify_temporal
-    purify_note = "off"
-    if opts.purify_strength > 0:
-        available, reason = purify.preflight()
-        if available:
-            purify_note = "will_download" if reason == "will_download" else "applied"
-        else:
-            purify_strength_eff = 0.0
-            purify_detail_eff = 0.0
-            purify_temporal_eff = 0.0
-            purify_note = f"skipped: {reason}"
-
-    # 内容画像：黑盒按镜头做复杂度/运动/时序一致性自适应；嵌入域按已知方案映射。
-    profile_note = "off"
-    profile_metrics = None
-    shot_profiles: list[profile.Profile] = []
-    embedding_attack_eff = opts.embedding_attack
-    if opts.auto_profile and sampled_color is not None and len(sampled_color) > 0:
-        prof = profile.profile_frames(sampled_color, opts.known_scheme)
-        shot_profiles = profile.profile_shots(
-            sampled_color,
-            color_starts,
-            shot_ranges,
-            fallback=prof,
-            scheme=opts.known_scheme,
-        )
-        profile_metrics = {
-            **prof.as_dict(),
-            "shot_count": len(shot_profiles),
-            "shots": [
-                {"start": start, "end": end, **shot_prof.as_dict()}
-                for (start, end), shot_prof in zip(
-                    shot_ranges, shot_profiles, strict=False
-                )
-            ],
-        }
-        profile_note = "applied"
-        embedding_attack_eff = prof.suggested_attack
-        if purify_strength_eff > 0:
-            # 自动画像只在用户预算内调强度与时序；细节回注/带宽是画质档位参数，
-            # 不参与自适应（砍它会直接糊掉字幕，见 research §19.2）。
-            purify_strength_eff = min(
-                opts.purify_strength, prof.suggested_purify_strength
-            )
-            purify_temporal_eff = min(
-                opts.purify_temporal, prof.suggested_purify_temporal
-            )
-            # 已知方案时限制清晰度档位：亮度类必须压到 192 才有效，色度类 256
-            # 就够（research §19.7）。用户选了更大边缘则按其设置收窄；0（不缩放）
-            # 视作无上限。
-            if prof.suggested_purify_max_edge:
-                current = purify_max_edge_eff if purify_max_edge_eff > 0 else 10**9
-                purify_max_edge_eff = min(current, prof.suggested_purify_max_edge)
-    elif embedding_attack_eff == "auto":
-        embedding_attack_eff = "both"
-    if purify_strength_eff <= 0:
-        purify_detail_eff = 0.0
-        purify_temporal_eff = 0.0
+    # 潜空间净化 + 内容画像：裁决逻辑收敛在 _plan_purify（见该函数注释）。
+    plan = _plan_purify(
+        opts,
+        sampled_color=sampled_color,
+        color_starts=color_starts,
+        shot_ranges=shot_ranges,
+    )
+    purify_strength_eff = plan.strength
+    purify_max_edge_eff = plan.max_edge
+    purify_detail_eff = plan.detail
+    purify_temporal_eff = plan.temporal
+    purify_note = plan.note
+    profile_note = plan.profile_note
+    profile_metrics = plan.profile_metrics
+    shot_profiles = plan.shot_profiles
+    embedding_attack_eff = plan.embedding_attack
     del sampled_color
 
     # 变换策略：与分块无关的选项与上下文一次性组装，分块内只调用 apply。
