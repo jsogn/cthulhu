@@ -566,6 +566,22 @@ Source: Osherove — Test isolation；Meszaros — Implementation coupling。
 **目标**：算法型助手（如 `_unsharp_batch`、`_detail_scale`）提升为公开模块
 （如 `transform/postprocess.py`）并测其行为，其余改为经公开入口的可观察行为验证。
 
+**进度：已完成**。算法型助手提升为公开模块并测其行为：
+`transform/postprocess.py`（`detail_scale` / `reinject_detail` / `unsharp_batch`，
+见 `tests/test_postprocess.py`）、`cthulhu_backend/progress.py`（`purify_progress` /
+`PurifyProgress`，见 `tests/test_progress.py`）、`cthulhu_backend/planning.py`
+（内存预算、镜头边界、分段、调光曲线）。
+
+其余改为经公开入口验证：`pipeline.prefetch_batches`、`pipeline.prepare_desensitize`、
+`services.purify_note`、`extra_attacks.dct_requant_plane`、`strategies.fast_regrade_u8`、
+`purify.taesd_ready / taesd_dir_name / local_taesd_path / frozen_bundled_model_dir`；
+`db._connect` 的生命周期回归改为「公开写操作不残留连接对象」的资源断言（`gc` 观察），
+人脸区域测试改走 `face_perturb` 公开入口（固定检测框 + 强制逐帧分支）。
+后端测试 284 → 295 项全绿（1 项环境跳过）。
+
+**遗留**：仍有 11 处 `monkeypatch.setattr(模块, "私有名")` 的测试替身注入点
+（模型加载、缓存落盘、缩略图目录等重型依赖），属于下一轮可继续收口的测试缝隙。
+
 ### 🟢 Suggestion
 
 - **R5 Dependency Disorder**：`media/installer.py:14` 直接导入 `db`，安装器的单测被迫拉起数据库 → 改为由调用方注入配置值。

@@ -38,7 +38,7 @@ SCRIPTS = ROOT / "research" / "scripts"
 for extra in (SCRIPTS, ROOT / "backend" / "src"):
     sys.path.insert(0, str(extra))
 
-from cthulhu_backend.transform import purify  # noqa: E402
+from cthulhu_backend.transform import postprocess, purify  # noqa: E402
 from profile_purify_breakdown import _sync  # noqa: E402
 
 
@@ -118,7 +118,7 @@ def _reinject(frames: np.ndarray, original: np.ndarray, strength: float) -> np.n
         [
             (
                 np.clip(
-                    purify._reinject_detail(
+                    postprocess.reinject_detail(
                         frame.astype(np.float32) / 255.0,
                         source,
                         strength=strength,

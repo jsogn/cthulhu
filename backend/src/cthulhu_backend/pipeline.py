@@ -17,41 +17,24 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
-from itertools import pairwise
 from typing import Any
 
 import numpy as np
 from scipy.signal import resample_poly
 
-from cthulhu_backend import db
+from cthulhu_backend import db, planning
 from cthulhu_backend.cache import analysis_cache
 from cthulhu_backend.fingerprint import adversarial
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.numeric import channel_stats
+from cthulhu_backend.progress import PurifyProgress
 from cthulhu_backend.schemas import DesensitizeOptions
 from cthulhu_backend.transform import audio as audio_transform
-from cthulhu_backend.transform import extra_attacks, profile, purify, regenerate, shots, strategies
+from cthulhu_backend.transform import extra_attacks, profile, purify, regenerate, strategies
 from cthulhu_backend.watermark import common as watermark_common
 
-MAX_WORKING_BYTES = 256 * 1024**2  # 低内存机器兜底：256MiB
 
-
-def _memory_budget_bytes() -> int:
-    """按物理内存自适应工作预算（256MB~32GB）。
-
-    大内存按 55% 取用，小内存（<4GB）按 40% 取用，避免预算超过物理内存。
-    """
-    try:
-        total = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-    except (AttributeError, ValueError, OSError):
-        total = 0
-    if total <= 0:
-        return MAX_WORKING_BYTES
-    fraction = 0.55 if total >= 4 * 1024**3 else 0.4
-    return max(MAX_WORKING_BYTES, min(32 * 1024**3, int(total * fraction)))
-
-
-def _prefetch_batches(
+def prefetch_batches(
     decoder: ffmpeg.StreamingDecoder,
     seg_len: int,
     chunk: int,
@@ -158,7 +141,7 @@ def _process_segment_yuv(
     )
     out_count = 0
     try:
-        for _, batch in _prefetch_batches(decoder, count, chunk, "uint8"):
+        for _, batch in prefetch_batches(decoder, count, chunk, "uint8"):
             if stop and stop():
                 raise InterruptedError("任务已取消")
             if pause is not None:
@@ -368,47 +351,6 @@ def _parallel_workers() -> int:
     return 1
 
 
-def _purify_progress(
-    base: int,
-    count: int,
-    fraction: float,
-    total_out: int,
-) -> tuple[int, str]:
-    """把批次内进度换算成整段视频的全局帧数与百分比。"""
-    total = max(1, int(total_out))
-    bounded = max(0.0, min(1.0, float(fraction)))
-    processed = round(base + bounded * max(1, count))
-    processed = max(0, min(total, processed))
-    percent = 8 + int(processed / total * 82)
-    return min(90, percent), f"潜空间净化 {processed}/{total}"
-
-
-@dataclass
-class _PurifyProgress:
-    """净化进度桥：批次内进度换算成整片百分比（线程本地控制面，不跨进程）。"""
-
-    progress_cb: Any
-    total_out: int
-    base: int = 0
-    count: int = 1
-
-    def set_batch(self, base: int, count: int) -> None:
-        self.base = base
-        self.count = count
-
-    def __call__(self, fraction: float, note: str) -> None:
-        if not self.progress_cb or not self.total_out:
-            return
-        if note.startswith("下载"):
-            percent = 8 + int(self.base / self.total_out * 82)
-            self.progress_cb(min(90, percent), note)
-            return
-        percent, global_note = _purify_progress(
-            self.base, self.count, fraction, self.total_out
-        )
-        self.progress_cb(percent, global_note)
-
-
 def _transform_chunk_worker(payload: dict) -> np.ndarray:
     """进程池工作项：解码块 → 变换 → 攻击，返回按序待编码的帧。"""
     import dataclasses as dc
@@ -455,117 +397,6 @@ def _collect_spsa_fields(state: _DesensitizeState, rng: np.random.Generator) -> 
         if field is not None:
             fields[attr] = field
     return fields
-
-
-def _plan_shots(
-    sampled: np.ndarray,
-    sampled_starts: list[int],
-    total_in: int,
-    need_shots: bool,
-) -> list[tuple[int, int]]:
-    """抽样窗口内检测切点并映射回全局帧号，返回相邻切点区间。"""
-    if need_shots and len(sampled) > 2 and sampled_starts:
-        # 抽样按窗口返回；逐窗口检测切点再映射回全局帧号，避免窗口拼接处的假切点。
-        per_window = max(1, len(sampled) // len(sampled_starts))
-        boundaries = []
-        for window, start in enumerate(sampled_starts):
-            segment = sampled[window * per_window : (window + 1) * per_window]
-            if len(segment) < 2:
-                continue
-            for cut in shots.detect_cuts(segment):
-                if 0 < cut < len(segment):
-                    boundaries.append(start + cut)
-        boundaries = sorted({boundary for boundary in boundaries if 0 < boundary < total_in})
-        boundaries = [0] + boundaries + [total_in]
-    else:
-        boundaries = [0, total_in]
-    return list(pairwise(boundaries))
-
-
-def _build_segments(
-    shot_ranges: list[tuple[int, int]],
-    opts: DesensitizeOptions,
-    speed: float,
-    rng: np.random.Generator,
-) -> tuple[list[tuple[int, int, int]], list[float], list[int], list[int], int]:
-    """逐镜头切点漂移/变速与重排，输出编码区间（消耗 rng 流，顺序敏感）。"""
-    shot_offsets: list[tuple[int, int]] = []
-    shot_factors: list[float] = []
-    for start, end in shot_ranges:
-        length = end - start
-        drop_start = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
-        drop_end = int(rng.integers(0, opts.cut_jitter + 1)) if opts.cut_jitter > 0 else 0
-        if drop_start + drop_end >= length:
-            drop_start = min(drop_start, max(0, length - 1))
-            drop_end = 0
-        shot_offsets.append((drop_start, drop_end))
-        shot_factors.append(
-            float(rng.uniform(opts.shot_retime_min, opts.shot_retime_max))
-            if opts.shot_retime
-            else 1.0
-        )
-    order = rng.permutation(len(shot_ranges)) if opts.reorder else np.arange(len(shot_ranges))
-    segments: list[tuple[int, int, int]] = []
-    seg_factors: list[float] = []
-    seg_out_lens: list[int] = []
-    seg_shot_indices: list[int] = []
-    cursor = 0
-    # 累计取整（Bresenham）：逐镜头独立 round 会把每段的舍入误差留成常驻偏差，
-    # 等长镜头下最多每段 ±0.5 帧，50 段就能累积成半秒音画不同步。改为「先累计
-    # 精确输出长度、再取整到帧」，任意切点处的偏差都被夹在一帧以内。
-    exact_out = 0.0
-    for shot_index in order:
-        orig_start, orig_end = shot_ranges[int(shot_index)]
-        drop_start, drop_end = shot_offsets[int(shot_index)]
-        eff_start = orig_start + drop_start
-        eff_len = (orig_end - orig_start) - drop_start - drop_end
-        factor = speed * shot_factors[int(shot_index)]
-        retimed = speed != 1.0 or opts.shot_retime
-        if retimed:
-            exact_out += eff_len / factor
-            out_len = max(1, round(exact_out) - cursor)
-        else:
-            out_len = eff_len
-            exact_out = cursor + eff_len
-        segments.append((cursor, eff_start, eff_len))
-        seg_factors.append(factor)
-        seg_out_lens.append(out_len)
-        seg_shot_indices.append(int(shot_index))
-        cursor += out_len
-    return segments, seg_factors, seg_out_lens, seg_shot_indices, cursor
-
-
-def _regrade_curves(
-    rng: np.random.Generator,
-    total_out: int,
-    perturb: float,
-    regrade: bool,
-) -> tuple[np.ndarray, np.ndarray, float, float, tuple[float, float, float, float], tuple[float, float, float, float]]:
-    """调光曲线：低频平滑的 gamma/亮度轨迹（确定性，消耗 rng 流）。"""
-    gammas = np.ones(total_out, dtype=np.float32)
-    deltas = np.zeros(total_out, dtype=np.float32)
-    gamma_strength = 0.03 + 0.2 * perturb
-    brightness = 0.02 + 0.06 * perturb
-    periods = (0.0, 0.0, 0.0, 0.0)
-    phases = (0.0, 0.0, 0.0, 0.0)
-    if regrade:
-        # 时间平滑：调光参数沿低频轨迹变化，避免逐帧独立随机造成的暗部闪烁。
-        # 幅度与旧实现一致（gamma ±gamma_strength、亮度 ±brightness），对抗
-        # 语义不变，只是相邻帧连续过渡。
-        t = np.arange(total_out, dtype=np.float32)
-        periods = tuple(float(rng.uniform(80.0, 180.0)) for _ in range(4))
-        phases = tuple(float(rng.uniform(0.0, 2.0 * np.pi)) for _ in range(4))
-        period_a, period_b, period_c, period_d = periods
-        phase_a, phase_b, phase_c, phase_d = phases
-        gammas = 1.0 + gamma_strength * (
-            0.6 * np.sin(2.0 * np.pi * t / period_a + phase_a)
-            + 0.4 * np.sin(2.0 * np.pi * t / period_b + phase_b)
-        ).astype(np.float32)
-        deltas = brightness * (
-            0.6 * np.sin(2.0 * np.pi * t / period_c + phase_c)
-            + 0.4 * np.sin(2.0 * np.pi * t / period_d + phase_d)
-        ).astype(np.float32)
-    return gammas, deltas, gamma_strength, brightness, periods, phases
 
 
 @dataclass
@@ -778,13 +609,13 @@ def _color_reference_stats(
     return ref_mean, ref_std
 
 
-def _prepare_desensitize(
+def prepare_desensitize(
     path: str,
     opts: DesensitizeOptions,
     progress_cb,
     check_cancelled,
 ) -> _DesensitizeState:
-    """分析遍：镜头边界、逐镜头参数、变换上下文与编码参数一次性组装。"""
+    """分析遍（对外可调用的阶段入口）：镜头边界、逐镜头参数、变换上下文与编码参数一次性组装。"""
     info = ffmpeg.video_info(path)
     fps_in = float(info["fps"])
     total_in = max(1, round(info["duration"] * fps_in))
@@ -834,17 +665,17 @@ def _prepare_desensitize(
             sampled_gray, _, sampled_starts = ffmpeg.decode_sampled(
                 path, cap=400, return_starts=True
             )
-            shot_ranges = _plan_shots(sampled_gray, sampled_starts, total_in, True)
+            shot_ranges = planning.plan_shots(sampled_gray, sampled_starts, total_in, True)
             analysis_cache.put_shot_boundaries(path, shot_ranges)
     else:
-        shot_ranges = _plan_shots(sampled_gray, sampled_starts, total_in, False)
+        shot_ranges = planning.plan_shots(sampled_gray, sampled_starts, total_in, False)
 
     rng = np.random.default_rng(opts.seed)
-    segments, seg_factors, seg_out_lens, seg_shot_indices, total_out = _build_segments(
+    segments, seg_factors, seg_out_lens, seg_shot_indices, total_out = planning.build_segments(
         shot_ranges, opts, speed, rng
     )
 
-    gammas, deltas, gamma_strength, brightness, periods, phases = _regrade_curves(
+    gammas, deltas, gamma_strength, brightness, periods, phases = planning.regrade_curves(
         rng, total_out, opts.perturb, opts.regrade
     )
     period_a, period_b, period_c, period_d = periods
@@ -1005,7 +836,7 @@ def _prepare_desensitize(
             out_size = None
 
     # 分块大小：按内存预算自适应（float32 每帧 4 字节，预留 8 倍中间量余量）。
-    budget = _memory_budget_bytes()
+    budget = planning.memory_budget_bytes()
     adaptive_parallelism = min(4, max(2, os.cpu_count() or 2))
     try:
         concurrency = max(1, int(db.load_settings().get("parallelism", adaptive_parallelism)))
@@ -1395,7 +1226,7 @@ def _encode_desensitize(
     out_index = 0
     # 净化控制面走线程本地，不进入 TransformContext：避免把 stop/pause 回调
     # 塞进多进程池的任务载荷导致 pickle 失败。base/count 由每批处理前更新。
-    purify_progress = _PurifyProgress(progress_cb, state.total_out)
+    purify_progress = PurifyProgress(progress_cb, state.total_out)
 
     if state.purify_enabled:
         purify.set_control(
@@ -1427,7 +1258,7 @@ def _encode_desensitize(
                 decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
                 pool = None
                 try:
-                    batches = _prefetch_batches(decoder, seg_len, par_chunk, state.frame_dtype)
+                    batches = prefetch_batches(decoder, seg_len, par_chunk, state.frame_dtype)
                     base_seed = int(state.transform_context.seed) ^ (1000003 * seg_index)
 
                     def process(
@@ -1534,7 +1365,7 @@ def _encode_desensitize(
                 seg_out_index = 0
                 decoder = ffmpeg.StreamingDecoder(path, orig_start, seg_len, grayscale=False)
                 try:
-                    for pos, batch in _prefetch_batches(
+                    for pos, batch in prefetch_batches(
                         decoder, seg_len, state.chunk, state.frame_dtype
                     ):
                         check_cancelled()

@@ -177,7 +177,7 @@ def _fast_recrop_u8(frames: np.ndarray, crop_frac: float) -> np.ndarray:
     return map_frames(resize, frames)
 
 
-def _fast_regrade_u8(
+def fast_regrade_u8(
     frames: np.ndarray,
     gammas: np.ndarray,
     deltas: np.ndarray,
@@ -326,7 +326,7 @@ class FastStrategy:
         if options.recrop > 0:
             frames = _fast_recrop_u8(frames, options.recrop)
         if options.regrade:
-            frames = _fast_regrade_u8(
+            frames = fast_regrade_u8(
                 frames, ctx.gammas[output_ids], ctx.deltas[output_ids],
             )
         if ctx.banner:

@@ -8,7 +8,7 @@ import time
 import numpy as np
 import pytest
 
-from cthulhu_backend import db, jobs, samples, services
+from cthulhu_backend import db, jobs, pipeline, samples, services
 from cthulhu_backend.cache import AnalysisCache
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.schemas import DesensitizeOptions
@@ -47,11 +47,11 @@ def test_color_stats_reused_without_resample(monkeypatch, tmp_path):
 
     monkeypatch.setattr(services.ffmpeg, "decode_sampled", spy)
     opts = _opts()
-    services._prepare_desensitize(str(video), opts, _noop, lambda: False)
+    pipeline.prepare_desensitize(str(video), opts, _noop, lambda: False)
     assert len(calls) == 1, "仅色彩还原应只解码 40 帧色彩抽样"
     assert calls[0][1].get("cap") == 40
 
-    services._prepare_desensitize(str(video), opts, _noop, lambda: False)
+    pipeline.prepare_desensitize(str(video), opts, _noop, lambda: False)
     assert len(calls) == 1, "二次分析应命中颜色统计缓存，不再解码"
 
 
@@ -70,10 +70,10 @@ def test_shot_boundaries_reused_and_equal(monkeypatch, tmp_path):
 
     monkeypatch.setattr(services.ffmpeg, "decode_sampled", spy)
     opts = _opts(reorder=True)
-    first = services._prepare_desensitize(str(video), opts, _noop, lambda: False)
+    first = pipeline.prepare_desensitize(str(video), opts, _noop, lambda: False)
     assert len(calls) == 2, "首轮需要 400 帧镜头抽样 + 40 帧色彩抽样"
 
-    second = services._prepare_desensitize(str(video), opts, _noop, lambda: False)
+    second = pipeline.prepare_desensitize(str(video), opts, _noop, lambda: False)
     assert len(calls) == 2, "二轮镜头边界与颜色统计都应命中缓存"
     assert second.segments == first.segments
     assert second.seg_factors == first.seg_factors

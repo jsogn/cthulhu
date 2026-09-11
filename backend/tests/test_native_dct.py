@@ -24,9 +24,9 @@ def test_native_matches_numpy(monkeypatch):
     """原生实现与 numpy 逐位口径一致（半偶舍入 + float32）。"""
     rng = np.random.default_rng(40)
     frames = rng.random((6, 96, 64), dtype=np.float32)
-    expected = extra_attacks._requant_plane(frames, STEP)
+    expected = extra_attacks.dct_requant_plane(frames, STEP)
     monkeypatch.setenv("CTHULHU_NATIVE_DCT", "1")
-    actual = extra_attacks._requant_plane(frames, STEP)
+    actual = extra_attacks.dct_requant_plane(frames, STEP)
     diff = np.abs(actual - expected)
     # 语义口径：两条路径应落在同一量化格内（差异小于半个量化步）；
     # BLAS 与标量求和的 float32 顺序噪声允许存在，但不允许跨格。
@@ -39,9 +39,9 @@ def test_native_preserves_qim_destruction(monkeypatch):
     frames = rng.random((4, 96, 64), dtype=np.float32)
     watermarked = np.stack([qim.embed(frame, BITS) for frame in frames])
 
-    numpy_attacked = extra_attacks._requant_plane(watermarked, STEP)
+    numpy_attacked = extra_attacks.dct_requant_plane(watermarked, STEP)
     monkeypatch.setenv("CTHULHU_NATIVE_DCT", "1")
-    native_attacked = extra_attacks._requant_plane(watermarked, STEP)
+    native_attacked = extra_attacks.dct_requant_plane(watermarked, STEP)
 
     def ber(attacked: np.ndarray) -> float:
         extracted = [qim.extract(frame, len(BITS)) for frame in attacked]

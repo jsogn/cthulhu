@@ -359,7 +359,7 @@ def pixel_requant(frames: np.ndarray, levels: int) -> np.ndarray:
     return requantized.astype(original_dtype)
 
 
-def _requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.ndarray:
+def dct_requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.ndarray:
     """对 (F,H,W) float32 平面做 8×8 DCT 重量化（子批 matmul，内存受控）。"""
     h, w = work.shape[1:3]
     # 可选原生加速：未启用/库缺失/尺寸不满足时返回 None，走 numpy 兜底。
@@ -417,18 +417,18 @@ def dct_requant(frames: np.ndarray, step: float) -> np.ndarray:
         # float [0,1] 域：DCT 线性，量化步长同步除以 255，免去全图 ×255 往返。
         effective_step = step / 255.0
         if work.ndim == 3:
-            return np.clip(_requant_plane(work, effective_step), 0.0, 1.0).astype(
+            return np.clip(dct_requant_plane(work, effective_step), 0.0, 1.0).astype(
                 original_dtype
             )
         luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
-        new_luma = _requant_plane(luma, effective_step)
+        new_luma = dct_requant_plane(luma, effective_step)
         return np.clip(work + (new_luma - luma)[..., None], 0.0, 1.0).astype(original_dtype)
 
     if work.ndim == 3:
-        result = np.clip(_requant_plane(work, step) / 255.0, 0.0, 1.0)
+        result = np.clip(dct_requant_plane(work, step) / 255.0, 0.0, 1.0)
         return (result * 255.0).round().astype(np.uint8)
     luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
-    new_luma = _requant_plane(luma, step)
+    new_luma = dct_requant_plane(luma, step)
     result = np.clip(work + (new_luma - luma)[..., None], 0.0, 255.0)
     return result.round().astype(np.uint8)
 

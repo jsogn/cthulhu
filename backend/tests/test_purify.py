@@ -106,7 +106,7 @@ def test_allow_download_defaults_on(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_model_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv(purify.MODEL_DIR_ENV, str(tmp_path))
     assert purify.model_dir() == tmp_path
-    assert purify._local_taesd_path() == tmp_path / purify._taesd_dir_name()
+    assert purify.local_taesd_path() == tmp_path / purify.taesd_dir_name()
 
 
 def test_model_status_shape() -> None:
@@ -141,20 +141,20 @@ def test_install_model_reports_unavailable_without_deps(
 
 def test_taesd_ready_requires_config_and_weights(tmp_path) -> None:
     path = tmp_path / "taesd"
-    assert not purify._taesd_ready(path)
+    assert not purify.taesd_ready(path)
     path.mkdir()
     (path / "config.json").write_text("{}")
-    assert not purify._taesd_ready(path)
+    assert not purify.taesd_ready(path)
     (path / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
-    assert purify._taesd_ready(path)
+    assert purify.taesd_ready(path)
 
 
 def test_bundled_taesd_is_preferred(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     bundled = tmp_path / "models"
-    _write_taesd_dir(bundled / purify._taesd_dir_name())
+    _write_taesd_dir(bundled / purify.taesd_dir_name())
     monkeypatch.setattr(purify, "_repo_bundled_model_dir", lambda: bundled)
     monkeypatch.delenv(purify.MODEL_DIR_ENV, raising=False)
-    assert purify.bundled_taesd_path() == bundled / purify._taesd_dir_name()
+    assert purify.bundled_taesd_path() == bundled / purify.taesd_dir_name()
     assert purify.model_dir() == bundled
     assert purify.taesd_cached() is True
 
@@ -164,7 +164,7 @@ def test_frozen_bundled_dir_uses_meipass(monkeypatch: pytest.MonkeyPatch, tmp_pa
     models.mkdir()
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    assert purify._frozen_bundled_model_dir() == models
+    assert purify.frozen_bundled_model_dir() == models
 
 
 def test_packaging_fetch_script_matches_backend_readiness(tmp_path) -> None:
@@ -179,11 +179,11 @@ def test_packaging_fetch_script_matches_backend_readiness(tmp_path) -> None:
     model = tmp_path / "taesd"
     _write_taesd_dir(model)
     assert module.is_ready(model)
-    assert purify._taesd_ready(model)
+    assert purify.taesd_ready(model)
     empty = tmp_path / "empty"
     empty.mkdir()
     assert not module.is_ready(empty)
-    assert not purify._taesd_ready(empty)
+    assert not purify.taesd_ready(empty)
 
 
 def test_latent_engine_is_deterministic_and_batched(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -261,32 +261,6 @@ def test_auto_detail_sigma_scales_with_resolution() -> None:
     assert purify.auto_detail_sigma(1080, 1920, 1.8) == 1.8
 
 
-def test_post_sharpen_restores_edges() -> None:
-    """后置锐化应提升高频能量（瓶颈重建天生偏软）。"""
-    smooth = np.full((2, 64, 64, 3), 128, dtype=np.uint8)
-    smooth[:, 20:44, 20:44] = 160
-    from scipy.ndimage import gaussian_filter
-
-    softened = np.stack(
-        [
-            np.clip(
-                gaussian_filter(frame.astype(np.float32), sigma=(2.0, 2.0, 0.0)), 0, 255
-            ).astype(np.uint8)
-            for frame in smooth
-        ]
-    )
-
-    def high_energy(values: np.ndarray) -> float:
-        work = values.astype(np.float32)
-        return float(
-            np.mean(np.abs(work - gaussian_filter(work, sigma=(0.0, 1.2, 1.2, 0.0))))
-        )
-
-    sharpened = purify._unsharp_batch(softened, 0.6, 1.2)
-    assert high_energy(sharpened) > high_energy(softened)
-    np.testing.assert_array_equal(purify._unsharp_batch(softened, 0.0, 1.2), softened)
-
-
 def test_temporal_subtraction_runs_before_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     """时序增强应在送入潜空间重建之前生效。"""
     model = _patch_engine(monkeypatch, FakeTaesd())
@@ -347,16 +321,6 @@ def test_latent_engine_rebuilds_frames(tmp_path) -> None:
     assert not np.allclose(rebuilt, original), "潜空间引擎未改动画面"
     psnr = 10 * np.log10(255.0**2 / float(np.mean((rebuilt - original) ** 2)))
     assert psnr > 20, f"重建画质过低：{psnr:.1f}dB"
-
-
-def test_purify_progress_note_is_global() -> None:
-    from cthulhu_backend import pipeline
-
-    percent, note = pipeline._purify_progress(240, 240, 0.5, 5684)
-    assert note == "潜空间净化 360/5684"
-    assert percent == 8 + int(360 / 5684 * 82)
-    _, clamped = pipeline._purify_progress(240, 240, 2.0, 5684)
-    assert clamped == "潜空间净化 480/5684"
 
 
 def test_weapon_pool_pickles_without_purify_control(

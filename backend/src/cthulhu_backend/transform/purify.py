@@ -34,9 +34,14 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 
 from cthulhu_backend.transform import temporal
+from cthulhu_backend.transform.postprocess import (
+    POST_SHARPEN_AMOUNT,
+    POST_SHARPEN_SIGMA,
+    reinject_detail,
+    unsharp_batch,
+)
 
 TAESD_MODEL_ID = os.environ.get("CTHULHU_PURIFY_TAESD_MODEL", "madebyollin/taesd")
 GEN_MODEL_ID = os.environ.get("CTHULHU_PURIFY_GEN_MODEL", "stabilityai/sd-turbo")
@@ -65,8 +70,6 @@ SUBTITLE_MASK_DILATE_ITER = 3
 SUBTITLE_MASK_SOFT_SIGMA = 6.0
 SUBTITLE_MASK_GAIN = 1.5
 DEFAULT_DETAIL_SIGMA = 0.0  # 0 = 自动（按帧长边换算）
-POST_SHARPEN_AMOUNT = 0.6
-POST_SHARPEN_SIGMA = 1.2
 
 # 生成式档（A）：扩散 img2img 按语义重画，人脸/字幕不会被瓶颈磨掉。
 # 实测甜点区：长边 512、strength 0.15、2 步；strength 越高字幕越容易被重画成乱码。
@@ -129,7 +132,7 @@ def _repo_bundled_model_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _frozen_bundled_model_dir() -> Path | None:
+def frozen_bundled_model_dir() -> Path | None:
     """PyInstaller one-folder：datas 解包到 sys._MEIPASS/models。"""
     if not getattr(sys, "frozen", False):
         return None
@@ -140,7 +143,7 @@ def _frozen_bundled_model_dir() -> Path | None:
 
 def bundled_model_dir() -> Path | None:
     """安装包内置模型目录；开发环境回退到仓库 packaging/models。"""
-    for candidate in (_frozen_bundled_model_dir(), _repo_bundled_model_dir()):
+    for candidate in (frozen_bundled_model_dir(), _repo_bundled_model_dir()):
         if candidate is not None:
             return candidate
     return None
@@ -168,15 +171,15 @@ def _platform_model_dir() -> Path:
     return base / "cthulhu" / "models"
 
 
-def _taesd_dir_name() -> str:
+def taesd_dir_name() -> str:
     return TAESD_MODEL_ID.replace("/", "--")
 
 
-def _local_taesd_path() -> Path:
-    return model_dir() / _taesd_dir_name()
+def local_taesd_path() -> Path:
+    return model_dir() / taesd_dir_name()
 
 
-def _taesd_ready(path: Path | None) -> bool:
+def taesd_ready(path: Path | None) -> bool:
     """TAESD 目录是否可直接加载（diffusers 单体 AE 只需 config + 权重）。"""
     if path is None or not path.is_dir():
         return False
@@ -194,8 +197,8 @@ def bundled_taesd_path() -> Path | None:
     base = bundled_model_dir()
     if base is None:
         return None
-    candidate = base / _taesd_dir_name()
-    return candidate if _taesd_ready(candidate) else None
+    candidate = base / taesd_dir_name()
+    return candidate if taesd_ready(candidate) else None
 
 
 def _hf_taesd_snapshot() -> Path | None:
@@ -212,7 +215,7 @@ def _hf_taesd_snapshot() -> Path | None:
             continue
         for revision in repo.revisions:
             path = Path(revision.snapshot_path)
-            if _taesd_ready(path):
+            if taesd_ready(path):
                 return path
     return None
 
@@ -223,7 +226,7 @@ def taesd_cached() -> bool:
 
 
 def _platform_taesd_path() -> Path:
-    return _platform_model_dir() / _taesd_dir_name()
+    return _platform_model_dir() / taesd_dir_name()
 
 
 def _taesd_lookup() -> Path | None:
@@ -231,8 +234,8 @@ def _taesd_lookup() -> Path | None:
     bundled = bundled_taesd_path()
     if bundled is not None:
         return bundled
-    for candidate in (_local_taesd_path(), _platform_taesd_path()):
-        if _taesd_ready(candidate):
+    for candidate in (local_taesd_path(), _platform_taesd_path()):
+        if taesd_ready(candidate):
             return candidate
     return _hf_taesd_snapshot()
 
@@ -308,7 +311,7 @@ def model_status() -> dict:
             "model_id": TAESD_MODEL_ID,
             "cached": cached,
             "bundled": bundled_taesd_path() is not None,
-            "path": str(bundled_taesd_path() or _local_taesd_path()),
+            "path": str(bundled_taesd_path() or local_taesd_path()),
         },
     }
 
@@ -412,7 +415,7 @@ def _ensure_taesd() -> str:
     from huggingface_hub import snapshot_download
 
     # 内置目录可能位于只读的安装包内：优先写模型目录，失败再退到应用数据目录。
-    target = _local_taesd_path()
+    target = local_taesd_path()
     try:
         target.mkdir(parents=True, exist_ok=True)
         probe = target / ".write-probe"
@@ -427,7 +430,7 @@ def _ensure_taesd() -> str:
         max_workers=4,
         allow_patterns=["*.json", "*.safetensors", "*.txt", "*.md"],
     )
-    if not _taesd_ready(target):
+    if not taesd_ready(target):
         raise RuntimeError("TAESD 权重下载完成但校验未通过")
     return str(target)
 
@@ -487,73 +490,6 @@ def _to_u8(frame: np.ndarray, is_u8: bool) -> np.ndarray:
     return (np.clip(frame, 0.0, 1.0) * 255.0).round().astype(np.uint8)
 
 
-def _detail_scale(high: np.ndarray) -> float:
-    """按帧内高频能量自适应细节回注强度：纹理越多回注越多，平坦区保守。"""
-    energy = float(np.mean(np.abs(high)))
-    return float(np.clip(0.35 + 0.65 * (energy / (energy + 0.02)), 0.35, 1.0))
-
-
-def _lowpass_f32(source: np.ndarray, sigma: float, gray: bool) -> np.ndarray:
-    """低通（用于取高频）；cv2 可用时用它，720p 上比 scipy 快约 6 倍。"""
-    if not gray:
-        try:
-            import cv2
-        except ImportError:
-            cv2 = None
-        if cv2 is not None:
-            return cv2.GaussianBlur(source, (0, 0), sigmaX=sigma, sigmaY=sigma)
-    return gaussian_filter(source, sigma=sigma if gray else (sigma, sigma, 0.0))
-
-
-def _reinject_detail(
-    purified: np.ndarray,
-    original: np.ndarray,
-    *,
-    strength: float,
-    sigma: float,
-    is_u8: bool,
-    gray: bool,
-    wide_sigma: float | None = None,
-    weight: np.ndarray | None = None,
-) -> np.ndarray:
-    """把原帧高频细节回注到重建结果，低频水印仍由重建/重写层处理。"""
-    if strength <= 0:
-        return purified
-    source = original.astype(np.float32, copy=True)
-    if is_u8:
-        source *= 1.0 / 255.0
-    # purified 始终是解码后的 [0,1] float；不能再按 is_u8 除一次 255。
-    # 目标数组就地运算：调用方传进来的都是当帧新算出的副本，可安全复用。
-    target = (
-        purified
-        if purified.dtype == np.float32 and purified.flags.writeable
-        else purified.astype(np.float32)
-    )
-    if target.size and float(target.max()) > 1.5:
-        target *= 1.0 / 255.0
-    # 高频 = 原帧 - 低通（同一块内存复用，省掉两次全尺寸临时数组）。
-    blurred = _lowpass_f32(source, sigma, gray)
-    high = blurred
-    np.subtract(source, blurred, out=high)
-    # 字幕增强：在字幕掩膜内改用更宽的频带（把笔画从原帧捞回来），
-    # 掩膜外保持安全带宽，让水印回流的面积受限于字幕区域本身。
-    if wide_sigma is not None and wide_sigma > sigma and weight is not None:
-        wide_blur = _lowpass_f32(source, wide_sigma, gray)
-        np.subtract(source, wide_blur, out=wide_blur)
-        np.subtract(wide_blur, high, out=wide_blur)
-        if weight.ndim == 2:
-            wide_blur *= weight[..., None] if not gray else weight
-        else:
-            wide_blur *= weight
-        np.add(high, wide_blur, out=high)
-    # 能量估计按 1/8 抽样即可，避免每帧对全图求绝对值均值。
-    flat = high.reshape(-1)
-    scale = _detail_scale(float(np.mean(np.abs(flat[::8]))))
-    np.multiply(high, strength * scale, out=high)
-    np.add(target, high, out=target)
-    return np.clip(target, 0.0, 1.0, out=target)
-
-
 def _subtitle_weight(batch: np.ndarray) -> np.ndarray | None:
     """字幕掩膜：逐帧笔画检测 + 时序持久性（只有跨帧不动的笔画才留下）。
 
@@ -603,35 +539,6 @@ def auto_detail_sigma(
         return float(min(WIDE_DETAIL_SIGMA_MAX, max(WIDE_DETAIL_SIGMA_MIN, scaled)))
     scaled = short * DETAIL_SIGMA_RATIO
     return float(min(DETAIL_SIGMA_MAX, max(DETAIL_SIGMA_MIN, scaled)))
-
-
-def _unsharp_batch(frames: np.ndarray, amount: float, sigma: float) -> np.ndarray:
-    """后置锐化：瓶颈重建天生偏软，用它把边缘观感拉回来。"""
-    if amount <= 0 or len(frames) == 0:
-        return frames
-    try:
-        import cv2
-
-        out = np.empty_like(frames)
-        for index, frame in enumerate(frames):
-            blurred = cv2.GaussianBlur(frame, (0, 0), sigma)
-            out[index] = cv2.addWeighted(frame, 1.0 + amount, blurred, -amount, 0.0)
-        return out
-    except ImportError:
-        from PIL import ImageFilter
-
-        return np.stack(
-            [
-                np.asarray(
-                    Image.fromarray(frame).filter(
-                        ImageFilter.UnsharpMask(
-                            radius=sigma, percent=int(amount * 100), threshold=0
-                        )
-                    )
-                )
-                for frame in frames
-            ]
-        )
 
 
 def _latent_size(width: int, height: int, max_edge: int) -> tuple[int, int]:
@@ -740,7 +647,7 @@ def _purify_latent(
             if gray:
                 arr = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
             if detail > 0:
-                arr = _reinject_detail(
+                arr = reinject_detail(
                     arr,
                     frames[index],
                     strength=detail,
@@ -756,7 +663,7 @@ def _purify_latent(
             if progress is not None:
                 progress((index + 1) / total, "潜空间净化")
         _clear_cache()
-    return _unsharp_batch(out, POST_SHARPEN_AMOUNT, POST_SHARPEN_SIGMA)
+    return unsharp_batch(out, POST_SHARPEN_AMOUNT, POST_SHARPEN_SIGMA)
 
 
 # ---------------------------------------------------------------------------

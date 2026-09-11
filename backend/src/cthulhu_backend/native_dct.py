@@ -41,7 +41,7 @@ def _load_lib() -> ctypes.CDLL | None:
 
 
 def requant_plane(work: np.ndarray, step: float) -> np.ndarray | None:
-    """等价于 extra_attacks._requant_plane 的原生实现；不可用时返回 None。"""
+    """等价于 extra_attacks.dct_requant_plane 的原生实现；不可用时返回 None。"""
     if not os.environ.get("CTHULHU_NATIVE_DCT"):
         return None
     lib = _load_lib()

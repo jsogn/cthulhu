@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from cthulhu_backend import db, pipeline, samples, services
+from cthulhu_backend import db, pipeline, planning, samples, services
 from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.main import app
 from cthulhu_backend.media import ffmpeg
@@ -117,7 +117,7 @@ def test_prefetch_batches_stops_thread_on_early_exit(tmp_path):
     decoder = ffmpeg.StreamingDecoder(str(path), 0, 80)
     before = {t.ident for t in threading.enumerate()}
     try:
-        gen = pipeline._prefetch_batches(decoder, 80, 8, "float32")
+        gen = pipeline.prefetch_batches(decoder, 80, 8, "float32")
         _, batch = next(gen)
         assert len(batch) == 8
         gen.close()
@@ -311,7 +311,7 @@ def test_shot_rounding_does_not_accumulate_av_drift():
     约 467ms）。音频是按整段均匀拉伸的，视频多出来的部分就是音画不同步。
     """
     shots = [(index * 120, (index + 1) * 120) for index in range(50)]
-    segments, _, out_lens, _, total = pipeline._build_segments(
+    segments, _, out_lens, _, total = planning.build_segments(
         shots, DesensitizeOptions(), 0.97, np.random.default_rng(1)
     )
 

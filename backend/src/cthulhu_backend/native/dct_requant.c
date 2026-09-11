@@ -1,6 +1,6 @@
 /* DCT 重量化原生加速：8x8 正交 DCT-II 前向 + 量化 + 逆变换单次融合。
  *
- * 语义对齐 transform/extra_attacks.py::_requant_plane：
+ * 语义对齐 transform/extra_attacks.py::dct_requant_plane：
  *   - float32 平面，宽高必须为 8 的整数倍（调用方保证，否则走 numpy）；
  *   - 量化取整用 rintf（IEEE 半偶舍入），与 np.round 一致；
  *   - 不裁剪输出（clip 由上层 dct_requant 负责）。

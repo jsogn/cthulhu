@@ -27,7 +27,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend" / "src"))
 
-from cthulhu_backend.transform import purify  # noqa: E402
+from cthulhu_backend.transform import postprocess, purify  # noqa: E402
 
 
 def _sync() -> None:
@@ -133,7 +133,7 @@ def main() -> None:
     )
     detail_s = timed(
         lambda: [
-            purify._reinject_detail(
+            postprocess.reinject_detail(
                 frame.astype(np.float32) / 255.0,
                 frame,
                 strength=0.5,

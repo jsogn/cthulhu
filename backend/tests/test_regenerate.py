@@ -96,15 +96,18 @@ def test_copy_attack_reduces_copy_similarity_more_than_random():
     assert 10 * np.log10(1.0 / mse) > 25
 
 
-def test_face_perturb_is_localized_to_boxes():
-    from cthulhu_backend.fingerprint import deep
+def test_face_perturb_is_localized_to_boxes(monkeypatch):
+    """人脸扰动只改框内像素：通过公开入口 face_perturb + 固定检测框验证。"""
+    from cthulhu_backend.fingerprint import deep, face_embed
 
+    # 强制走逐帧带通扰动分支（ArcFace 精修分支只吃彩色帧，另有测试覆盖）。
+    monkeypatch.setattr(face_embed, "available", lambda: False)
     rng = np.random.default_rng(10)
     clean = rng.random((4, 96, 128), dtype=np.float32) * 0.3 + 0.3
-    boxes = [(32, 24, 32, 32)]
-    out = np.stack(
-        [regenerate._perturb_regions(f, boxes, 0.05, np.random.default_rng(11)) for f in clean]
+    monkeypatch.setattr(
+        regenerate, "_face_boxes", lambda base_u8, min_size=24: [(32, 24, 32, 32)]
     )
+    out = regenerate.face_perturb(clean, strength=0.05, rng=np.random.default_rng(11))
     assert out.shape == clean.shape
     # 羽化半径外的区域保持逐位一致。
     np.testing.assert_array_equal(out[:, :10, :], clean[:, :10, :])

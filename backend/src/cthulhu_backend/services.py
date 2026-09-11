@@ -24,7 +24,7 @@ from cthulhu_backend.pipeline import (
     _DesensitizeState,
     _encode_desensitize,
     _mux_output,
-    _prepare_desensitize,
+    prepare_desensitize,
 )
 from cthulhu_backend.schemas import DesensitizeOptions
 from cthulhu_backend.similarity import embedding
@@ -430,7 +430,7 @@ def _result_template(
         # 成片帧数：回声清除等同步变速会改变时长，元数据必须如实反映产物，
         # 否则调用方按 frames 算时长会与文件对不上。
         "out_frames": state.total_out,
-        "purify_note": _purify_note(opts, state),
+        "purify_note": purify_note(opts, state),
         "quality_gate_note": _quality_gate_note(opts, state),
         "profile_note": getattr(state, "profile_note", "off"),
         "profile_metrics": getattr(state, "profile_metrics", None),
@@ -438,7 +438,7 @@ def _result_template(
     }
 
 
-def _purify_note(opts: DesensitizeOptions, state) -> str:
+def purify_note(opts: DesensitizeOptions, state) -> str:
     """净化状态说明：关闭 / 已应用 / 依赖缺位跳过 / 中途加载失败回退。"""
     del opts
     note = getattr(state, "purify_note", "off")
@@ -545,7 +545,7 @@ def run_desensitize(
     if not ffmpeg.has_encoder(opts.codec):
         raise ValueError(f"当前 FFmpeg 缺少视频编码器 {opts.codec}，请更换输出编码或安装完整版 FFmpeg")
     process_path = path
-    state = _prepare_desensitize(process_path, opts, progress_cb, check_cancelled)
+    state = prepare_desensitize(process_path, opts, progress_cb, check_cancelled)
     _encode_desensitize(process_path, output, opts, state, progress_cb, should_stop, pause)
     # 净化在分块处理中途失败时，把线程本地的失败原因固化进状态，
     # 这样异步指标线程/结果模板也能拿到同一条降级说明。

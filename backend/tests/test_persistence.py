@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import sqlite3
 import time
 
@@ -115,14 +116,23 @@ def test_library_register_and_remove(client, tmp_path):
     assert path.exists()
 
 
-def test_db_connect_closes_connection_on_exit():
-    """短期连接退出 with 块后应立即关闭，而不是等待周期性 GC。"""
+def _live_connections() -> int:
+    """进程里仍存活的 sqlite3 连接对象数（用于观察连接是否被及时释放）。"""
+    return sum(1 for obj in gc.get_objects() if isinstance(obj, sqlite3.Connection))
+
+
+def test_db_operations_do_not_keep_connections_alive(monkeypatch, tmp_path):
+    """公开写操作必须即开即关：连接不得留在引用环里等 GC（历史 bug：fd 与页缓存累积）。"""
     from cthulhu_backend import db
 
-    with db._connect() as connection:
-        assert connection.execute("SELECT 1").fetchone()[0] == 1
-    with pytest.raises(sqlite3.ProgrammingError):
-        connection.execute("SELECT 1")
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "conn.db"))
+    db.init_db()
+    gc.collect()
+    baseline = _live_connections()
+    for index in range(20):
+        db.save_settings({f"k{index}": index})
+    gc.collect()
+    assert _live_connections() - baseline <= 2
 
 
 def test_clear_finished_jobs(client):

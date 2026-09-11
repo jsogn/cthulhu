@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cthulhu_backend import baseline, pipeline, samples, services
+from cthulhu_backend import baseline, planning, samples, services
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import strategies
 from cthulhu_backend.transform import video as video_transform
@@ -29,24 +29,24 @@ def test_plan_shots_maps_window_cuts_to_global_frames(monkeypatch):
     """窗口内的切点要映射回全局帧号，并夹在 [0, total_in] 之间。"""
     sampled = np.zeros((6,), dtype=np.float32)
     monkeypatch.setattr(
-        "cthulhu_backend.pipeline.shots.detect_cuts",
+        "cthulhu_backend.planning.shots.detect_cuts",
         lambda segment: [1] if len(segment) >= 2 else [],
     )
-    ranges = pipeline._plan_shots(sampled, [0, 3], 10, need_shots=True)
+    ranges = planning.plan_shots(sampled, [0, 3], 10, need_shots=True)
     assert ranges == [(0, 1), (1, 4), (4, 10)]
 
 
 def test_regrade_curves_deterministic_and_bounded():
     """同种子曲线一致、幅度有界；关闭时返回恒等曲线。"""
-    first = pipeline._regrade_curves(np.random.default_rng(7), 120, 0.15, True)
-    second = pipeline._regrade_curves(np.random.default_rng(7), 120, 0.15, True)
+    first = planning.regrade_curves(np.random.default_rng(7), 120, 0.15, True)
+    second = planning.regrade_curves(np.random.default_rng(7), 120, 0.15, True)
     gammas, deltas, *_ = first
     assert np.allclose(gammas, second[0])
     assert np.allclose(deltas, second[1])
     assert np.all((gammas > 0.95) & (gammas < 1.05))
     assert np.all(np.abs(deltas) < 0.05)
 
-    off = pipeline._regrade_curves(np.random.default_rng(7), 120, 0.15, False)
+    off = planning.regrade_curves(np.random.default_rng(7), 120, 0.15, False)
     assert np.all(off[0] == 1.0)
     assert np.all(off[1] == 0.0)
 
@@ -133,7 +133,7 @@ def test_fast_regrade_close_to_thorough():
     deltas = np.zeros(8, dtype=np.float32)
     expected = video_transform.regrade_with_params(frames_f.copy(), gammas, deltas)
     u8 = (frames_f * 255).round().astype(np.uint8)
-    actual = strategies._fast_regrade_u8(u8, gammas, deltas)
+    actual = strategies.fast_regrade_u8(u8, gammas, deltas)
     assert actual.dtype == np.uint8
     diff = np.abs(actual.astype(np.float32) / 255.0 - expected)
     assert float(diff.mean()) < 0.02
