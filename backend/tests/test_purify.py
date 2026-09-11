@@ -53,6 +53,9 @@ class FakeTaesd:
 
 
 def _patch_engine(monkeypatch: pytest.MonkeyPatch, model: FakeTaesd) -> FakeTaesd:
+    # 引擎路径需要 torch：轻量环境（CI 的 `uv sync` 不带 --extra purify）显式跳过，
+    # 而不是让 purify 静默降级后报一堆看不懂的断言失败。
+    pytest.importorskip("torch", reason="净化引擎测试需要 torch（uv sync --extra purify）")
     monkeypatch.setattr(purify, "check_available", lambda: (True, ""))
     monkeypatch.setattr(purify, "_load_taesd", lambda: model)
     return model
