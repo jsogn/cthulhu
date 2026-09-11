@@ -80,8 +80,6 @@ def main() -> None:
         ("FFT 相位 0.5", lambda: regenerate.fft_phase(frames, 0.5, rng)),
         ("小波细节 0.8", lambda: regenerate.dwt_detail(frames, 0.8, rng)),
         ("DCT 重量化 12", lambda: extra_attacks.dct_requant(frames, 12.0)),
-        ("像素重写 超分+CLAHE", lambda: regenerate.clahe_rewrite(
-            regenerate.sr_rewrite(frames), 2.0)),
         ("pHash ε=0.08", lambda: adversarial.attack_frames(frames, epsilon=0.08)),
     ]
     for name, fn in cases:

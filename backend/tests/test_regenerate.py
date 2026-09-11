@@ -1,4 +1,5 @@
-"""再生族攻击测试：跨帧估计相减、小波细节带随机化与像素重写的破坏力。"""
+"""再生族攻击测试：跨帧估计相减、FFT 相位、小波细节带随机化，以及判重
+代理（DINOv2）与人脸扰动原语的破坏力与区域约束。"""
 
 from __future__ import annotations
 
@@ -149,4 +150,3 @@ def test_face_perturb_refines_against_arcface(monkeypatch):
     base = face_embed.embed_crop(crop_u8)
     attacked = face_embed.embed_crop(out_u8)
     assert face_embed.cosine(base, attacked) < 0.9999
-

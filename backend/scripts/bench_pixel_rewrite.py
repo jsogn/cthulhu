@@ -2,6 +2,10 @@
 
 口径与通杀矩阵一致：嵌入 → 单武器攻击 → 提取 → BER。BER 接近 0.5 才视为
 破坏；若攻击后与嵌入后相比几乎不动，说明该武器对暗水印无效。
+
+历史记录脚本（不可直接运行）：该武器与 `regenerate.sr_rewrite/clahe_rewrite`
+已随「弱武器裁决」从生产代码删除（见 `docs/研究-通杀验收.md`），保留本文件
+仅为留下当时的实测口径；如需复跑，从对应历史提交取回这两个函数。
 """
 
 from __future__ import annotations
@@ -31,6 +35,10 @@ def to_f32(frames: np.ndarray) -> np.ndarray:
 
 
 def main() -> None:
+    if not hasattr(regenerate, "sr_rewrite"):
+        print("跳过：sr_rewrite/clahe_rewrite 已随「弱武器裁决」从生产代码移除。")
+        print("本脚本仅作历史记录；复跑需先从历史提交取回这两个函数。")
+        return
     clean = samples.make_cut_video(2, 12, 320, 240, seed=2)
     schemes = [
         ("SS α=0.25", lambda f: ss.embed(f, BITS, seed=0, alpha=0.25),

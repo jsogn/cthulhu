@@ -1,4 +1,4 @@
-"""当前五档预置 × 基准库水印的通杀矩阵复测（真实 720p 素材前几秒）。
+"""内置预置 × 基准库水印的通杀矩阵复测（真实 720p 素材前几秒）。
 
 旧文档的 0.44~0.50 对应「重排+变速+裁剪+调光」旧管线；当前预置已不含
 重排/变速/裁剪，本脚本用 services.run_desensitize 走生产路径重测。
@@ -92,8 +92,6 @@ def payload_to_options(payload: dict) -> dict:
             opts[target] = payload[source]
     if payload.get("nativeTemporal"):
         opts["native_temporal"] = True
-    if payload.get("transcodeChain"):
-        opts["transcode_chain"] = True
     if payload.get("spoof"):
         opts["spoof"] = True
     if payload.get("qualityProtect"):

@@ -16,6 +16,11 @@ def main() -> None:
     removed = {
         "transcodeChain", "srRewrite", "clahe", "deepAttack",
         "transcode_chain", "sr_rewrite", "deep_attack", "mirror",
+        # §7 无效参数清理（2026-09-11）：payload 与后端选项两侧都不得再出现。
+        "fftMag", "nonintRatio", "flowDisturb", "textureInject", "multiscale",
+        "complexityTrap", "temporalBlur",
+        "fft_mag", "nonint_ratio", "flow_disturb", "texture_inject",
+        "complexity_trap", "temporal_blur",
     }
     for preset in db.PRESET_TEMPLATES:
         payload = preset["payload"]

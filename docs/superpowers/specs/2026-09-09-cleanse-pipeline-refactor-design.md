@@ -506,6 +506,13 @@ ONNX 导出不可用，属环境既有跳过）+ ruff；UI typecheck + 45 项测
 electron 3 项。注：上面验收写的「后端 296 项」与实际基线不符——清理前实收
 292 项，删掉 8 项武器单测后为 284 项。
 
-**遗留**：`backend/scripts/bench_tags.py` 仍保留 2 处历史失效引用
-（`regenerate.clahe_rewrite` / `sr_rewrite`，本次清理前就已不存在），未纳入本次范围；
-`docs/研究-通杀验收.md` 作为历史研究记录未改写。
+**收尾清理（同日）**：顺手清掉扫描到的历史死引用与过时说明——
+`bench_tags.py` 的「像素重写 超分+CLAHE」用例（目标函数早已删除）、
+`regenerate.py` 中无人引用的 `_spatial_filter_size` 与过时的模块说明、
+`bench_preset_matrix.py` 的 `transcodeChain` 死分支；`audit_presets.py` 的
+`removed` 守卫补入本次删除的 7 个字段名；两个针对已移除引擎的历史脚本
+（`bench_pixel_rewrite.py`、`research/scripts/profile_purify_breakdown.py`）
+补了「历史记录、不可直接运行」的说明与退出提示，保留其证据价值。
+
+**遗留**：`docs/研究-通杀验收.md` 与 `docs/研究-性能-武器加速清单.md` 作为
+历史研究记录保持原样（其中的参数表只反映当时的武器库）。

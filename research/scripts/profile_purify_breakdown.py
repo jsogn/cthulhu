@@ -4,6 +4,10 @@
 回答「物理天花板在哪」：如果 VAE 编解码占大头，就换小 VAE / 少走 VAE；
 如果 UNet 占大头，就只能在分辨率/步数/模型结构上想办法。
 
+历史记录脚本（当前不可运行）：本脚本针对已移除的扩散引擎（sd-turbo +
+diffusers pipeline），依赖的 `purify._load_pipe/_fit_max_edge` 已不存在；
+现行净化是潜空间重建（TAESD），性能口径见 docs/研究-性能-武器加速清单.md。
+
 用法：
     backend/.venv/bin/python research/scripts/profile_purify_breakdown.py \
         --edges 256 192 160 128 --batch 8 --steps 2
@@ -44,6 +48,10 @@ def timed(fn, repeats: int = 3) -> float:
 
 
 def main() -> None:
+    if not hasattr(purify, "_load_pipe"):
+        print("跳过：本脚本针对已移除的扩散引擎（sd-turbo + diffusers pipeline）。")
+        print("现行净化是潜空间重建（TAESD）；复跑需先从历史提交取回该引擎。")
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("--edges", nargs="+", type=int, default=[256, 192, 128])
     parser.add_argument("--batch", type=int, default=8)

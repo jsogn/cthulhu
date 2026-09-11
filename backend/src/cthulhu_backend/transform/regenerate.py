@@ -1,9 +1,11 @@
 """再生族攻击：把画面从「变换」升级为「重估计/重采样」，攻击更鲁棒的水印。
 
-与经典攻击（滤波/重量化/几何）互补，覆盖四类盲区：
+与经典攻击（滤波/重量化/几何）互补，覆盖三类盲区：
 - temporal_subtract：跨帧估计帧间固定水印并过减（针对空域扩频协同检测）；
 - fft_phase：保留频谱幅值、随机化中高频相位（针对 DFT 扩频相位相关）；
 - dwt_detail：随机化 Haar 对角线细节子带（针对小波细节子带嵌入）；
+另有 hsv_jitter（色度/色彩描述子）、copy_attack（DINOv2 判重代理 SPSA）
+与 face_perturb（人脸区域扰动）三个可选原语。
 
 全部原语确定性（同一 rng 下结果一致），灰度/彩色帧通用，不做几何改变，
 不引入新依赖（numpy/scipy/PIL/cv2 均为既有依赖）。
@@ -34,14 +36,6 @@ def _as_original(work: np.ndarray, original_dtype: np.dtype) -> np.ndarray:
     if original_dtype == np.float32:
         return np.clip(work, 0.0, 1.0)
     return np.clip(work, 0.0, 1.0).astype(original_dtype)
-
-
-def _spatial_filter_size(ndim: int, size: int) -> tuple[int, ...]:
-    if ndim == 3:  # (F,H,W)
-        return (1, size, size)
-    if ndim == 4:  # (F,H,W,3)
-        return (1, size, size, 1)
-    return (size, size)
 
 
 def _radial_mask(h: int, w: int, radius_frac: float) -> np.ndarray:
@@ -437,4 +431,3 @@ def face_perturb(
         out.append(_perturb_regions(frame, boxes, strength, rng))
     attacked = np.stack(out)
     return _as_original(attacked, original_dtype)
-
