@@ -2,7 +2,7 @@
 
 import os
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(SPEC), ".."))
 
@@ -30,6 +30,20 @@ for package in ("scipy", "numpy", *_PURIFY_PACKAGES):
     datas += collected_datas
     binaries += collected_binaries
     hiddenimports += collected_hidden
+
+# 运行期版本校验：diffusers 在 import 时用 importlib.metadata 检查
+# requests/filelock/numpy 的元数据（transformers 的同类检查已由 collect_all 覆盖）。
+# PyInstaller 只带 collect_all 过的包的 dist-info，requests 这种纯运行期依赖会缺
+# 元数据并抛 PackageNotFoundError —— 实测后果是打包后净化引擎静默降级
+# （purify_note: "fallback: ... requests distribution was not found"）。
+for distribution in ("requests",):
+    try:
+        datas += copy_metadata(distribution)
+    except Exception as exc:  # noqa: BLE001 - 缺元数据必须让构建直接失败
+        raise SystemExit(
+            f"缺少运行期依赖元数据 {distribution}：{exc}；"
+            "请先执行 `uv sync --project backend --extra purify`"
+        ) from exc
 
 # 扩散净化权重随包内置：安装后零下载。缺失时构建直接失败，避免产出
 # “运行时可用但模型要用户自己下”的包。
