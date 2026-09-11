@@ -456,3 +456,34 @@ SSIM 0.925（旧默认 σ1.5 为 0.543 / 24.82 / 0.906）；字幕恢复可读
   的进度与状态机制；
 - UI 必须写明预期耗时（3 分钟片子约 20~30 分钟）与适用场景；
 - 保留 B 档全部行为不变，用户按片子自行选择。
+
+## 7. 待执行：无效参数清理（已勘察，按此顺序做）
+
+要删的 7 个参数（实测对深度水印无效或语义冗余）：
+`fft_mag`、`flow_disturb`、`texture_inject`、`multiscale`、`complexity_trap`、
+`temporal_blur`、`nonint_ratio`。
+
+**⚠️ 不能误删**：`embedding_domain.multiscale` 是同名的另一个参数（嵌入域增强档的
+布尔开关），与上面无关；`fft_phase` 与 `fft_mag` 在 `cleanOptions.ts` 里**写在同一行**，
+只能摘掉 `fft_mag`。
+
+**执行顺序（关键：类型定义最后删，保证每一步都能编译）**
+
+1. 前端消费侧：
+   - `cleanPanel.ts`：手工删 7 组「默认值 / 接口字段 / setter」，再删模板回填里的
+     7 段**多行三元**（`xxx:` 换行接 `(payload.x ?? 0) > 0 ? ... : ...`）——
+     这是唯一必须逐块手改的地方，按行号脚本删除会打断对象字面量；
+   - `TemplatesView.tsx`：先从动态字段索引数组里摘掉这 7 个字段名
+     （否则 `TS7053` 索引类型报错），再删对应开关卡片；
+   - `CleanPane.tsx`：删对应开关卡片（工作台此前已成功删过 4 个，做法可复用）；
+   - 三个测试文件里对应断言整行删除。
+2. 后端：`schemas.py`（两个模型各 7 行）→ `pipeline.py`（7 处透传 + 7 处 fast-path
+   守卫）→ `extra_attacks.py`（`AssaultParams` 字段、`enabled` 列表、`apply` 分发）
+   → 顺手删 `regenerate.py` 里随之失去调用方的 7 个武器函数；
+   `test_regenerate.py` / `test_presets.py` 同步。
+3. 重新生成 `openapi.json` 与 `api-types.ts`。
+4. 最后删除 `templates.ts` 里已无人引用的字段定义。
+
+**验收**：后端 296 项 + ruff、UI typecheck + 45 项 + 构建、electron 3 项全绿；
+`pnpm --dir ui generate-api` 后无类型漂移。建议分两批提交（先 2 个参数、再 5 个），
+降低单次改动面。
