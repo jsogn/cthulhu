@@ -141,7 +141,9 @@ Windows 构建为待办。
 ### CI（GitHub Actions，私有仓库）
 
 - `Check`：**手动触发或 PR 时跑**（typecheck / 测试 / 契约漂移）；push 到 main
-  不再自动跑——本地提交前跑的命令与它完全一致，自动跑只会带来失败邮件；
+  不再自动跑——本地提交前跑的命令与它完全一致，自动跑只会带来失败邮件。
+  它是轻量档（`uv sync` 不带 `--extra purify`），净化引擎的 8 个测试会显式 skip；
+  全量套件（含 torch）由下面的 `Package` 与本地验收命令覆盖；
 - `Package`：打 `v*` tag 或手动触发，在云端出 macOS arm64 / Windows 安装包
   （本机磁盘紧张时这是唯一能验证打包链路的路径）；
 - 两个 workflow 都不再写 pnpm 版本：以 `package.json` 的 `packageManager`
