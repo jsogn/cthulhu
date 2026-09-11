@@ -1,5 +1,10 @@
 import type { components } from "@/lib/api-types";
 import type { TemplateInfo } from "@/lib/backend";
+import {
+  SCHEMA_DEFAULT_TIER,
+  TIER_DETAIL,
+  TIER_DETAIL_SIGMA,
+} from "@/lib/tiers";
 
 /** 模板 payload：与后端 Pydantic TemplatePayload 契约一致，由 OpenAPI 生成。 */
 export type TemplatePayload = components["schemas"]["TemplatePayload"];
@@ -34,13 +39,13 @@ export const DEFAULT_TEMPLATE: TemplatePayload = {
   psnrTarget: 38,
   ssimTarget: 0.94,
   purifyStrength: 0,
-  purifyDetail: 1,
-  purifyDetailSigma: 1.5,
-  purifyDetailWide: false,
+  purifyDetail: TIER_DETAIL,
+  purifyDetailSigma: TIER_DETAIL_SIGMA,
+  purifyDetailWide: SCHEMA_DEFAULT_TIER.detail_wide,
   knownScheme: "",
   purifyTemporal: 0,
-  purifyMaxEdge: 256,
-  purifyBatch: 8,
+  purifyMaxEdge: SCHEMA_DEFAULT_TIER.max_edge,
+  purifyBatch: SCHEMA_DEFAULT_TIER.batch,
   embeddingAttack: "",
   embeddingStrength: 0,
   embeddingVariant: "v2",
@@ -90,13 +95,14 @@ export function payloadOf(template: TemplateInfo): TemplatePayload {
     psnrTarget: (raw.psnrTarget as number) ?? 38,
     ssimTarget: (raw.ssimTarget as number) ?? 0.94,
     purifyStrength: (raw.purifyStrength as number) ?? 0,
-    purifyDetail: (raw.purifyDetail as number) ?? 1,
-    purifyDetailSigma: (raw.purifyDetailSigma as number) ?? 1.5,
-    purifyDetailWide: (raw.purifyDetailWide as boolean) ?? false,
+    purifyDetail: (raw.purifyDetail as number) ?? TIER_DETAIL,
+    purifyDetailSigma: (raw.purifyDetailSigma as number) ?? TIER_DETAIL_SIGMA,
+    purifyDetailWide:
+      (raw.purifyDetailWide as boolean) ?? SCHEMA_DEFAULT_TIER.detail_wide,
     knownScheme: (raw.knownScheme as TemplatePayload["knownScheme"]) ?? "",
     purifyTemporal: (raw.purifyTemporal as number) ?? 0,
-    purifyMaxEdge: (raw.purifyMaxEdge as number) ?? 256,
-    purifyBatch: (raw.purifyBatch as number) ?? 8,
+    purifyMaxEdge: (raw.purifyMaxEdge as number) ?? SCHEMA_DEFAULT_TIER.max_edge,
+    purifyBatch: (raw.purifyBatch as number) ?? SCHEMA_DEFAULT_TIER.batch,
     embeddingAttack: (raw.embeddingAttack as TemplatePayload["embeddingAttack"]) ?? "",
     embeddingStrength: (raw.embeddingStrength as number) ?? 0,
     embeddingVariant:

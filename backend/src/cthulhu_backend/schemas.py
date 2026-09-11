@@ -10,6 +10,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from cthulhu_backend.tiers import (
+    SCHEMA_DEFAULT_TIER_ID,
+    TIER_BY_ID,
+    TIER_DETAIL,
+    TIER_DETAIL_SIGMA,
+)
+
+# 净化字段默认值取自「平衡」档：与历史行为一致，且与预置/面板共用同一份表（tiers.py）。
+_SCHEMA_TIER = TIER_BY_ID[SCHEMA_DEFAULT_TIER_ID]
+
 # 已下线：扩散引擎随 sd-turbo（2.4GB）一起移除，strength 现在只作开关，
 # 步数与 guidance 不再有消费方。旧模板/旧脚本仍带这些键，入参处丢弃而不是
 # 报错，避免存量数据一升级就 422。
@@ -102,21 +112,21 @@ class DesensitizeOptions(BaseModel):
     native_filters: bool = False
     purify_strength: float = Field(0.0, ge=0, le=1)
     # 潜空间净化：strength 只作开关（>0 启用），实际强度由边缘/带宽决定。
-    purify_detail: float = Field(1.0, ge=0, le=1)
+    purify_detail: float = Field(TIER_DETAIL, ge=0, le=1)
     # 细节回注带宽：水印在低频、字幕纹理在中频。0 = 自动（按帧长边换算，
     # 512p→1.3、1080p→2.7），>0 为专家手动指定的像素值。
-    purify_detail_sigma: float = Field(0.0, ge=0, le=4.0)
+    purify_detail_sigma: float = Field(TIER_DETAIL_SIGMA, ge=0, le=4.0)
     # B 档画质优先：把回注带宽推到字幕笔画尺度（1080p≈6.5），字幕可读，
     # 代价是水印部分回流。
-    purify_detail_wide: bool = False
+    purify_detail_wide: bool = _SCHEMA_TIER.detail_wide
     # 已知来源方案（可空）：画像据此限制清晰度档位——亮度类必须压到 192，
     # 色度类 256 就够（research §19.7）。
     known_scheme: Literal[
         "", "luma", "chroma", "videoseal", "pixelseal", "wam", "trustmark", "mbrs"
     ] = ""
     purify_temporal: float = Field(0.0, ge=0, le=1)
-    purify_max_edge: int = Field(256, ge=0, le=2048)
-    purify_batch: int = Field(8, ge=1, le=16)
+    purify_max_edge: int = Field(_SCHEMA_TIER.max_edge, ge=0, le=2048)
+    purify_batch: int = Field(_SCHEMA_TIER.batch, ge=1, le=16)
     embedding_attack: Literal["", "auto", "luma", "chroma", "both"] = ""
     embedding_strength: float = Field(0.0, ge=0, le=1)
     embedding_variant: Literal["legacy", "v2"] = "v2"
@@ -182,15 +192,15 @@ class TemplatePayload(BaseModel):
     psnrTarget: float = 38.0
     ssimTarget: float = 0.94
     purifyStrength: float = Field(0.0, ge=0, le=1)
-    purifyDetail: float = Field(1.0, ge=0, le=1)
-    purifyDetailSigma: float = Field(0.0, ge=0, le=4.0)
-    purifyDetailWide: bool = False
+    purifyDetail: float = Field(TIER_DETAIL, ge=0, le=1)
+    purifyDetailSigma: float = Field(TIER_DETAIL_SIGMA, ge=0, le=4.0)
+    purifyDetailWide: bool = _SCHEMA_TIER.detail_wide
     knownScheme: Literal[
         "", "luma", "chroma", "videoseal", "pixelseal", "wam", "trustmark", "mbrs"
     ] = ""
     purifyTemporal: float = Field(0.0, ge=0, le=1)
-    purifyMaxEdge: int = Field(256, ge=0, le=2048)
-    purifyBatch: int = Field(8, ge=1, le=16)
+    purifyMaxEdge: int = Field(_SCHEMA_TIER.max_edge, ge=0, le=2048)
+    purifyBatch: int = Field(_SCHEMA_TIER.batch, ge=1, le=16)
     embeddingAttack: Literal["", "auto", "luma", "chroma", "both"] = ""
     embeddingStrength: float = Field(0.0, ge=0, le=1)
     embeddingVariant: Literal["legacy", "v2"] = "v2"

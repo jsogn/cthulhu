@@ -548,6 +548,17 @@ Source: Ousterhout — Information Leakage；Hunt & Thomas — Orthogonality。
 **目标**：档位唯一定义收敛到后端一处（如 `backend/.../tiers.py` 导出 `TIERS`），
 预置模板与面板默认值均从它派生；前端只保留枚举，经 `openapi → api-types.ts` 获得。
 
+**进度：已完成**。新增 `backend/src/cthulhu_backend/tiers.py`（`TIERS` +
+`tier_clarity` / `tier_purify`）：`db.PRESET_TEMPLATES`（payload 与改前逐字节一致）
+与 `schemas` 默认值都从它派生；前端数值经 `backend/scripts/export_openapi.py`
+生成 `ui/src/lib/tiers.generated.ts`（与 `api-types.ts` 同一条同步流水线，
+`pnpm --dir ui generate-api` 之外由导出脚本负责），工作台与模板编辑器共用同一张表，
+模板编辑器原来的 320 长边分歧随之修正为 512 + 宽带回填。
+
+两道防回归：`PRESET_SIGNATURES` 内容签名（改预置内容不升 `PRESET_VERSION` 即测试失败）
+与前端 `tiers.test.ts` 的档位表校验。顺带把老模板缺字段时的 σ 回填从 1.5 收敛为
+档位常量（0＝自动），与面板/预置口径一致。
+
 **T2 Test Brittleness — 26 处测试直接断言私有实现**
 `backend/tests/` 引用 `purify._reinject_detail`、`purify._unsharp_batch`、
 `pipeline._purify_progress`、`services._purify_note`、`profile._SCHEME_*` 等。

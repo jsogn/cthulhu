@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from cthulhu_backend.schemas import TemplatePayload
+from cthulhu_backend.tiers import tier_purify
 
 DB_PATH = os.environ.get(
     "CTHULHU_DB",
@@ -70,6 +71,11 @@ def _preset_payload(**overrides) -> dict:
     return TemplatePayload(**overrides).model_dump(mode="json")
 
 
+# 预置内容签名：改动 PRESET_TEMPLATES 内容必须同时升 PRESET_VERSION 并更新这里，
+# 否则 test_preset_content_signature_matches_version 会失败（审计 R3 的两次真实故障）。
+PRESET_SIGNATURES = {34: "39d4e9a2cc3cf935"}
+
+
 # v34：内置模板换成四个「大平台深度水印」预设（画质优先/平衡/强力/深度清剿），
 # 全部启用画面重建；旧库里的经典武器模板会在下次启动时被替换。
 PRESET_VERSION = 34
@@ -78,19 +84,15 @@ PRESET_VERSION = 34
 PRESET_TEMPLATES = [
     # 四个默认模板都以「大平台深度（暗）水印」为目标：全部打开画面重建，
     # 区别只在清晰度 / 清除强度的取舍（research §19.1~19.6）。
+    # 清晰度字段（长边/批大小/细节回填）来自 tiers.py，预设只写自己的强度与武器。
     {
         "name": "画质优先（推荐）",
+        "tier": "quality",
         "payload": _preset_payload(
+            **tier_purify("quality"),
             audioRemix=True,
             echoDefeat=True,
             audioStrong=True,
-            purifyStrength=0.15,
-            purifyDetail=1.0,
-            purifyDetailSigma=0.0,
-            purifyDetailWide=True,
-            purifyTemporal=0.0,
-            purifyMaxEdge=512,
-            purifyBatch=8,
             embeddingAttack="both",
             embeddingStrength=0.0,
             embeddingVariant="v2",
@@ -103,17 +105,12 @@ PRESET_TEMPLATES = [
     },
     {
         "name": "平衡去水印",
+        "tier": "balanced",
         "payload": _preset_payload(
+            **tier_purify("balanced"),
             audioRemix=True,
             echoDefeat=True,
             audioStrong=True,
-            purifyStrength=0.15,
-            purifyDetail=1.0,
-            purifyDetailSigma=0.0,
-            purifyDetailWide=False,
-            purifyTemporal=0.0,
-            purifyMaxEdge=256,
-            purifyBatch=8,
             embeddingAttack="both",
             embeddingStrength=0.0,
             embeddingVariant="v2",
@@ -126,17 +123,12 @@ PRESET_TEMPLATES = [
     },
     {
         "name": "强力去水印",
+        "tier": "strong",
         "payload": _preset_payload(
+            **tier_purify("strong"),
             audioRemix=True,
             echoDefeat=True,
             audioStrong=True,
-            purifyStrength=0.35,
-            purifyDetail=1.0,
-            purifyDetailSigma=0.0,
-            purifyDetailWide=False,
-            purifyTemporal=0.5,
-            purifyMaxEdge=192,
-            purifyBatch=8,
             embeddingAttack="both",
             embeddingStrength=0.6,
             embeddingVariant="v2",
@@ -149,17 +141,12 @@ PRESET_TEMPLATES = [
     },
     {
         "name": "深度清剿（最狠）",
+        "tier": "max",
         "payload": _preset_payload(
+            **tier_purify("max"),
             audioRemix=True,
             echoDefeat=True,
             audioStrong=True,
-            purifyStrength=0.35,
-            purifyDetail=1.0,
-            purifyDetailSigma=0.0,
-            purifyDetailWide=False,
-            purifyTemporal=0.5,
-            purifyMaxEdge=128,
-            purifyBatch=8,
             embeddingAttack="both",
             embeddingStrength=0.6,
             embeddingVariant="v2",

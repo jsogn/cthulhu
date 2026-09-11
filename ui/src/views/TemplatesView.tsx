@@ -49,6 +49,13 @@ import {
   type Codec,
   type TemplatePayload,
 } from "@/lib/templates";
+import {
+  DEFAULT_TIER,
+  SCHEMA_DEFAULT_TIER,
+  SELECTABLE_TIERS,
+  tierById,
+  tierIdOf,
+} from "@/lib/tiers";
 import { useAppStore } from "@/stores/app";
 import { toast } from "@/stores/toasts";
 
@@ -426,7 +433,7 @@ export default function TemplatesView() {
     "mild",
     (form.purifyStrength ?? 0) > 0,
     (checked) => {
-      setField("purifyStrength", checked ? 0.15 : 0);
+      setField("purifyStrength", checked ? DEFAULT_TIER.strength : 0);
     },
     (form.purifyStrength ?? 0) > 0 ? (
       <>
@@ -434,33 +441,27 @@ export default function TemplatesView() {
           <span className="field-label">清晰度档位</span>
           <Select
             aria-label="净化档位"
-            value={
-              (form.purifyMaxEdge ?? 256) === 192
-                ? "extreme"
-                : (form.purifyMaxEdge ?? 256) === 320
-                  ? "quality"
-                  : "fast"
-            }
+            value={tierIdOf(
+              form.purifyMaxEdge ?? SCHEMA_DEFAULT_TIER.max_edge,
+              form.purifyDetailWide ?? SCHEMA_DEFAULT_TIER.detail_wide,
+            )}
             onValueChange={(value) => {
-              if (value === "extreme") {
-                setField("purifyMaxEdge", 192);
-                setField("purifyBatch", 8);
-              } else if (value === "quality") {
-                setField("purifyMaxEdge", 320);
-                setField("purifyBatch", 8);
-              } else {
-                setField("purifyMaxEdge", 256);
-                setField("purifyBatch", 8);
-              }
+              const tier = tierById(value);
+              if (!tier) return;
+              setField("purifyMaxEdge", tier.max_edge);
+              setField("purifyBatch", tier.batch);
+              setField("purifyDetailWide", tier.detail_wide);
             }}
           >
             <SelectTrigger className="form-input h-8 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="extreme">极速 · 192 长边 · 批处理 8</SelectItem>
-              <SelectItem value="fast">推荐 · 256 长边 · 批处理 8</SelectItem>
-              <SelectItem value="quality">保真 · 320 长边 · 批处理 8</SelectItem>
+              {SELECTABLE_TIERS.map((tier) => (
+                <SelectItem key={tier.id} value={tier.id}>
+                  {tier.label} · 长边 {tier.max_edge} · 批处理 {tier.batch}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

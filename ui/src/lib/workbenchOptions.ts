@@ -1,4 +1,5 @@
 import type { OutputInfo } from "@/lib/backend";
+import { SCHEMA_DEFAULT_TIER } from "@/lib/tiers";
 
 export const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   cleaned: "清洗",
@@ -50,7 +51,7 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
   if (enabled(options.color_restore)) rows.push({ label: "调色修复", value: "开启" });
   if (enabled(options.denoise)) rows.push({ label: "空间降噪", value: "开启" });
   if (num(options.purify_strength) > 0) {
-    const edge = num(options.purify_max_edge) || 256;
+    const edge = num(options.purify_max_edge) || SCHEMA_DEFAULT_TIER.max_edge;
     rows.push({
       label: "潜空间净化",
       value: `瓶颈重建 @${edge}`,

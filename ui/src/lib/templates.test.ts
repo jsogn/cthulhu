@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { TemplateInfo } from "@/lib/backend";
 import { DEFAULT_TEMPLATE, payloadOf } from "@/lib/templates";
+import {
+  SCHEMA_DEFAULT_TIER,
+  TIER_DETAIL,
+  TIER_DETAIL_SIGMA,
+} from "@/lib/tiers";
 
 function template(payload: Record<string, unknown>): TemplateInfo {
   return { id: "t1", name: "模板", payload, created_at: 1.0 };
@@ -75,11 +80,15 @@ describe("DEFAULT_TEMPLATE", () => {
     expect(DEFAULT_TEMPLATE.hashMode).toBe("phash");
     expect(DEFAULT_TEMPLATE.nativeTemporal).toBe(true);
     expect(DEFAULT_TEMPLATE.purifyStrength).toBe(0);
-    expect(DEFAULT_TEMPLATE.purifyDetail).toBe(1);
-    expect(DEFAULT_TEMPLATE.purifyDetailSigma).toBe(1.5);
+    expect(DEFAULT_TEMPLATE.purifyDetail).toBe(TIER_DETAIL);
+    expect(DEFAULT_TEMPLATE.purifyDetailSigma).toBe(TIER_DETAIL_SIGMA);
     expect(DEFAULT_TEMPLATE.purifyTemporal).toBe(0);
-    expect(DEFAULT_TEMPLATE.purifyMaxEdge).toBe(256);
-    expect(DEFAULT_TEMPLATE.purifyBatch).toBe(8);
+    // 清晰度字段跟随接口默认档（后端 tiers.py 的 balanced），不再手写。
+    expect(DEFAULT_TEMPLATE.purifyMaxEdge).toBe(SCHEMA_DEFAULT_TIER.max_edge);
+    expect(DEFAULT_TEMPLATE.purifyDetailWide).toBe(
+      SCHEMA_DEFAULT_TIER.detail_wide,
+    );
+    expect(DEFAULT_TEMPLATE.purifyBatch).toBe(SCHEMA_DEFAULT_TIER.batch);
     expect(DEFAULT_TEMPLATE.embeddingAttack).toBe("");
     expect(DEFAULT_TEMPLATE.embeddingStrength).toBe(0);
     expect(DEFAULT_TEMPLATE.embeddingVariant).toBe("v2");

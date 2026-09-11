@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
 import { getSettings } from "@/lib/backend";
+import {
+  DEFAULT_TIER,
+  TIER_BY_ID,
+  TIER_DETAIL,
+  TIER_DETAIL_SIGMA,
+  tierClarity,
+} from "@/lib/tiers";
 import type { Codec, TemplatePayload } from "@/lib/templates";
 
 export type PresetBase = "balanced" | "aggressive" | "extreme" | "custom";
@@ -52,17 +59,17 @@ const CLEAN_DEFAULTS = {
   psnrTarget: 38,
   ssimTarget: 0.94,
   purifyOn: false,
-  purifyStrength: 0.15,
-  purifyDetail: 1.0,
+  purifyStrength: DEFAULT_TIER.strength,
+  purifyDetail: TIER_DETAIL,
   /** σ=0：按分辨率自动（引擎负责换算 + 后置锐化）。 */
-  purifyDetailSigma: 0,
+  purifyDetailSigma: TIER_DETAIL_SIGMA,
   /** 默认＝画质优先：宽带回注 + 字幕增强（字幕可辨，清除率打折）。 */
-  purifyDetailWide: true,
+  purifyDetailWide: DEFAULT_TIER.detail_wide,
   /** 已知来源水印家族：""=不确定，luma=亮度型，chroma=色度型（限制清晰度档位）。 */
   knownScheme: "" as "" | "luma" | "chroma",
-  purifyTemporal: 0.0,
-  purifyMaxEdge: 512,
-  purifyBatch: 8,
+  purifyTemporal: DEFAULT_TIER.temporal,
+  purifyMaxEdge: DEFAULT_TIER.max_edge,
+  purifyBatch: DEFAULT_TIER.batch,
   embeddingOn: false,
   embeddingAttack: "chroma" as "auto" | "luma" | "chroma" | "both",
   embeddingStrength: 0.25,
@@ -213,15 +220,16 @@ const near = (value: number, target: number) => Math.abs(value - target) < 1e-6;
 
 /** 仅用于模板回填时判断它是否恰好等于某个快捷预设；运行期不靠数值反推。 */
 export function detectPresetBase(state: CleanPanelState): PresetBase {
+  const { quality, balanced, strong } = TIER_BY_ID;
   if (
     state.purifyOn &&
     near(state.purifyStrength, 0.1) &&
-    near(state.purifyDetail, 1.0) &&
-    near(state.purifyDetailSigma, 0) &&
+    near(state.purifyDetail, TIER_DETAIL) &&
+    near(state.purifyDetailSigma, TIER_DETAIL_SIGMA) &&
     !state.purifyDetailWide &&
     near(state.purifyTemporal, 0) &&
-    state.purifyMaxEdge === 192 &&
-    state.purifyBatch === 8 &&
+    state.purifyMaxEdge === strong.max_edge &&
+    state.purifyBatch === strong.batch &&
     !state.embeddingOn &&
     state.autoProfile
   ) {
@@ -229,13 +237,13 @@ export function detectPresetBase(state: CleanPanelState): PresetBase {
   }
   if (
     state.purifyOn &&
-    near(state.purifyStrength, 0.15) &&
-    near(state.purifyDetail, 1.0) &&
-    near(state.purifyDetailSigma, 0) &&
+    near(state.purifyStrength, quality.strength) &&
+    near(state.purifyDetail, TIER_DETAIL) &&
+    near(state.purifyDetailSigma, TIER_DETAIL_SIGMA) &&
     state.purifyDetailWide &&
     near(state.purifyTemporal, 0) &&
-    state.purifyMaxEdge === 512 &&
-    state.purifyBatch === 8 &&
+    state.purifyMaxEdge === quality.max_edge &&
+    state.purifyBatch === quality.batch &&
     !state.embeddingOn &&
     state.autoProfile
   ) {
@@ -243,13 +251,13 @@ export function detectPresetBase(state: CleanPanelState): PresetBase {
   }
   if (
     state.purifyOn &&
-    near(state.purifyStrength, 0.35) &&
-    near(state.purifyDetail, 1.0) &&
-    near(state.purifyDetailSigma, 0) &&
+    near(state.purifyStrength, strong.strength) &&
+    near(state.purifyDetail, TIER_DETAIL) &&
+    near(state.purifyDetailSigma, TIER_DETAIL_SIGMA) &&
     !state.purifyDetailWide &&
-    near(state.purifyTemporal, 0.5) &&
-    state.purifyMaxEdge === 256 &&
-    state.purifyBatch === 8 &&
+    near(state.purifyTemporal, strong.temporal) &&
+    state.purifyMaxEdge === balanced.max_edge &&
+    state.purifyBatch === balanced.batch &&
     state.embeddingOn &&
     state.embeddingAttack === "both" &&
     near(state.embeddingStrength, 0.6) &&
@@ -352,12 +360,10 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
             presetModified: false,
             purifyOn: true,
             purifyStrength: 0.10,
-            purifyDetail: 1.0,
-            purifyDetailSigma: 0,
-            purifyDetailWide: false,
+            ...tierClarity(TIER_BY_ID.strong),
+            purifyDetail: TIER_DETAIL,
+            purifyDetailSigma: TIER_DETAIL_SIGMA,
             purifyTemporal: 0.0,
-            purifyMaxEdge: 192,
-            purifyBatch: 8,
             embeddingOn: false,
             embeddingAttack: "both",
             embeddingStrength: 0.25,
@@ -370,13 +376,11 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
             presetBase: preset,
             presetModified: false,
             purifyOn: true,
-            purifyStrength: 0.35,
-            purifyDetail: 1.0,
-            purifyDetailSigma: 0,
-            purifyDetailWide: false,
-            purifyTemporal: 0.5,
-            purifyMaxEdge: 256,
-            purifyBatch: 8,
+            purifyStrength: TIER_BY_ID.strong.strength,
+            ...tierClarity(TIER_BY_ID.balanced),
+            purifyDetail: TIER_DETAIL,
+            purifyDetailSigma: TIER_DETAIL_SIGMA,
+            purifyTemporal: TIER_BY_ID.strong.temporal,
             embeddingOn: true,
             embeddingAttack: "both",
             embeddingStrength: 0.6,
@@ -388,16 +392,13 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
             presetBase: preset,
             presetModified: false,
             purifyOn: true,
-            purifyStrength: 0.15,
-            purifyDetail: 1.0,
-            purifyDetailSigma: 0,
-            // B 档：宽带回注（1080p≈6.5）换字幕可读，水印会部分回流。
-            purifyDetailWide: true,
-            purifyTemporal: 0.0,
-            // 画质优先：长边 512（1080p 下 3.75× 放大，画面明显更实）；
-            // 代价是部分公开方案水印回流，追求清除率请选「强力/极速清除」。
-            purifyMaxEdge: 512,
-            purifyBatch: 8,
+            purifyStrength: TIER_BY_ID.quality.strength,
+            // 画质优先：宽带回注（1080p≈6.5）换字幕可读，长边取自档位表
+            // （1080p 下约 3.75× 放大，画面明显更实）；代价是部分水印回流。
+            ...tierClarity(TIER_BY_ID.quality),
+            purifyDetail: TIER_DETAIL,
+            purifyDetailSigma: TIER_DETAIL_SIGMA,
+            purifyTemporal: TIER_BY_ID.quality.temporal,
             embeddingOn: false,
             embeddingAttack: "both",
             embeddingStrength: 0.25,

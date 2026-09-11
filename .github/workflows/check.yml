@@ -71,3 +71,5 @@ jobs:
           cd ../ui
           pnpm run generate-api
           git diff --exit-code -- src/lib/api-types.ts
+          # 档位表与 api-types 同源：export_openapi.py 生成，漂移即失败。
+          git diff --exit-code -- src/lib/tiers.generated.ts

@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from hashlib import sha256
 
 from cthulhu_backend import db
+from cthulhu_backend.schemas import DesensitizeOptions, TemplatePayload
+from cthulhu_backend.tiers import (
+    DEFAULT_TIER_ID,
+    SCHEMA_DEFAULT_TIER_ID,
+    TIER_BY_ID,
+    tier_clarity,
+)
 
 
 def test_preset_templates_seeded_once(monkeypatch, tmp_path) -> None:
@@ -27,6 +35,46 @@ def test_preset_templates_seeded_once(monkeypatch, tmp_path) -> None:
         db.delete_template(template["id"])
     db.init_db()
     assert db.list_templates() == []
+
+
+def test_preset_clarity_fields_come_from_tiers() -> None:
+    """审计 R3：预置的清晰度字段必须原样来自 tiers.py，不得在本文件手写。"""
+    for preset in db.PRESET_TEMPLATES:
+        tier_id = preset["tier"]
+        assert tier_id in TIER_BY_ID, preset["name"]
+        clarity = tier_clarity(tier_id)
+        for key, value in clarity.items():
+            assert preset["payload"][key] == value, f"{preset['name']} 的 {key}"
+
+
+def test_preset_content_signature_matches_version() -> None:
+    """预置内容有变就必须同升 PRESET_VERSION 并更新签名，避免用户拿到旧种子。"""
+    blob = json.dumps(
+        [preset["payload"] for preset in db.PRESET_TEMPLATES],
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    digest = sha256(blob.encode("utf-8")).hexdigest()[:16]
+    assert db.PRESET_SIGNATURES[db.PRESET_VERSION] == digest, (
+        "PRESET_TEMPLATES 内容已变：请升 PRESET_VERSION 并更新 PRESET_SIGNATURES"
+    )
+
+
+def test_schema_defaults_follow_schema_tier() -> None:
+    """接口字段默认值与面板默认档都从 tiers.py 取，避免两处手写漂移。"""
+    tier = TIER_BY_ID[SCHEMA_DEFAULT_TIER_ID]
+    opts = DesensitizeOptions()
+    assert opts.purify_max_edge == tier.max_edge
+    assert opts.purify_batch == tier.batch
+    assert opts.purify_detail_wide is tier.detail_wide
+
+    payload = TemplatePayload()
+    assert payload.purifyMaxEdge == tier.max_edge
+    assert payload.purifyBatch == tier.batch
+    assert payload.purifyDetailWide is tier.detail_wide
+
+    default_tier = TIER_BY_ID[DEFAULT_TIER_ID]
+    assert default_tier.selectable and default_tier.max_edge == 512
 
 
 def test_preset_payloads_cover_all_clean_options() -> None:

@@ -25,6 +25,13 @@ import {
   type TemplateInfo,
 } from "@/lib/backend";
 import { FIXED_CROP } from "@/lib/cleanOptions";
+import {
+  DEFAULT_TIER_ID,
+  SELECTABLE_TIERS,
+  TIER_BY_ID,
+  tierById,
+  tierIdOf,
+} from "@/lib/tiers";
 import { useCleanPanel } from "@/stores/cleanPanel";
 import type { Material } from "@/stores/materials";
 
@@ -215,26 +222,15 @@ export function CleanPane({
   const purifyDownloading = purifyState?.state === "downloading";
   // 只有一份权重：内置的 10MB TAESD（sd-turbo 与扩散引擎已下线）。
   const purifyReady = purifyState?.latent?.cached ?? false;
-  const purifyPerformance =
-    purifyMaxEdge === 192 && !purifyDetailWide
-      ? "extreme"
-      : purifyMaxEdge === 512 && purifyDetailWide
-        ? "quality"
-        : "fast";
+  // 档位表来自后端 tiers.py（经 tiers.generated.ts），数值不在视图里手写。
+  const purifyPerformance = tierIdOf(purifyMaxEdge, purifyDetailWide);
+  const purifyTier = tierById(purifyPerformance);
   const applyPurifyPerformance = (value: string) => {
-    if (value === "extreme") {
-      setPurifyMaxEdge(192);
-      setPurifyBatch(8);
-      setPurifyDetailWide(false);
-    } else if (value === "quality") {
-      setPurifyMaxEdge(512);
-      setPurifyBatch(8);
-      setPurifyDetailWide(true);
-    } else {
-      setPurifyMaxEdge(256);
-      setPurifyBatch(8);
-      setPurifyDetailWide(false);
-    }
+    const tier = tierById(value);
+    if (!tier) return;
+    setPurifyMaxEdge(tier.max_edge);
+    setPurifyBatch(tier.batch);
+    setPurifyDetailWide(tier.detail_wide);
   };
   const switchCard = (
     label: string,
@@ -361,23 +357,21 @@ export function CleanPane({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="quality">画质优先（默认）</SelectItem>
-                        <SelectItem value="fast">平衡</SelectItem>
-                        <SelectItem value="extreme">清除优先</SelectItem>
+                        {SELECTABLE_TIERS.map((tier) => (
+                          <SelectItem key={tier.id} value={tier.id}>
+                            {tier.id === DEFAULT_TIER_ID
+                              ? `${tier.label}（默认）`
+                              : tier.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
-                    <div className="form-help">
-                      {purifyPerformance === "quality"
-                        ? "画面清晰、人脸与字幕正常；水印清除较弱，适合要成片质量的场景"
-                        : purifyPerformance === "fast"
-                          ? "画面略软，清除率比画质优先更好，是人人都能接受的中间档"
-                          : "水印清除最彻底；画面会明显变软、字幕可能难以辨认"}
-                    </div>
+                    <div className="form-help">{purifyTier?.summary}</div>
                   </div>
                   <div className="form-help">
                     {purifyDetailWide
                       ? "细节带宽按分辨率自动放大到字幕笔画尺度（1080p≈6.5），字幕可读、水印会部分回流"
-                      : "细节带宽按分辨率自动换算（1080p≈2.6），清除率优先；要更清晰的画面请选「画面优先 · 512」"}
+                      : `细节带宽按分辨率自动换算（1080p≈2.6），清除率优先；要更清晰的画面请选「${TIER_BY_ID.quality.label} · ${TIER_BY_ID.quality.max_edge}」`}
                     ，并自动做一次轻度锐化
                   </div>
                   <div className="field">
