@@ -487,3 +487,25 @@ SSIM 0.925（旧默认 σ1.5 为 0.543 / 24.82 / 0.906）；字幕恢复可读
 **验收**：后端 296 项 + ruff、UI typecheck + 45 项 + 构建、electron 3 项全绿；
 `pnpm --dir ui generate-api` 后无类型漂移。建议分两批提交（先 2 个参数、再 5 个），
 降低单次改动面。
+
+**执行记录（2026-09-11，已完成）**
+
+两个坑都按计划手工处理：`cleanPanel.ts` 的模板回填多行三元逐块整段删除；
+`TemplatesView.tsx` 先摘动态索引数组元素再删视图，未再触发 `TS7053`。
+`fft_phase` 保留、`embedding_domain.multiscale`（嵌入域增强档）未被误删。
+
+- 第一批 `5d05c04`：删 `fft_mag` / `nonint_ratio`，连同 `fft_magnitude`、
+  `noninteger_rescale` 两个武器函数与 2 项单测；
+- 第二批 `50fae1b`：删 `flow_disturb` / `texture_inject` / `multiscale` /
+  `complexity_trap` / `temporal_blur`，连同 5 个武器函数与 6 项单测；
+  工作台与模板编辑器对应开关/滑杆同步移除；
+- 两批各自重生成 `openapi.json` 与 `api-types.ts`，无类型漂移。
+
+**两批验证**（各跑一次全绿）：后端 284 项 = 283 passed / 1 skipped（RivaGAN
+ONNX 导出不可用，属环境既有跳过）+ ruff；UI typecheck + 45 项测试 + 构建；
+electron 3 项。注：上面验收写的「后端 296 项」与实际基线不符——清理前实收
+292 项，删掉 8 项武器单测后为 284 项。
+
+**遗留**：`backend/scripts/bench_tags.py` 仍保留 2 处历史失效引用
+（`regenerate.clahe_rewrite` / `sr_rewrite`，本次清理前就已不存在），未纳入本次范围；
+`docs/研究-通杀验收.md` 作为历史研究记录未改写。
