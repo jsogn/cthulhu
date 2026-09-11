@@ -56,6 +56,7 @@ describe("cleanPanel store", () => {
       purifyDetail: 0.6,
       purifyDetailSigma: 1.8,
       purifyDetailWide: true,
+      knownScheme: "luma",
       purifyTemporal: 0.2,
       purifyMaxEdge: 320,
       purifyBatch: 8,
@@ -130,6 +131,7 @@ describe("cleanPanel store", () => {
     expect(state.purifyDetail).toBe(0.6);
     expect(state.purifyDetailSigma).toBe(1.8);
     expect(state.purifyDetailWide).toBe(true);
+    expect(state.knownScheme).toBe("luma");
     expect(state.purifyTemporal).toBe(0.2);
     expect(state.purifyMaxEdge).toBe(320);
     expect(state.purifyBatch).toBe(8);

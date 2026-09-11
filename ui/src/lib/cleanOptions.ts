@@ -59,6 +59,7 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
           purify_detail: state.purifyDetail,
           purify_detail_sigma: state.purifyDetailSigma,
           purify_detail_wide: state.purifyDetailWide,
+          known_scheme: state.knownScheme,
           purify_temporal: state.purifyTemporal,
           purify_max_edge: state.purifyMaxEdge,
           purify_batch: state.purifyBatch,

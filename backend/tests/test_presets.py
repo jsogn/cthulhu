@@ -69,6 +69,7 @@ def test_preset_payloads_cover_all_clean_options() -> None:
         "purifyDetail",
         "purifyDetailSigma",
         "purifyDetailWide",
+        "knownScheme",
         "purifyTemporal",
         "purifyMaxEdge",
         "purifyBatch",

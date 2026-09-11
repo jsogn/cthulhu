@@ -165,6 +165,8 @@ export function CleanPane({
     setPurifyMaxEdge,
     purifyDetailWide,
     setPurifyDetailWide,
+    knownScheme,
+    setKnownScheme,
     setPurifyBatch,
     embeddingOn,
     setEmbeddingOn,
@@ -352,6 +354,27 @@ export function CleanPane({
               setPurifyOn,
               purifyOn ? (
                 <>
+                  <div className="field">
+                    <span className="field-label">已知来源（可选，帮引擎选对档位）</span>
+                    <Select
+                      value={knownScheme || "unknown"}
+                      onValueChange={(value) =>
+                        setKnownScheme(value === "unknown" ? "" : (value as "luma" | "chroma"))
+                      }
+                    >
+                      <SelectTrigger className="form-input h-8 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unknown">不确定（按我选的档位执行）</SelectItem>
+                        <SelectItem value="luma">亮度型水印（VideoSeal / PixelSeal 系）</SelectItem>
+                        <SelectItem value="chroma">色度型水印（WAM 系）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="form-help">
+                      亮度过低的档位对亮度型无效、色度型却不需要那么狠；选了会自动把清晰度档位收到合适范围
+                    </div>
+                  </div>
                   <div className="field">
                     <span className="field-label">清晰度档位</span>
                     <Select

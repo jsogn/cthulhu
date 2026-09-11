@@ -2056,6 +2056,21 @@
             "title": "Purify Detail Wide",
             "default": false
           },
+          "known_scheme": {
+            "type": "string",
+            "enum": [
+              "",
+              "luma",
+              "chroma",
+              "videoseal",
+              "pixelseal",
+              "wam",
+              "trustmark",
+              "mbrs"
+            ],
+            "title": "Known Scheme",
+            "default": ""
+          },
           "purify_temporal": {
             "type": "number",
             "maximum": 1.0,
@@ -2522,6 +2537,21 @@
             "type": "boolean",
             "title": "Purifydetailwide",
             "default": false
+          },
+          "knownScheme": {
+            "type": "string",
+            "enum": [
+              "",
+              "luma",
+              "chroma",
+              "videoseal",
+              "pixelseal",
+              "wam",
+              "trustmark",
+              "mbrs"
+            ],
+            "title": "Knownscheme",
+            "default": ""
           },
           "purifyTemporal": {
             "type": "number",

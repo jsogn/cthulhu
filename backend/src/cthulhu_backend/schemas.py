@@ -116,6 +116,11 @@ class DesensitizeOptions(BaseModel):
     # B 档画质优先：把回注带宽推到字幕笔画尺度（1080p≈6.5），字幕可读，
     # 代价是水印部分回流。
     purify_detail_wide: bool = False
+    # 已知来源方案（可空）：画像据此限制清晰度档位——亮度类必须压到 192，
+    # 色度类 256 就够（research §19.7）。
+    known_scheme: Literal[
+        "", "luma", "chroma", "videoseal", "pixelseal", "wam", "trustmark", "mbrs"
+    ] = ""
     purify_temporal: float = Field(0.0, ge=0, le=1)
     purify_max_edge: int = Field(256, ge=0, le=2048)
     purify_batch: int = Field(8, ge=1, le=16)
@@ -194,6 +199,9 @@ class TemplatePayload(BaseModel):
     purifyDetail: float = Field(1.0, ge=0, le=1)
     purifyDetailSigma: float = Field(0.0, ge=0, le=4.0)
     purifyDetailWide: bool = False
+    knownScheme: Literal[
+        "", "luma", "chroma", "videoseal", "pixelseal", "wam", "trustmark", "mbrs"
+    ] = ""
     purifyTemporal: float = Field(0.0, ge=0, le=1)
     purifyMaxEdge: int = Field(256, ge=0, le=2048)
     purifyBatch: int = Field(8, ge=1, le=16)

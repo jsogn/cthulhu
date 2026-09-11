@@ -1033,6 +1033,12 @@ export interface components {
              */
             purify_detail_wide: boolean;
             /**
+             * Known Scheme
+             * @default
+             * @enum {string}
+             */
+            known_scheme: "" | "luma" | "chroma" | "videoseal" | "pixelseal" | "wam" | "trustmark" | "mbrs";
+            /**
              * Purify Temporal
              * @default 0
              */
@@ -1351,6 +1357,12 @@ export interface components {
              * @default false
              */
             purifyDetailWide: boolean;
+            /**
+             * Knownscheme
+             * @default
+             * @enum {string}
+             */
+            knownScheme: "" | "luma" | "chroma" | "videoseal" | "pixelseal" | "wam" | "trustmark" | "mbrs";
             /**
              * Purifytemporal
              * @default 0

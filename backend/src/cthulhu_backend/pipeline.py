@@ -742,6 +742,7 @@ def _prepare_desensitize(
 
     # 潜空间净化：可选依赖缺位时降级回经典档，结果里记录降级原因。
     purify_strength_eff = opts.purify_strength
+    purify_max_edge_eff = opts.purify_max_edge
     purify_detail_eff = opts.purify_detail
     purify_temporal_eff = opts.purify_temporal
     purify_note = "off"
@@ -761,12 +762,13 @@ def _prepare_desensitize(
     shot_profiles: list[profile.Profile] = []
     embedding_attack_eff = opts.embedding_attack
     if opts.auto_profile and sampled_color is not None and len(sampled_color) > 0:
-        prof = profile.profile_frames(sampled_color)
+        prof = profile.profile_frames(sampled_color, opts.known_scheme)
         shot_profiles = profile.profile_shots(
             sampled_color,
             color_starts,
             shot_ranges,
             fallback=prof,
+            scheme=opts.known_scheme,
         )
         profile_metrics = {
             **prof.as_dict(),
@@ -789,6 +791,12 @@ def _prepare_desensitize(
             purify_temporal_eff = min(
                 opts.purify_temporal, prof.suggested_purify_temporal
             )
+            # 已知方案时限制清晰度档位：亮度类必须压到 192 才有效，色度类 256
+            # 就够（research §19.7）。用户选了更大边缘则按其设置收窄；0（不缩放）
+            # 视作无上限。
+            if prof.suggested_purify_max_edge:
+                current = purify_max_edge_eff if purify_max_edge_eff > 0 else 10**9
+                purify_max_edge_eff = min(current, prof.suggested_purify_max_edge)
     elif embedding_attack_eff == "auto":
         embedding_attack_eff = "both"
     if purify_strength_eff <= 0:
@@ -811,7 +819,7 @@ def _prepare_desensitize(
         purify_detail_sigma=opts.purify_detail_sigma,
         purify_detail_wide=opts.purify_detail_wide,
         purify_temporal=purify_temporal_eff,
-        purify_max_edge=opts.purify_max_edge,
+        purify_max_edge=purify_max_edge_eff,
         purify_batch=opts.purify_batch,
         embedding_attack=embedding_attack_eff,
         embedding_strength=opts.embedding_strength,
@@ -831,6 +839,7 @@ def _prepare_desensitize(
                 replace(
                     transform_options,
                     purify_strength=shot_strength,
+                    purify_max_edge=purify_max_edge_eff,
                     purify_temporal=min(
                         opts.purify_temporal, shot_prof.suggested_purify_temporal
                     ),

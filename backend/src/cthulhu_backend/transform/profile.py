@@ -23,8 +23,27 @@ _EPS = 1e-6
 
 # 已知公开方案的嵌入域（报告 §2.8 画像结论）。
 _SCHEME_ATTACK = {
+    "luma": "luma",
+    "chroma": "chroma",
     "videoseal": "luma",
+    "pixelseal": "luma",
+    "trustmark": "luma",
+    "mbrs": "luma",
     "wam": "chroma",
+}
+
+# 已知方案的清晰度档位上限（research §19.7，1080×1920 实测 BA@h264）：
+#   亮度/低频类 512→0.87、256→0.56、192→0.49，必须压到 192；
+#   色度类（WAM）512→0.55、256→0.47，256 就够，没必要牺牲画质。
+# 0 表示"没有方案信息、不限制"，此时完全按用户选的档位执行。
+_SCHEME_MAX_EDGE = {
+    "luma": 192,
+    "chroma": 256,
+    "videoseal": 192,
+    "pixelseal": 192,
+    "trustmark": 192,
+    "mbrs": 192,
+    "wam": 256,
 }
 
 
@@ -39,6 +58,7 @@ class Profile:
     suggested_attack: str = "both"
     suggested_purify_strength: float = 0.15
     suggested_purify_temporal: float = 0.0
+    suggested_purify_max_edge: int = 0
     note: str = ""
 
     def as_dict(self) -> dict:
@@ -100,8 +120,11 @@ def profile_frames(frames: np.ndarray, scheme: str = "") -> Profile:
     if coherence >= 0.75 and motion <= 0.01:
         temporal_strength = round(min(0.25, (coherence - 0.75) / 0.25 * 0.25), 3)
     attack = _SCHEME_ATTACK.get(scheme, "both")
+    scheme_edge = _SCHEME_MAX_EDGE.get(scheme, 0)
     if scheme in _SCHEME_ATTACK:
         note = f"已知方案 {scheme}，按报告画像使用 {attack}"
+        if scheme_edge:
+            note += f"，清晰度档位限制在长边 {scheme_edge}"
     else:
         note = "未知方案：黑盒无法可靠识别嵌入域，保守使用 both"
     return Profile(
@@ -112,6 +135,7 @@ def profile_frames(frames: np.ndarray, scheme: str = "") -> Profile:
         suggested_attack=attack,
         suggested_purify_strength=strength,
         suggested_purify_temporal=temporal_strength,
+        suggested_purify_max_edge=scheme_edge,
         note=note,
     )
 

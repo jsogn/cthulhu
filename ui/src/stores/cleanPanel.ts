@@ -69,6 +69,8 @@ const CLEAN_DEFAULTS = {
   purifyDetailSigma: 0,
   /** 默认＝画质优先：宽带回注 + 字幕增强（字幕可辨，清除率打折）。 */
   purifyDetailWide: true,
+  /** 已知来源水印家族：""=不确定，luma=亮度型，chroma=色度型（限制清晰度档位）。 */
+  knownScheme: "" as "" | "luma" | "chroma",
   purifyTemporal: 0.0,
   purifyMaxEdge: 512,
   purifyBatch: 8,
@@ -142,6 +144,7 @@ export interface CleanPanelState {
   purifyDetail: number;
   purifyDetailSigma: number;
   purifyDetailWide: boolean;
+  knownScheme: "" | "luma" | "chroma";
   purifyTemporal: number;
   purifyMaxEdge: number;
   purifyBatch: number;
@@ -216,6 +219,7 @@ export interface CleanPanelState {
   setPurifyDetail: (value: number) => void;
   setPurifyDetailSigma: (value: number) => void;
   setPurifyDetailWide: (value: boolean) => void;
+  setKnownScheme: (value: "" | "luma" | "chroma") => void;
   setPurifyTemporal: (value: number) => void;
   setPurifyMaxEdge: (value: number) => void;
   setPurifyBatch: (value: number) => void;
@@ -366,6 +370,8 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
     set((state) => ({ purifyDetailSigma, ...presetPatch(state) })),
   setPurifyDetailWide: (purifyDetailWide) =>
     set((state) => ({ purifyDetailWide, ...presetPatch(state) })),
+  setKnownScheme: (knownScheme) =>
+    set((state) => ({ knownScheme, ...presetPatch(state) })),
   setPurifyTemporal: (purifyTemporal) =>
     set((state) => ({ purifyTemporal, ...presetPatch(state) })),
   setPurifyMaxEdge: (purifyMaxEdge) =>
@@ -558,6 +564,8 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
         payload.purifyDetailSigma ?? CLEAN_DEFAULTS.purifyDetailSigma,
       purifyDetailWide:
         payload.purifyDetailWide ?? CLEAN_DEFAULTS.purifyDetailWide,
+      knownScheme:
+        (payload.knownScheme as "" | "luma" | "chroma") ?? CLEAN_DEFAULTS.knownScheme,
       purifyTemporal: payload.purifyTemporal ?? CLEAN_DEFAULTS.purifyTemporal,
       purifyMaxEdge: payload.purifyMaxEdge ?? CLEAN_DEFAULTS.purifyMaxEdge,
       purifyBatch: payload.purifyBatch ?? CLEAN_DEFAULTS.purifyBatch,
