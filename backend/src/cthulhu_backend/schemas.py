@@ -61,7 +61,6 @@ class DesensitizeOptions(BaseModel):
     color_restore: bool = True
     denoise: bool = False
     anti_reembed: bool = False
-    banner: str = ""
     seed: int = 0
     codec: str = "libx264"
     lossless: bool = False

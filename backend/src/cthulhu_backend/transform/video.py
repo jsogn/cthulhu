@@ -120,41 +120,6 @@ def regrade_with_params(
     )
 
 
-def overlay_banner(
-    frames: np.ndarray,
-    text: str,
-    seed: int = 0,
-    margin_frac: float = 0.04,
-) -> np.ndarray:
-    """叠加半透明贴纸条（ASCII 文本 + 底色块），模拟二次加工痕迹。"""
-    from PIL import Image, ImageDraw, ImageFont
-
-    rng = np.random.default_rng(seed)
-    h, w = frames.shape[1:3]
-    color = frames.ndim == 4
-    margin = int(w * margin_frac)
-    box_h = int(h * 0.12)
-    y0 = int(rng.uniform(margin, max(margin + 1, h - box_h - margin)))
-    font = ImageFont.load_default(size=max(12, box_h - 10))
-
-    def draw_frame(frame: np.ndarray) -> np.ndarray:
-        base = (np.clip(frame, 0, 1) * 255).round().astype(np.uint8)
-        if color:
-            image = Image.fromarray(base, mode="RGB").convert("RGBA")
-        else:
-            image = Image.fromarray(base, mode="L").convert("RGBA")
-        draw = ImageDraw.Draw(image, "RGBA")
-        draw.rectangle([margin, y0, w - margin, y0 + box_h], fill=(0, 0, 0, 120))
-        draw.text((margin + 12, y0 + (box_h - 16) // 2), text, fill=(255, 255, 255, 220), font=font)
-        if color:
-            return np.asarray(image.convert("RGB"), dtype=np.float64) / 255.0
-        return np.asarray(image.convert("L"), dtype=np.float64) / 255.0
-
-    from cthulhu_backend.parallel import map_frames
-
-    return map_frames(draw_frame, frames)
-
-
 def sharpen(
     frames: np.ndarray,
     amount: float = 0.25,

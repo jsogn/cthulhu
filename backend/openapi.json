@@ -1652,11 +1652,6 @@
             "title": "Anti Reembed",
             "default": false
           },
-          "banner": {
-            "type": "string",
-            "title": "Banner",
-            "default": ""
-          },
           "seed": {
             "type": "integer",
             "title": "Seed",

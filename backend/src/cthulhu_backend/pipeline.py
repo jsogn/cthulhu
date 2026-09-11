@@ -559,7 +559,6 @@ def _yuv_fast_path_enabled(
         use_native_geometry
         and getattr(strategy, "name", "") == "fast"
         and not opts.color_restore
-        and not opts.banner
         and not opts.anti_reembed
         and not opts.spoof
         and not opts.quality_protect
@@ -788,7 +787,6 @@ def prepare_desensitize(
     transform_context = strategies.TransformContext(
         gammas=gammas,
         deltas=deltas,
-        banner=opts.banner,
         seed=opts.seed,
         ref_mean=ref_mean,
         ref_std=ref_std,

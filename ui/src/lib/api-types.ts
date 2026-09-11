@@ -748,11 +748,6 @@ export interface components {
              */
             anti_reembed: boolean;
             /**
-             * Banner
-             * @default
-             */
-            banner: string;
-            /**
              * Seed
              * @default 0
              */

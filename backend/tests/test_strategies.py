@@ -17,7 +17,6 @@ def make_context(count: int) -> strategies.TransformContext:
     return strategies.TransformContext(
         gammas=np.full(count, 1.05, dtype=np.float32),
         deltas=np.zeros(count, dtype=np.float32),
-        banner="",
         seed=0,
         ref_mean=0.5,
         ref_std=0.1,

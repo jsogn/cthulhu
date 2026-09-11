@@ -463,7 +463,6 @@ def desensitize(
     speed: float = typer.Option(1.0, help="变速倍率（>1 加速）"),
     recrop: float = typer.Option(0.0, help="重新构图裁剪比例（0~0.2）"),
     regrade: bool = typer.Option(True, help="逐帧重调光"),
-    banner: str = typer.Option("", help="叠加贴纸文字（可选）"),
     seed: int = typer.Option(0),
 ) -> None:
     """内容脱敏流水线：变换画面并量化与源内容的相似度下降。"""
@@ -477,7 +476,6 @@ def desensitize(
         speed=speed,
         recrop=recrop,
         regrade=regrade,
-        banner=banner,
         seed=seed,
     )
     typer.echo(json.dumps(report, ensure_ascii=False, indent=2))

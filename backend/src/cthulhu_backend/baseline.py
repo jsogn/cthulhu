@@ -189,7 +189,6 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--speed", type=float, default=1.0)
     parser.add_argument("--recrop", type=float, default=0.0)
     parser.add_argument("--perturb", type=float, default=0.0)
-    parser.add_argument("--banner", default="")
     parser.add_argument("--codec", default="libx264")
     parser.add_argument("--preset", default="medium")
     parser.add_argument("--phash-attack", action="store_true")
@@ -240,7 +239,6 @@ def _main(argv: list[str] | None = None) -> None:
             speed=args.speed,
             recrop=args.recrop,
             perturb=args.perturb,
-            banner=args.banner,
             codec=args.codec,
             preset=args.preset,
             phash_attack=args.phash_attack,

@@ -109,7 +109,7 @@ uv run cthulhu harness-audio   # 回声隐藏水印 × 音频鲁棒性压力测�
 uv run cthulhu probe 素材.mp4                # 容器/元数据/SEI 探测
 uv run cthulhu sample-diff clean.mp4 wm.mp4  # 对齐 + 差分报告 + DCT 热图
 uv run cthulhu bitstream 素材.mp4 [--reference clean.mp4]  # 码流层 QP/码量/GOP 分析
-uv run cthulhu desensitize in.mp4 out.mp4 [--speed 0.95] [--recrop 0.03] [--banner 文字]
+uv run cthulhu desensitize in.mp4 out.mp4 [--speed 0.95] [--recrop 0.03]
 uv run cthulhu similarity a.mp4 b.mp4         # 内容/运动/哈希/画质相似度
 
 uv run pytest                  # 基准库往返与鲁棒性压力测试
@@ -155,5 +155,5 @@ Windows 构建为待办。
 回声隐藏等参考嵌入器，去噪 / 重量化 / 几何 / 时序 / 协同平均 / 音频变速等
 鲁棒性压力测试，BER / PSNR / SSIM / VMAF（对齐后）指标，真实视频解码/编码、
 相位相关对齐与差分样本制备，压缩域（码流层）QP 图/码量分配/GOP/SEI 分析
-（支持与干净基准的差分判定），以及内容变换实验（分镜重排/变速/重新构图/重调光/
-贴纸 + 自建内容/运动 embedding 与 dHash 相似度量化）。
+（支持与干净基准的差分判定），以及内容变换实验（分镜重排/变速/重新构图/重调光
++ 自建内容/运动 embedding 与 dHash 相似度量化）。

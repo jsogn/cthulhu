@@ -53,7 +53,6 @@ class TransformContext:
 
     gammas: np.ndarray
     deltas: np.ndarray
-    banner: str
     seed: int
     ref_mean: float | np.ndarray
     ref_std: float | np.ndarray
@@ -97,8 +96,6 @@ class ThoroughStrategy:
             frames = video_transform.regrade_with_params(
                 frames, ctx.gammas[output_ids], ctx.deltas[output_ids],
             )
-        if ctx.banner:
-            frames = video_transform.overlay_banner(frames, ctx.banner, ctx.seed)
         if options.anti_reembed:
             frames = video_transform.midband_perturb(frames, strength=0.4, rng=ctx.mid_rng)
         if options.denoise:
@@ -242,30 +239,6 @@ def _fast_sharpen_u8(frames: np.ndarray, amount: float = 0.25, radius: float = 1
     return map_frames(unsharp, frames)
 
 
-def _fast_banner_u8(frames: np.ndarray, text: str, seed: int = 0, margin_frac: float = 0.04) -> np.ndarray:
-    """贴纸条（uint8 直通）：与 float 版本同布局参数的 PIL 绘制。"""
-    from PIL import ImageDraw, ImageFont
-
-    rng = np.random.default_rng(seed)
-    h, w = frames.shape[1:3]
-    margin = int(w * margin_frac)
-    box_h = int(h * 0.12)
-    y0 = int(rng.uniform(margin, max(margin + 1, h - box_h - margin)))
-    font = ImageFont.load_default(size=max(12, box_h - 10))
-
-    def draw_frame(frame: np.ndarray) -> np.ndarray:
-        mode = "RGB" if frame.ndim == 3 else "L"
-        image = Image.fromarray(frame, mode=mode).convert("RGB")
-        draw = ImageDraw.Draw(image, "RGBA")
-        draw.rectangle([margin, y0, w - margin, y0 + box_h], fill=(0, 0, 0, 120))
-        draw.text((margin + 12, y0 + (box_h - 16) // 2), text, fill=(255, 255, 255, 220), font=font)
-        return np.asarray(image.convert("RGB" if frame.ndim == 3 else "L"), dtype=np.uint8)
-
-    from cthulhu_backend.parallel import map_frames
-
-    return map_frames(draw_frame, frames)
-
-
 def rotate_de_sync(
     frames: np.ndarray,
     output_ids: list[int],
@@ -307,8 +280,8 @@ def rotate_de_sync(
 class FastStrategy:
     """快速档：整条主链在 uint8 域端到端执行，免去多次精度往返。
 
-    recrop/sharpen/banner 走 PIL 直通，regrade 走查表，color_restore 仅
-    在 uint8 上做 float32 校正；无 uint8 原语的少数操作按需往返 float32。
+    recrop/sharpen 走 PIL 直通，regrade 走查表，color_restore 仅在 uint8 上
+    做 float32 校正；无 uint8 原语的少数操作按需往返 float32。
     变换序列与 thorough 顺序一致，是否保留由检测基准 A/B 决定。
     """
 
@@ -329,8 +302,6 @@ class FastStrategy:
             frames = fast_regrade_u8(
                 frames, ctx.gammas[output_ids], ctx.deltas[output_ids],
             )
-        if ctx.banner:
-            frames = _fast_banner_u8(frames, ctx.banner, ctx.seed)
         if options.anti_reembed:
             frames = _u8_roundtrip(
                 frames, lambda f: video_transform.midband_perturb(f, strength=0.4, rng=ctx.mid_rng)

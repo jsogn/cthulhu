@@ -41,13 +41,6 @@ def test_retime_and_recrop_shapes():
     assert cropped.shape == video.shape
 
 
-def test_overlay_banner_changes_pixels():
-    video = samples.make_video_frames(3, 160, 120, seed=9)
-    out = video_transform.overlay_banner(video, "DEMO")
-    assert out.shape == video.shape
-    assert float(np.mean(np.abs(out - video))) > 0.001
-
-
 def test_similarity_bounds_and_regrade():
     video = samples.make_video_frames(4, 128, 128, seed=10)
     identical = embedding.similarity_report(video, video)
