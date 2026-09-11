@@ -130,7 +130,9 @@ POST /api/desensitize   {"path": "...", "output": "...", ...} → 研究性变�
 pnpm package                 # 前端构建 → PyInstaller 后端 → electron-builder dmg
 ```
 
-产物：`packaging/dist/Cthulhu-0.1.0-arm64.dmg`。当前为未签名研究实验构建；
+产物：`packaging/dist/Cthulhu-<版本>-arm64.dmg`（版本号唯一真值在
+`backend/src/cthulhu_backend/version.py`，其余清单由
+`backend/scripts/sync_version.py` 同步）。当前为未签名研究实验构建；
 签名/公证与 Windows 打包仅作为工程化验证项，不代表允许对外商业化分发。
 打包版依赖系统安装的 ffmpeg/ffprobe（检测/变换实验/修复/VMAF 均需要）。
 
