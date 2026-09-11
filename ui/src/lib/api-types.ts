@@ -883,11 +883,6 @@ export interface components {
              */
             dct_step: number;
             /**
-             * Drop Every
-             * @default 0
-             */
-            drop_every: number;
-            /**
              * Temporal Sub
              * @default 0
              */
@@ -902,11 +897,6 @@ export interface components {
              * @default 0
              */
             dwt_detail: number;
-            /**
-             * Hsv Jitter
-             * @default 0
-             */
-            hsv_jitter: number;
             /**
              * Face Perturb
              * @default 0
@@ -957,26 +947,6 @@ export interface components {
              * @default 0
              */
             warp: number;
-            /**
-             * Subtract Beta
-             * @default 0
-             */
-            subtract_beta: number;
-            /**
-             * Saliency
-             * @default 0
-             */
-            saliency: number;
-            /**
-             * Chroma Levels
-             * @default 0
-             */
-            chroma_levels: number;
-            /**
-             * Native Filters
-             * @default false
-             */
-            native_filters: boolean;
             /**
              * Purify Strength
              * @default 0
@@ -1212,11 +1182,6 @@ export interface components {
              * @default 0
              */
             dwtDetail: number;
-            /**
-             * Hsvjitter
-             * @default 0
-             */
-            hsvJitter: number;
             /**
              * Jitter
              * @default 0

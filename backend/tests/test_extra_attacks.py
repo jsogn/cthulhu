@@ -51,13 +51,12 @@ def test_median_noise_requant_change_pixels_keep_shape():
     assert float(np.abs(out).max()) <= 1.0
 
 
-def test_dct_requant_and_drop_duplicate():
+def test_dct_requant_changes_pixels_keeps_shape():
     frames = make_frames()
     out = extra_attacks.apply(
-        frames, extra_attacks.AssaultParams(dct_step=12.0, drop_every=3), np.random.default_rng(3)
+        frames, extra_attacks.AssaultParams(dct_step=12.0), np.random.default_rng(3)
     )
     assert out.shape == frames.shape
-    np.testing.assert_array_equal(out[3], out[2])  # 抽帧复制
     assert float(np.mean(np.abs(out[0] - frames[0]))) > 0
 
 
@@ -144,56 +143,3 @@ def test_local_warp_deterministic_and_content_preserving():
     assert float(np.mean(np.abs(first - frames))) > 1e-4
     assert float(np.abs(first.mean() - frames.mean())) < 0.05
 
-
-def test_estimate_subtract_reduces_spread_spectrum_score():
-    from cthulhu_backend.watermark import common, detect, ss
-
-    frames = make_frames()
-    bits = common.payload_bits(1, 64)
-    watermarked = np.stack([ss.embed(frame, bits, seed=0, alpha=0.25) for frame in frames])
-    before = detect.video_scores(watermarked)["ss"]
-    attacked = extra_attacks.estimate_subtract(watermarked, beta=1.2, size=3)
-    after = detect.video_scores(attacked)["ss"]
-    assert after < before
-
-
-def test_saliency_overlay_deterministic_and_changes_content():
-    frames = make_frames(color=True)
-    layout = extra_attacks.saliency_layout(9, level=2)
-    assert layout is not None and layout.mosaic is not None
-    first = extra_attacks.salient_overlay(frames, layout)
-    second = extra_attacks.salient_overlay(frames, layout)
-    assert first.shape == frames.shape
-    np.testing.assert_array_equal(first, second)
-    assert float(np.mean(np.abs(first.astype(np.float32) - frames.astype(np.float32)))) > 0.02
-    assert extra_attacks.saliency_layout(9, 0) is None
-
-
-def test_saliency_higher_levels_add_strong_content():
-    layout3 = extra_attacks.saliency_layout(9, level=3)
-    layout4 = extra_attacks.saliency_layout(9, level=4)
-    assert layout3 is not None and layout3.title_text and layout3.band_blur
-    assert layout4 is not None and layout4.pip
-    frames = make_frames(color=True)
-    out = extra_attacks.salient_overlay(frames, layout4)
-    assert out.shape == frames.shape
-    assert float(np.mean(np.abs(out.astype(np.float32) - frames.astype(np.float32)))) > 0.05
-
-
-def test_chroma_quant_preserves_luma_reduces_chroma():
-    rng = np.random.default_rng(5)
-    luma = rng.random((4, 64, 48, 1), dtype=np.float32)
-    chroma = rng.normal(0, 0.2, (4, 64, 48, 3)).astype(np.float32)
-    frames = np.clip(np.repeat(luma, 3, axis=-1) + chroma, 0, 1).astype(np.float32)
-    out = extra_attacks.apply(
-        frames, extra_attacks.AssaultParams(chroma_levels=16), np.random.default_rng(6)
-    )
-    assert out.shape == frames.shape
-
-    def luma_of(array: np.ndarray) -> np.ndarray:
-        return 0.299 * array[..., 0] + 0.587 * array[..., 1] + 0.114 * array[..., 2]
-
-    cb_out = -0.168736 * out[..., 0] - 0.331264 * out[..., 1] + 0.5 * out[..., 2]
-    distinct_levels = np.unique(np.round(cb_out * 15)).size
-    assert distinct_levels <= 16
-    assert float(np.abs(luma_of(out).mean() - luma_of(frames).mean())) < 0.05

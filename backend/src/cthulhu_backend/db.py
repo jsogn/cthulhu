@@ -73,12 +73,13 @@ def _preset_payload(**overrides) -> dict:
 
 # 预置内容签名：改动 PRESET_TEMPLATES 内容必须同时升 PRESET_VERSION 并更新这里，
 # 否则 test_preset_content_signature_matches_version 会失败（审计 R3 的两次真实故障）。
-PRESET_SIGNATURES = {34: "39d4e9a2cc3cf935"}
+PRESET_SIGNATURES = {34: "39d4e9a2cc3cf935", 35: "b35382a1d4e64629"}
 
 
-# v34：内置模板换成四个「大平台深度水印」预设（画质优先/平衡/强力/深度清剿），
-# 全部启用画面重建；旧库里的经典武器模板会在下次启动时被替换。
-PRESET_VERSION = 34
+# v35：模板 payload 随参数精简收敛（移除 hsvJitter 等已删字段）后重新播种。
+# v34 起内置四个「大平台深度水印」预设（画质优先/平衡/强力/深度清剿），
+# 全部启用画面重建；旧库里的经典武器模板与旧字段会在下次启动时被替换。
+PRESET_VERSION = 35
 
 
 PRESET_TEMPLATES = [

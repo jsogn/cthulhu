@@ -445,9 +445,6 @@ def test_desensitize_accepts_snake_case_anti_options(tmp_path):
             "phash_epsilon": 0.03,
             "dct_step": 12,
             "requant": 32,
-            "chroma_levels": 32,
-            "drop_every": 7,
-            "subtract_beta": 1.2,
             "audio_strong": True,
         },
     )

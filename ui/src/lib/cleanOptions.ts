@@ -16,7 +16,6 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     recrop: state.recropOn ? FIXED_CROP : 0,
     perturb: FIXED_PERTURB,
     regrade: state.regradeOn,
-    ...(state.regradeOn ? { hsv_jitter: 6, chroma_levels: 32 } : {}),
     audio_remix: state.audioClean,
     echo_defeat: state.echoDefeat,
     skip_vmaf: true,

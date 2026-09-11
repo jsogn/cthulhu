@@ -24,7 +24,7 @@ def main() -> None:
     out = os.path.join(tmp, "out.mp4")
     opts = {
         "reorder": False, "speed": 1.0, "recrop": 0.0, "perturb": 0.15,
-        "regrade": True, "hsv_jitter": 6, "chroma_levels": 32,
+        "regrade": True,
         "audio_remix": False, "echo_defeat": False, "audio_strong": False,
         "sharpness": True, "color_restore": True, "denoise": True,
         "rotate": 0.5, "requant": 64, "noise": 0.003, "dct_step": 12.0,

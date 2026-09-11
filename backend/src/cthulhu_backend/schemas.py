@@ -91,11 +91,9 @@ class DesensitizeOptions(BaseModel):
     noise: float = Field(0.0, ge=0, le=1)
     requant: int = Field(0, ge=0, le=256)
     dct_step: float = Field(0.0, ge=0, le=256)
-    drop_every: int = Field(0, ge=0, le=1000)
     temporal_sub: float = Field(0.0, ge=0, le=4)
     fft_phase: float = Field(0.0, ge=0, le=1)
     dwt_detail: float = Field(0.0, ge=0, le=1)
-    hsv_jitter: float = Field(0.0, ge=0, le=30)
     face_perturb: float = Field(0.0, ge=0, le=0.2)
     lpc_attack: float = Field(0.0, ge=0, le=1)
     copy_attack: float = Field(0.0, ge=0, le=0.2)
@@ -106,10 +104,6 @@ class DesensitizeOptions(BaseModel):
     jitter: float = Field(0.0, ge=0, le=1)
     perspective: float = Field(0.0, ge=0, le=1)
     warp: float = Field(0.0, ge=0, le=1)
-    subtract_beta: float = Field(0.0, ge=0, le=4)
-    saliency: int = Field(0, ge=0, le=4)
-    chroma_levels: int = Field(0, ge=0, le=256)
-    native_filters: bool = False
     purify_strength: float = Field(0.0, ge=0, le=1)
     # 潜空间净化：strength 只作开关（>0 启用），实际强度由边缘/带宽决定。
     purify_detail: float = Field(TIER_DETAIL, ge=0, le=1)
@@ -180,7 +174,6 @@ class TemplatePayload(BaseModel):
     temporalSub: float = 0.0
     fftPhase: float = 0.0
     dwtDetail: float = 0.0
-    hsvJitter: float = 0.0
     jitter: float = 0.0
     perspective: float = 0.0
     warp: float = 0.0

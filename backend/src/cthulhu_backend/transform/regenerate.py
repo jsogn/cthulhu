@@ -4,8 +4,8 @@
 - temporal_subtract：跨帧估计帧间固定水印并过减（针对空域扩频协同检测）；
 - fft_phase：保留频谱幅值、随机化中高频相位（针对 DFT 扩频相位相关）；
 - dwt_detail：随机化 Haar 对角线细节子带（针对小波细节子带嵌入）；
-另有 hsv_jitter（色度/色彩描述子）、copy_attack（DINOv2 判重代理 SPSA）
-与 face_perturb（人脸区域扰动）三个可选原语。
+另有 copy_attack（DINOv2 判重代理 SPSA）与 face_perturb（人脸区域扰动）
+两个可选原语。
 
 全部原语确定性（同一 rng 下结果一致），灰度/彩色帧通用，不做几何改变，
 不引入新依赖（numpy/scipy/PIL/cv2 均为既有依赖）。
@@ -150,36 +150,6 @@ def dwt_detail(
 
     attacked = np.stack(map_frames(one, [work[i] for i in range(len(work))]))
     return _as_original(attacked, original_dtype)
-
-
-def hsv_jitter(
-    frames: np.ndarray,
-    strength: float,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    """HSV 抖动：逐帧微移色相、微调饱和度，破坏色度/色彩描述子。"""
-    if strength <= 0 or frames.ndim != 4:
-        return frames
-    import cv2
-
-
-    is_u8 = frames.dtype == np.uint8
-    hue_deltas = rng.uniform(-strength, strength, len(frames))
-    sat_factors = 1.0 + rng.uniform(-1.0, 1.0, len(frames)) * min(0.25, strength * 0.02)
-
-    def one(pair: tuple[np.ndarray, float, float]) -> np.ndarray:
-        frame, hue_delta, sat_factor = pair
-        base = frame if is_u8 else (np.clip(frame, 0, 1) * 255).round().astype(np.uint8)
-        hsv = cv2.cvtColor(base, cv2.COLOR_RGB2HSV).astype(np.int16)
-        hsv[..., 0] = (hsv[..., 0] + round(hue_delta * 0.5)) % 180
-        hsv[..., 1] = np.clip(hsv[..., 1] * sat_factor, 0, 255)
-        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
-        if is_u8:
-            return result
-        return result.astype(frames.dtype) / 255.0
-
-    # OpenCV 在多线程析构时存在 TLS 崩溃风险，色相抖动顺序执行。
-    return np.stack([one(item) for item in zip(frames, hue_deltas, sat_factors)])
 
 
 def _spsa_field(

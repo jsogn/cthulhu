@@ -15,12 +15,9 @@ const ANTI_TAG_LABELS: [string, string][] = [
   ["noise", "噪声扰动"],
   ["requant", "像素重量化"],
   ["dct_step", "DCT 重量化"],
-  ["chroma_levels", "色度量化"],
-  ["drop_every", "抽帧"],
   ["jitter", "抖动"],
   ["perspective", "透视"],
   ["warp", "扭曲"],
-  ["subtract_beta", "残差抑制"],
   ["multi_hash_attack", "多哈希对抗"],
   ["audio_strong", "音频强化"],
 ];
@@ -58,7 +55,6 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
     });
   }
   if (enabled(options.spoof)) rows.push({ label: "反爬伪装", value: "开启" });
-  if (num(options.saliency) > 0) rows.push({ label: "显著性伪装", value: "开启" });
   if (num(options.speed) !== 0 && options.speed !== 1) {
     rows.push({ label: "变速", value: `×${options.speed}` });
   }

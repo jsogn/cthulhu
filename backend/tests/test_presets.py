@@ -98,7 +98,6 @@ def test_preset_payloads_cover_all_clean_options() -> None:
         "warp",
         "perspective",
         "jitter",
-        "hsvJitter",
         "facePerturb",
         "lpcAttack",
         "copyAttack",

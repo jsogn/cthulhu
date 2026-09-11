@@ -56,7 +56,6 @@ describe("makeCleanOptions", () => {
     expect(options.recrop).toBe(FIXED_CROP);
     expect(options.perturb).toBe(FIXED_PERTURB);
     expect(options.regrade).toBe(true);
-    expect(options.hsv_jitter).toBe(6);
   });
 
   it("默认跳过 VMAF 质量评估，保留 PSNR/SSIM", () => {

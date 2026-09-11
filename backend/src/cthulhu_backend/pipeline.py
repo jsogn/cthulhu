@@ -234,7 +234,6 @@ class _DesensitizeState:
     ssim_target: float
     assault_rng: Any
     assault_params: Any
-    saliency_obj: Any
     recrop: float
     filter_scale: int
     regrade: bool
@@ -331,8 +330,6 @@ def _apply_attacks(
         frames = extra_attacks.quality_gate(
             original, frames, state.psnr_target, state.ssim_target
         )
-    if state.saliency_obj is not None:
-        frames = extra_attacks.salient_overlay(frames, state.saliency_obj)
     return frames
 
 
@@ -566,21 +563,16 @@ def _yuv_fast_path_enabled(
         and not opts.anti_reembed
         and not opts.spoof
         and not opts.quality_protect
-        and opts.saliency == 0
         and opts.jitter <= 0
         and opts.perspective <= 0
         and opts.warp <= 0
         and opts.median <= 0
-        and opts.subtract_beta <= 0
         and opts.temporal_sub <= 0
         and opts.fft_phase <= 0
         and opts.dwt_detail <= 0
         and opts.face_perturb <= 0
         and opts.copy_attack <= 0
-        and opts.hsv_jitter <= 0
         and opts.dct_step <= 0
-        and opts.chroma_levels <= 0
-        and opts.drop_every <= 0
         and not opts.multi_hash_attack
         and not opts.dhash_attack
         and opts.purify_strength <= 0
@@ -641,7 +633,6 @@ def prepare_desensitize(
         or opts.reorder
         or opts.shot_retime
         or opts.cut_jitter > 0
-        or opts.drop_every > 0
         or (opts.fps_out is not None and opts.fps_out != fps_in)
     )
 
@@ -692,7 +683,6 @@ def prepare_desensitize(
     sharpness_eff = opts.sharpness
     noise_eff = opts.noise
     requant_eff = opts.requant
-    chroma_eff = opts.chroma_levels
     denoise_eff = opts.denoise
     # 几何/调光下沉到编码器滤镜链：仅在无重排、无变速的快路径上启用，
     # 避免输出帧号与原帧号不一致时表达式错位；其余路径保持 numpy 实现。
@@ -732,15 +722,6 @@ def prepare_desensitize(
         expr = f"round(val*{scale:.6f})*{1.0 / scale:.6f}"
         base_filters.append(f"lut=r='{expr}':g='{expr}':b='{expr}'")
         requant_eff = 0
-    if opts.chroma_levels > 0 and ffmpeg.has_filter("lutyuv"):
-        # 色度量化原生下沉：YUV 域对 U/V 平面查表量化，Y 原样保留。
-        levels = opts.chroma_levels
-        scale = (levels - 1) / 255.0
-        expr = f"128+round((val-128)*{scale:.6f})*{1.0 / scale:.6f}"
-        base_filters.append(
-            f"format=yuv444p,lutyuv=y='val':u='{expr}':v='{expr}',format=rgb24"
-        )
-        chroma_eff = 0
     # 跨帧估计的原生加速：ffmpeg 链（median+tmix+blend 两步重构）在原生几何
     # 快路径上启用；numpy 版作为重排/变速路径的兜底。
     temporal_eff = opts.temporal_sub
@@ -762,20 +743,14 @@ def prepare_desensitize(
         warp=opts.warp,
         median=opts.median,
         noise=noise_eff,
-        subtract_beta=opts.subtract_beta,
         requant=requant_eff,
         dct_step=opts.dct_step,
-        chroma_levels=chroma_eff,
-        drop_every=opts.drop_every,
         temporal_sub=temporal_eff,
         fft_phase=opts.fft_phase,
         dwt_detail=opts.dwt_detail,
-        hsv_jitter=opts.hsv_jitter,
         face_perturb=opts.face_perturb,
         copy_attack=opts.copy_attack,
     )
-    saliency_obj = extra_attacks.saliency_layout(opts.seed, opts.saliency)
-
     sampled_color: np.ndarray | None = None
     color_starts: list[int] = [0]
     if opts.auto_profile:
@@ -893,7 +868,6 @@ def prepare_desensitize(
         ssim_target=opts.ssim_target,
         assault_rng=assault_rng,
         assault_params=assault_params,
-        saliency_obj=saliency_obj,
         recrop=opts.recrop,
         filter_scale=opts.filter_scale,
         regrade=opts.regrade,

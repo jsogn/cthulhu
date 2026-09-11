@@ -59,19 +59,6 @@ def test_fft_phase_preserves_energy_and_layout():
     assert drift < 0.1
 
 
-def test_hsv_jitter_color_only():
-    clean = samples.make_cut_video(2, 4, 96, 64, seed=5)
-    color = np.stack([np.stack([f, f, f], axis=-1) for f in clean])
-    out = regenerate.hsv_jitter(color, strength=10.0, rng=np.random.default_rng(7))
-    assert out.shape == color.shape
-    assert out.dtype == color.dtype
-    mse = float(np.mean((color - out) ** 2))
-    assert 10 * np.log10(1.0 / mse) > 30
-    # 灰度帧原样返回。
-    gray_out = regenerate.hsv_jitter(clean, strength=10.0, rng=np.random.default_rng(7))
-    np.testing.assert_array_equal(gray_out, clean)
-
-
 def test_copy_attack_reduces_copy_similarity_more_than_random():
     import pytest
     from scipy.ndimage import zoom

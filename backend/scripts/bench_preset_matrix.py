@@ -66,9 +66,6 @@ def payload_to_options(payload: dict) -> dict:
         "skip_vmaf": True,
         "seed": 0,
     }
-    if payload.get("regradeOn"):
-        opts["hsv_jitter"] = 6
-        opts["chroma_levels"] = 32
     if payload.get("dctStep", 0) > 0:
         opts["dct_step"] = 12.0
         opts["anti_reembed"] = True

@@ -34,7 +34,6 @@ describe("cleanPanel store", () => {
       temporalSub: 1.0,
       fftPhase: 0.4,
       dwtDetail: 0,
-      hsvJitter: 0,
       jitter: 0.01,
       perspective: 0.02,
       warp: 0.004,

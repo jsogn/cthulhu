@@ -201,14 +201,9 @@ def _build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--noise", type=float, default=0.0)
     parser.add_argument("--requant", type=int, default=0)
     parser.add_argument("--dct-step", type=float, default=0.0)
-    parser.add_argument("--drop-every", type=int, default=0)
     parser.add_argument("--jitter", type=float, default=0.0)
     parser.add_argument("--perspective", type=float, default=0.0)
     parser.add_argument("--warp", type=float, default=0.0)
-    parser.add_argument("--subtract-beta", type=float, default=0.0)
-    parser.add_argument("--saliency", type=int, default=0)
-    parser.add_argument("--chroma-levels", type=int, default=0)
-    parser.add_argument("--native-filters", action="store_true")
     parser.add_argument("--no-regrade", action="store_true")
     parser.add_argument("--no-sharpness", action="store_true")
     parser.add_argument("--no-color-restore", action="store_true")
@@ -257,14 +252,9 @@ def _main(argv: list[str] | None = None) -> None:
             noise=args.noise,
             requant=args.requant,
             dct_step=args.dct_step,
-            drop_every=args.drop_every,
             jitter=args.jitter,
             perspective=args.perspective,
             warp=args.warp,
-            subtract_beta=args.subtract_beta,
-            saliency=args.saliency,
-            chroma_levels=args.chroma_levels,
-            native_filters=args.native_filters,
             regrade=not args.no_regrade,
             sharpness=not args.no_sharpness,
             color_restore=not args.no_color_restore,

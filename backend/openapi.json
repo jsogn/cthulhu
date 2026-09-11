@@ -1854,13 +1854,6 @@
             "title": "Dct Step",
             "default": 0.0
           },
-          "drop_every": {
-            "type": "integer",
-            "maximum": 1000.0,
-            "minimum": 0.0,
-            "title": "Drop Every",
-            "default": 0
-          },
           "temporal_sub": {
             "type": "number",
             "maximum": 4.0,
@@ -1880,13 +1873,6 @@
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Dwt Detail",
-            "default": 0.0
-          },
-          "hsv_jitter": {
-            "type": "number",
-            "maximum": 30.0,
-            "minimum": 0.0,
-            "title": "Hsv Jitter",
             "default": 0.0
           },
           "face_perturb": {
@@ -1954,32 +1940,6 @@
             "minimum": 0.0,
             "title": "Warp",
             "default": 0.0
-          },
-          "subtract_beta": {
-            "type": "number",
-            "maximum": 4.0,
-            "minimum": 0.0,
-            "title": "Subtract Beta",
-            "default": 0.0
-          },
-          "saliency": {
-            "type": "integer",
-            "maximum": 4.0,
-            "minimum": 0.0,
-            "title": "Saliency",
-            "default": 0
-          },
-          "chroma_levels": {
-            "type": "integer",
-            "maximum": 256.0,
-            "minimum": 0.0,
-            "title": "Chroma Levels",
-            "default": 0
-          },
-          "native_filters": {
-            "type": "boolean",
-            "title": "Native Filters",
-            "default": false
           },
           "purify_strength": {
             "type": "number",
@@ -2371,11 +2331,6 @@
           "dwtDetail": {
             "type": "number",
             "title": "Dwtdetail",
-            "default": 0.0
-          },
-          "hsvJitter": {
-            "type": "number",
-            "title": "Hsvjitter",
             "default": 0.0
           },
           "jitter": {
