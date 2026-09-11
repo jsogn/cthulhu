@@ -516,3 +516,50 @@ electron 3 项。注：上面验收写的「后端 296 项」与实际基线不�
 
 **遗留**：`docs/研究-通杀验收.md` 与 `docs/研究-性能-武器加速清单.md` 作为
 历史研究记录保持原样（其中的参数表只反映当时的武器库）。
+
+## 8. 代码健康审计结果与待修项（2026-09-11，Brooks-Lint Health Dashboard）
+
+**综合分 92/100**（Code Quality 100 / Architecture 84 / Tech Debt 93 / Test Quality 94），
+逐条证据见下。历史记录在项目根 `.brooks-lint-history.json`。
+
+### 🔴 Critical
+
+**R1 Cognitive Overload — `pipeline._prepare_desensitize` 是 463 行巨函数**
+（`backend/src/cthulhu_backend/pipeline.py`，审计时为 545–1008 行；内部还嵌着 214 行的
+`purify_progress`。）任何流程改动都要在这一个函数里找位置，回归风险集中。
+Source: Fowler — Long Method；McConnell — Code Complete Ch.7。
+**进度：1/3 已完成**（提交 `d125398` 抽出 `_plan_purify` + `_PurifyPlan`，463→417 行）。
+**剩余**：`transform_options` 组装（约 30 行）、`shot_options` 逐镜头装配（约 20 行）
+两段可继续抽出，目标降到 ~350 行；`purify_progress` 提为模块级函数。
+
+### 🟡 Warning
+
+**R3 Knowledge Duplication — "档位默认值"这一决策写在四个地方**
+`backend/schemas.py` 字段默认值、`backend/db.py` 的 `PRESET_TEMPLATES`、
+`ui/src/stores/cleanPanel.ts` 的 `CLEAN_DEFAULTS` 与 `applyBlackBoxPreset`、
+`ui/src/lib/templates.ts` 的 `DEFAULT_TEMPLATE`，另有 `CleanPane.tsx` 的档位→参数映射；
+相关引用 115 处、横跨 10 个文件（不含生成的 `api-types.ts`）。
+Source: Ousterhout — Information Leakage；Hunt & Thomas — Orthogonality。
+**已造成过两次真实故障**：预设 σ 改了但 `PRESET_VERSION` 没升（用户拿到"糊版"）；
+"画质优先"在模板与面板取到不同边缘值。
+**目标**：档位唯一定义收敛到后端一处（如 `backend/.../tiers.py` 导出 `TIERS`），
+预置模板与面板默认值均从它派生；前端只保留枚举，经 `openapi → api-types.ts` 获得。
+
+**T2 Test Brittleness — 26 处测试直接断言私有实现**
+`backend/tests/` 引用 `purify._reinject_detail`、`purify._unsharp_batch`、
+`pipeline._purify_progress`、`services._purify_note`、`profile._SCHEME_*` 等。
+Source: Osherove — Test isolation；Meszaros — Implementation coupling。
+**目标**：算法型助手（如 `_unsharp_batch`、`_detail_scale`）提升为公开模块
+（如 `transform/postprocess.py`）并测其行为，其余改为经公开入口的可观察行为验证。
+
+### 🟢 Suggestion
+
+- **R5 Dependency Disorder**：`media/installer.py:14` 直接导入 `db`，安装器的单测被迫拉起数据库 → 改为由调用方注入配置值。
+- **R3 研究侧脚手架重复**：`research/scripts/` 43 个脚本只有 6 个复用共用实现，其余各自复制帧读取/方案构建/BA 与质量指标；口径差异曾导致"PSNR 68dB"的假读数 → 抽 `research/scripts/_harness.py`，新脚本一律基于它。
+- **R2 方案映射两份真值**：`transform/profile.py`（`_SCHEME_ATTACK`/`_SCHEME_MAX_EDGE`）与前端 `CleanPane.tsx`/`cleanPanel.ts` 的档位推导各写一份 → 后端下发只读映射，前端只展示。
+
+### 验收方式
+
+每项完成后：后端 `CTHULHU_PURIFY_MODEL_DIR=$PWD/packaging/models uv run --project backend --extra purify python -m pytest backend/tests -q -p no:warnings` + `ruff check`；
+前端 `export PATH="$HOME/.nvm/versions/node/v22.21.1/bin:$PATH"` 后 `pnpm --dir ui typecheck && pnpm --dir ui test && pnpm --dir ui build && pnpm --dir electron test`；
+改后端 schema 后必须重跑 `export_openapi.py` + `pnpm --dir ui generate-api`。
