@@ -528,9 +528,12 @@ electron 3 项。注：上面验收写的「后端 296 项」与实际基线不�
 （`backend/src/cthulhu_backend/pipeline.py`，审计时为 545–1008 行；内部还嵌着 214 行的
 `purify_progress`。）任何流程改动都要在这一个函数里找位置，回归风险集中。
 Source: Fowler — Long Method；McConnell — Code Complete Ch.7。
-**进度：1/3 已完成**（提交 `d125398` 抽出 `_plan_purify` + `_PurifyPlan`，463→417 行）。
-**剩余**：`transform_options` 组装（约 30 行）、`shot_options` 逐镜头装配（约 20 行）
-两段可继续抽出，目标降到 ~350 行；`purify_progress` 提为模块级函数。
+**进度：3/3 已完成**。`d125398` 抽 `_plan_purify` + `_PurifyPlan`（463→417 行）；
+本轮再抽 `_build_transform_options` / `_build_shot_options` / `_yuv_fast_path_enabled` /
+`_color_reference_stats` 四个装配函数，并把 `_encode_desensitize` 内嵌的
+`purify_progress` 提为模块级 `_PurifyProgress`（417→339 行，达成 ≤350 目标）。
+两轮都是纯重构，行为不变：后端 284 项（283 passed / 1 skipped）+ UI 45 项 +
+electron 3 项全绿。
 
 ### 🟡 Warning
 

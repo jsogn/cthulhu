@@ -383,6 +383,32 @@ def _purify_progress(
     return min(90, percent), f"潜空间净化 {processed}/{total}"
 
 
+@dataclass
+class _PurifyProgress:
+    """净化进度桥：批次内进度换算成整片百分比（线程本地控制面，不跨进程）。"""
+
+    progress_cb: Any
+    total_out: int
+    base: int = 0
+    count: int = 1
+
+    def set_batch(self, base: int, count: int) -> None:
+        self.base = base
+        self.count = count
+
+    def __call__(self, fraction: float, note: str) -> None:
+        if not self.progress_cb or not self.total_out:
+            return
+        if note.startswith("下载"):
+            percent = 8 + int(self.base / self.total_out * 82)
+            self.progress_cb(min(90, percent), note)
+            return
+        percent, global_note = _purify_progress(
+            self.base, self.count, fraction, self.total_out
+        )
+        self.progress_cb(percent, global_note)
+
+
 def _transform_chunk_worker(payload: dict) -> np.ndarray:
     """进程池工作项：解码块 → 变换 → 攻击，返回按序待编码的帧。"""
     import dataclasses as dc
@@ -634,6 +660,124 @@ def _plan_purify(
     )
 
 
+def _build_transform_options(
+    opts: DesensitizeOptions,
+    plan: _PurifyPlan,
+    *,
+    recrop: float,
+    regrade: bool,
+    sharpness: bool,
+    denoise: bool,
+) -> strategies.TransformOptions:
+    """组装与分块无关的变换选项（原生下沉后的有效值由调用方算好）。"""
+    return strategies.TransformOptions(
+        recrop=recrop,
+        regrade=regrade,
+        anti_reembed=opts.anti_reembed,
+        color_restore=opts.color_restore,
+        sharpness=sharpness,
+        denoise=denoise,
+        spoof=opts.spoof,
+        purify_strength=plan.strength,
+        purify_detail=plan.detail,
+        purify_detail_sigma=opts.purify_detail_sigma,
+        purify_detail_wide=opts.purify_detail_wide,
+        purify_temporal=plan.temporal,
+        purify_max_edge=plan.max_edge,
+        purify_batch=opts.purify_batch,
+        embedding_attack=plan.embedding_attack,
+        embedding_strength=opts.embedding_strength,
+        embedding_variant=opts.embedding_variant,
+        embedding_aggressive=opts.embedding_aggressive,
+    )
+
+
+def _build_shot_options(
+    opts: DesensitizeOptions,
+    plan: _PurifyPlan,
+    base: strategies.TransformOptions,
+) -> list[strategies.TransformOptions] | None:
+    """逐镜头选项：仅在启用自动画像且拿到镜头画像时细分，否则整片共用一份。"""
+    if not (opts.auto_profile and plan.shot_profiles):
+        return None
+    shot_options: list[strategies.TransformOptions] = []
+    for shot_prof in plan.shot_profiles:
+        shot_strength = (
+            min(opts.purify_strength, shot_prof.suggested_purify_strength)
+            if plan.strength > 0
+            else 0.0
+        )
+        shot_options.append(
+            replace(
+                base,
+                purify_strength=shot_strength,
+                purify_max_edge=plan.max_edge,
+                purify_temporal=min(
+                    opts.purify_temporal, shot_prof.suggested_purify_temporal
+                ),
+                embedding_attack=shot_prof.suggested_attack,
+            )
+        )
+    return shot_options
+
+
+def _yuv_fast_path_enabled(
+    opts: DesensitizeOptions,
+    strategy,
+    use_native_geometry: bool,
+) -> bool:
+    """YUV420p 快路径：所有像素变换都已下沉原生、且无 RGB 专属选项。"""
+    return (
+        use_native_geometry
+        and getattr(strategy, "name", "") == "fast"
+        and not opts.color_restore
+        and not opts.banner
+        and not opts.anti_reembed
+        and not opts.spoof
+        and not opts.quality_protect
+        and opts.saliency == 0
+        and opts.jitter <= 0
+        and opts.perspective <= 0
+        and opts.warp <= 0
+        and opts.median <= 0
+        and opts.subtract_beta <= 0
+        and opts.temporal_sub <= 0
+        and opts.fft_phase <= 0
+        and opts.dwt_detail <= 0
+        and opts.face_perturb <= 0
+        and opts.copy_attack <= 0
+        and opts.hsv_jitter <= 0
+        and opts.dct_step <= 0
+        and opts.chroma_levels <= 0
+        and opts.drop_every <= 0
+        and not opts.multi_hash_attack
+        and not opts.dhash_attack
+        and opts.purify_strength <= 0
+        and opts.embedding_strength <= 0
+    )
+
+
+def _color_reference_stats(
+    path: str,
+    opts: DesensitizeOptions,
+    sampled_color: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """调光参考统计：缓存优先；未开调光时返回零值占位。"""
+    if not opts.color_restore:
+        return np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32)
+    cached_stats = analysis_cache.get_color_stats(path)
+    if cached_stats is not None:
+        return cached_stats
+    color_sampled = sampled_color
+    if color_sampled is None or len(color_sampled) == 0:
+        color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
+    ref_mean, ref_std = channel_stats(color_sampled)
+    if color_sampled is not sampled_color:
+        del color_sampled
+    analysis_cache.put_color_stats(path, ref_mean, ref_std)
+    return ref_mean, ref_std
+
+
 def _prepare_desensitize(
     path: str,
     opts: DesensitizeOptions,
@@ -808,21 +952,7 @@ def _prepare_desensitize(
             path, cap=60, grayscale=False, return_starts=True
         )
 
-    if opts.color_restore:
-        cached_stats = analysis_cache.get_color_stats(path)
-        if cached_stats is not None:
-            ref_mean, ref_std = cached_stats
-        else:
-            color_sampled = sampled_color
-            if color_sampled is None or len(color_sampled) == 0:
-                color_sampled, _ = ffmpeg.decode_sampled(path, cap=40, grayscale=False)
-            ref_mean, ref_std = channel_stats(color_sampled)
-            if color_sampled is not sampled_color:
-                del color_sampled
-            analysis_cache.put_color_stats(path, ref_mean, ref_std)
-    else:
-        ref_mean = np.zeros(3, dtype=np.float32)
-        ref_std = np.zeros(3, dtype=np.float32)
+    ref_mean, ref_std = _color_reference_stats(path, opts, sampled_color)
     del sampled_gray
 
     # 潜空间净化 + 内容画像：裁决逻辑收敛在 _plan_purify（见该函数注释）。
@@ -833,58 +963,22 @@ def _prepare_desensitize(
         shot_ranges=shot_ranges,
     )
     purify_strength_eff = plan.strength
-    purify_max_edge_eff = plan.max_edge
-    purify_detail_eff = plan.detail
-    purify_temporal_eff = plan.temporal
     purify_note = plan.note
     profile_note = plan.profile_note
     profile_metrics = plan.profile_metrics
-    shot_profiles = plan.shot_profiles
-    embedding_attack_eff = plan.embedding_attack
     del sampled_color
 
     # 变换策略：与分块无关的选项与上下文一次性组装，分块内只调用 apply。
     strategy = strategies.get_strategy(opts.transform_strategy)
-    transform_options = strategies.TransformOptions(
+    transform_options = _build_transform_options(
+        opts,
+        plan,
         recrop=recrop_eff,
         regrade=regrade_eff,
-        anti_reembed=opts.anti_reembed,
-        color_restore=opts.color_restore,
         sharpness=sharpness_eff,
         denoise=denoise_eff,
-        spoof=opts.spoof,
-        purify_strength=purify_strength_eff,
-        purify_detail=purify_detail_eff,
-        purify_detail_sigma=opts.purify_detail_sigma,
-        purify_detail_wide=opts.purify_detail_wide,
-        purify_temporal=purify_temporal_eff,
-        purify_max_edge=purify_max_edge_eff,
-        purify_batch=opts.purify_batch,
-        embedding_attack=embedding_attack_eff,
-        embedding_strength=opts.embedding_strength,
-        embedding_variant=opts.embedding_variant,
-        embedding_aggressive=opts.embedding_aggressive,
     )
-    shot_options: list[strategies.TransformOptions] | None = None
-    if opts.auto_profile and shot_profiles:
-        shot_options = []
-        for shot_prof in shot_profiles:
-            shot_strength = (
-                min(opts.purify_strength, shot_prof.suggested_purify_strength)
-                if purify_strength_eff > 0
-                else 0.0
-            )
-            shot_options.append(
-                replace(
-                    transform_options,
-                    purify_strength=shot_strength,
-                    purify_max_edge=purify_max_edge_eff,
-                    purify_temporal=min(
-                        opts.purify_temporal, shot_prof.suggested_purify_temporal
-                    ),
-                    embedding_attack=shot_prof.suggested_attack,
-                )
-            )
+    shot_options = _build_shot_options(opts, plan, transform_options)
     transform_context = strategies.TransformContext(
         gammas=gammas,
         deltas=deltas,
@@ -927,36 +1021,8 @@ def _prepare_desensitize(
     if opts.phash_attack or opts.multi_hash_attack or opts.dhash_attack:
         chunk = min(chunk, 48)
 
-    # YUV420p 快路径：仅当所有像素变换都已下沉原生、且无任何 RGB 专属
-    # 选项时启用，原始帧体积减半、省去 RGB↔YUV 转换。
-    use_yuv_path = (
-        use_native_geometry
-        and getattr(strategy, "name", "") == "fast"
-        and not opts.color_restore
-        and not opts.banner
-        and not opts.anti_reembed
-        and not opts.spoof
-        and not opts.quality_protect
-        and opts.saliency == 0
-        and opts.jitter <= 0
-        and opts.perspective <= 0
-        and opts.warp <= 0
-        and opts.median <= 0
-        and opts.subtract_beta <= 0
-        and opts.temporal_sub <= 0
-        and opts.fft_phase <= 0
-        and opts.dwt_detail <= 0
-        and opts.face_perturb <= 0
-        and opts.copy_attack <= 0
-        and opts.hsv_jitter <= 0
-        and opts.dct_step <= 0
-        and opts.chroma_levels <= 0
-        and opts.drop_every <= 0
-        and not opts.multi_hash_attack
-        and not opts.dhash_attack
-        and opts.purify_strength <= 0
-        and opts.embedding_strength <= 0
-    )
+    # YUV420p 快路径：帧体积减半、省去 RGB↔YUV 转换，条件见该函数。
+    use_yuv_path = _yuv_fast_path_enabled(opts, strategy, use_native_geometry)
 
     state = _DesensitizeState(
         info=info,
@@ -1329,22 +1395,7 @@ def _encode_desensitize(
     out_index = 0
     # 净化控制面走线程本地，不进入 TransformContext：避免把 stop/pause 回调
     # 塞进多进程池的任务载荷导致 pickle 失败。base/count 由每批处理前更新。
-    purify_progress_state = {"base": 0, "count": 1}
-
-    def purify_progress(fraction: float, note: str) -> None:
-        if not progress_cb or not state.total_out:
-            return
-        if note.startswith("下载"):
-            percent = 8 + int(purify_progress_state["base"] / state.total_out * 82)
-            progress_cb(min(90, percent), note)
-        else:
-            percent, global_note = _purify_progress(
-                purify_progress_state["base"],
-                purify_progress_state["count"],
-                fraction,
-                state.total_out,
-            )
-            progress_cb(percent, global_note)
+    purify_progress = _PurifyProgress(progress_cb, state.total_out)
 
     if state.purify_enabled:
         purify.set_control(
@@ -1391,8 +1442,7 @@ def _encode_desensitize(
                         ctx = state.transform_context
                         if ctx.mid_rng is not None:
                             ctx = dc.replace(ctx, mid_rng=np.random.default_rng(seed ^ 0x51A))
-                        purify_progress_state["base"] = out_index
-                        purify_progress_state["count"] = len(batch)
+                        purify_progress.set_batch(out_index, len(batch))
                         frames = state.strategy.apply(
                             batch, output_ids, ctx, options
                         )
@@ -1507,8 +1557,7 @@ def _encode_desensitize(
                                 batch_len - 1,
                             )
                             frames = np.asarray(batch)[sources]
-                            purify_progress_state["base"] = out_index
-                            purify_progress_state["count"] = len(frames)
+                            purify_progress.set_batch(out_index, len(frames))
                             frames = state.strategy.apply(
                                 frames, output_ids, state.transform_context, seg_options
                             )
