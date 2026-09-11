@@ -585,8 +585,19 @@ Source: Osherove — Test isolation；Meszaros — Implementation coupling。
 ### 🟢 Suggestion
 
 - **R5 Dependency Disorder**：`media/installer.py:14` 直接导入 `db`，安装器的单测被迫拉起数据库 → 改为由调用方注入配置值。
+  **已完成**：`install_ffmpeg(target, *, on_installed=...)` 由调用方注入持久化回调
+  （`api.py` 传 `db.save_settings`），安装器不再依赖持久层。
 - **R3 研究侧脚手架重复**：`research/scripts/` 43 个脚本只有 6 个复用共用实现，其余各自复制帧读取/方案构建/BA 与质量指标；口径差异曾导致"PSNR 68dB"的假读数 → 抽 `research/scripts/_harness.py`，新脚本一律基于它。
+  **已落地**：新增 `_harness.py`（帧读写、SS/QIM/DWT/DFT 方案、BA/BER、
+  PSNR/SSIM 复用 `evaluate.metrics`，去掉 skimage 依赖）；`targeted_worker.py`
+  与 `purify_speed_tiers.py` 已迁移（后者因此不再需要 skimage），README 写明
+  新脚本一律基于它，其余历史脚本按需迁移。
 - **R2 方案映射两份真值**：`transform/profile.py`（`_SCHEME_ATTACK`/`_SCHEME_MAX_EDGE`）与前端 `CleanPane.tsx`/`cleanPanel.ts` 的档位推导各写一份 → 后端下发只读映射，前端只展示。
+  **已完成**：`profile` 的映射改为公开 `SCHEME_ATTACK` / `SCHEME_MAX_EDGE` +
+  `SCHEME_FAMILIES`（含下拉文案与说明），`export_openapi.py` 生成
+  `ui/src/lib/schemes.generated.ts`，工作台「已知来源」下拉只展示这份表；
+  CI 对该生成文件做漂移检查，后端 `test_scheme_document_matches_engine_maps`
+  + 前端 `schemes.test.ts` 双向锁口径。
 
 ### 验收方式
 

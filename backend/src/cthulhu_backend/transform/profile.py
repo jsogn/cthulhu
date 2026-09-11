@@ -22,7 +22,9 @@ from cthulhu_backend.transform import temporal
 _EPS = 1e-6
 
 # 已知公开方案的嵌入域（报告 §2.8 画像结论）。
-_SCHEME_ATTACK = {
+# 这是方案映射的唯一真值：前端只展示（经 scripts/export_openapi.py 生成
+# ui/src/lib/schemes.generated.ts），不再各自手写一份。
+SCHEME_ATTACK = {
     "luma": "luma",
     "chroma": "chroma",
     "videoseal": "luma",
@@ -36,7 +38,7 @@ _SCHEME_ATTACK = {
 #   亮度/低频类 512→0.87、256→0.56、192→0.49，必须压到 192；
 #   色度类（WAM）512→0.55、256→0.47，256 就够，没必要牺牲画质。
 # 0 表示"没有方案信息、不限制"，此时完全按用户选的档位执行。
-_SCHEME_MAX_EDGE = {
+SCHEME_MAX_EDGE = {
     "luma": 192,
     "chroma": 256,
     "videoseal": 192,
@@ -45,6 +47,40 @@ _SCHEME_MAX_EDGE = {
     "mbrs": 192,
     "wam": 256,
 }
+
+
+@dataclass(frozen=True)
+class SchemeFamily:
+    """面板可选「已知来源」家族：下拉文案与收窄规则都从这里取。"""
+
+    id: str
+    label: str
+    summary: str
+    attack: str
+    max_edge: int
+
+
+SCHEME_FAMILIES: tuple[SchemeFamily, ...] = (
+    SchemeFamily(
+        id="luma",
+        label="亮度型水印（VideoSeal / PixelSeal 系）",
+        summary="亮度/低频嵌入：长边必须压到 192 才有效，选了会自动收窄清晰度档位",
+        attack=SCHEME_ATTACK["luma"],
+        max_edge=SCHEME_MAX_EDGE["luma"],
+    ),
+    SchemeFamily(
+        id="chroma",
+        label="色度型水印（WAM 系）",
+        summary="色度/低频嵌入：长边 256 就够，不必牺牲画质",
+        attack=SCHEME_ATTACK["chroma"],
+        max_edge=SCHEME_MAX_EDGE["chroma"],
+    ),
+)
+
+
+def scheme_document() -> list[dict]:
+    """给前端生成的只读方案家族表（顺序即展示顺序）。"""
+    return [asdict(family) for family in SCHEME_FAMILIES]
 
 
 @dataclass
@@ -119,9 +155,9 @@ def profile_frames(frames: np.ndarray, scheme: str = "") -> Profile:
     temporal_strength = 0.0
     if coherence >= 0.75 and motion <= 0.01:
         temporal_strength = round(min(0.25, (coherence - 0.75) / 0.25 * 0.25), 3)
-    attack = _SCHEME_ATTACK.get(scheme, "both")
-    scheme_edge = _SCHEME_MAX_EDGE.get(scheme, 0)
-    if scheme in _SCHEME_ATTACK:
+    attack = SCHEME_ATTACK.get(scheme, "both")
+    scheme_edge = SCHEME_MAX_EDGE.get(scheme, 0)
+    if scheme in SCHEME_ATTACK:
         note = f"已知方案 {scheme}，按报告画像使用 {attack}"
         if scheme_edge:
             note += f"，清晰度档位限制在长边 {scheme_edge}"

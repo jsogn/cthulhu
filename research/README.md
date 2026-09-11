@@ -770,6 +770,11 @@ research/.venv/bin/python research/scripts/purify_stack_matrix.py \
   用户只选方案、传视频，decoder 自动输出 mask/logits，不需要人工标注水印位置。
 - 研究环境直接运行 `research/scripts/targeted_worker.py`；正式 App 不再包含
   白盒调度器、UI 分区、sidecar 或公开权重。
+- 脚本脚手架：新脚本一律基于 `research/scripts/_harness.py`（帧读写 /
+  SS·QIM·DWT·DFT 方案构建 / BA·BER / PSNR·SSIM 统一口径，指标直接复用
+  `evaluate.metrics`，不依赖 skimage）。历史脚本按需迁移——已迁移
+  `targeted_worker.py` 与 `purify_speed_tiers.py`，避免各写一份导致
+  「PSNR 68dB」式假读数（审计 R3 研究侧）。
 - 方向修正：`eot_core.run` 早期误用 ascend（`+grad.sign()`），已改为
   dual-tail descend（`-grad.sign()`，最小化 logits²）；§2.3 的独立脚本
   本来就是 descend，报告结论不变。

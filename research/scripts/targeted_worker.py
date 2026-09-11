@@ -92,29 +92,13 @@ def _first_existing(*paths: Path) -> Path:
 
 
 def read_video(path: Path, max_frames: int) -> tuple[np.ndarray, float, int, int]:
+    """读取全片并校验白盒模式的帧数上限（解码口径见 _harness.read_video）。"""
     from cthulhu_backend.media import ffmpeg as backend_ffmpeg
+    from _harness import read_video as harness_read_video
 
     info = backend_ffmpeg.video_info(str(path))
     width, height, fps = int(info["width"]), int(info["height"]), float(info["fps"])
-    proc = subprocess.run(
-        [
-            backend_ffmpeg.FFMPEG_BIN,
-            "-v",
-            "error",
-            "-i",
-            str(path),
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            "-",
-        ],
-        capture_output=True,
-        check=True,
-    )
-    frames = np.frombuffer(proc.stdout, dtype=np.uint8).reshape(-1, height, width, 3)
-    if len(frames) == 0:
-        raise RuntimeError("输入视频没有可解码帧")
+    frames = harness_read_video(path)
     if len(frames) > max_frames:
         raise RuntimeError(
             f"白盒模式仅支持 ≤{max_frames} 帧的片段（当前 {len(frames)} 帧）；"
@@ -130,57 +114,15 @@ def write_video(
     audio_source: Path,
 ) -> None:
     """写 FFV1 无损中间视频，并保留原音轨供主流程复用。"""
-    from cthulhu_backend.media import ffmpeg as backend_ffmpeg
+    from _harness import write_video as harness_write_video
 
-    height, width = frames.shape[1:3]
-    cmd = [
-        backend_ffmpeg.FFMPEG_BIN,
-        "-y",
-        "-v",
-        "error",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-        f"{width}x{height}",
-        "-r",
-        f"{fps:.6f}",
-        "-i",
-        "-",
-        "-i",
-        str(audio_source),
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a?",
-        "-c:v",
-        "ffv1",
-        "-c:a",
-        "copy",
-        "-shortest",
-        str(path),
-    ]
-    subprocess.run(cmd, input=frames.tobytes(), capture_output=True, check=True)
+    harness_write_video(frames, path, fps=fps, audio_source=audio_source)
 
 
 def _quality(reference: np.ndarray, attacked: np.ndarray) -> tuple[float, float]:
-    from skimage.metrics import peak_signal_noise_ratio as psnr_metric
-    from skimage.metrics import structural_similarity as ssim_metric
+    from _harness import quality as harness_quality
 
-    count = min(len(reference), len(attacked))
-    ref = reference[:count].astype(np.float64)
-    atk = attacked[:count].astype(np.float64)
-    psnr = float(np.mean([psnr_metric(ref[i], atk[i], data_range=255) for i in range(count)]))
-    ssim = float(
-        np.mean(
-            [
-                ssim_metric(ref[i], atk[i], channel_axis=2, data_range=255)
-                for i in range(count)
-            ]
-        )
-    )
-    return psnr, ssim
+    return harness_quality(reference, attacked)
 
 
 def _self_ba(bits_before: np.ndarray, bits_after: np.ndarray) -> float:

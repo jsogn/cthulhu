@@ -20,18 +20,13 @@ from __future__ import annotations
 import argparse
 import csv
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
 from PIL import Image
-from skimage.metrics import peak_signal_noise_ratio as psnr_metric
-from skimage.metrics import structural_similarity as ssim_metric
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "research" / "scripts"
@@ -40,9 +35,10 @@ WAM_REPO = ROOT / "research" / "vendor" / "watermark-anything"
 for extra in (SCRIPTS, VSEAL_REPO, WAM_REPO, ROOT / "backend" / "src"):
     sys.path.insert(0, str(extra))
 
+from _harness import quality as harness_quality  # noqa: E402
+from _harness import read_video, transcode  # noqa: E402
 from cthulhu_backend.transform import purify
 
-FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 TIERS: list[tuple[str, int, int, float, float]] = [
     ("original", 0, 1, 0.15, 0.0),
     ("fast512", 512, 4, 0.15, 0.0),
@@ -61,57 +57,13 @@ def device() -> str:
 
 
 def quality(reference: np.ndarray, attacked: np.ndarray) -> tuple[float, float]:
-    length = min(len(reference), len(attacked))
-    ref = reference[:length].astype(np.float64)
-    atk = attacked[:length].astype(np.float64)
-    psnr = psnr_metric(ref, atk, data_range=255)
-    if length > 1:
-        ssim = float(
-            np.mean(
-                [
-                    ssim_metric(ref[index], atk[index], channel_axis=2, data_range=255)
-                    for index in range(length)
-                ]
-            )
-        )
-    else:
-        ssim = ssim_metric(ref[0], atk[0], channel_axis=2, data_range=255)
-    return float(psnr), float(ssim)
+    """画质口径统一走 _harness（与生产清洗报告同源）。"""
+    return harness_quality(reference, attacked)
 
 
 def h264_crf23(frames_np: np.ndarray) -> np.ndarray:
     """真实 H.264 CRF23 链路：净化扰动能否穿过平台常规重编码。"""
-    with tempfile.TemporaryDirectory() as tmp:
-        tmpdir = Path(tmp)
-        src = tmpdir / "src.mkv"
-        dst = tmpdir / "out.mp4"
-        height, width = frames_np.shape[1], frames_np.shape[2]
-        subprocess.run(
-            [
-                FFMPEG, "-y", "-v", "error", "-f", "rawvideo",
-                "-pix_fmt", "rgb24", "-s", f"{width}x{height}",
-                "-r", "30", "-i", "-", "-c:v", "ffv1", str(src),
-            ],
-            input=frames_np.tobytes(),
-            capture_output=True,
-            check=True,
-        )
-        subprocess.run(
-            [
-                FFMPEG, "-y", "-v", "error", "-i", str(src),
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", str(dst),
-            ],
-            capture_output=True,
-            check=True,
-        )
-        probe = subprocess.run(
-            [FFMPEG, "-v", "error", "-i", str(dst), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-            capture_output=True,
-            check=True,
-        )
-        raw = np.frombuffer(probe.stdout, dtype=np.uint8)
-        raw = raw[: len(raw) // (width * height * 3) * (width * height * 3)]
-        return raw.reshape(-1, height, width, 3)
+    return transcode(frames_np, crf=23, fps=30.0)
 
 
 def build_seal(dev: str, scheme: str):
@@ -235,26 +187,7 @@ def build_wam_frames(dev: str):
 
 
 def read_frames(path: Path, count: int) -> np.ndarray:
-    probe = subprocess.run(
-        [FFMPEG, "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-        capture_output=True,
-        check=True,
-    )
-    meta = subprocess.run(
-        [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    width, height = (int(item) for item in meta.split(",")[:2])
-    raw = np.frombuffer(probe.stdout, dtype=np.uint8)
-    frame_size = width * height * 3
-    total = len(raw) // frame_size
-    raw = raw[: total * frame_size].reshape(total, height, width, 3)
-    return raw[:count]
+    return read_video(path, count)
 
 
 def vertical_kenburns(frames: int, width: int = 720, height: int = 1280) -> np.ndarray:

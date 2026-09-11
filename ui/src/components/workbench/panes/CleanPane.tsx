@@ -25,6 +25,7 @@ import {
   type TemplateInfo,
 } from "@/lib/backend";
 import { FIXED_CROP } from "@/lib/cleanOptions";
+import { SCHEME_FAMILIES } from "@/lib/schemes.generated";
 import {
   DEFAULT_TIER_ID,
   SELECTABLE_TIERS,
@@ -339,12 +340,16 @@ export function CleanPane({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unknown">不确定（按我选的档位执行）</SelectItem>
-                        <SelectItem value="luma">亮度型水印（VideoSeal / PixelSeal 系）</SelectItem>
-                        <SelectItem value="chroma">色度型水印（WAM 系）</SelectItem>
+                        {SCHEME_FAMILIES.map((family) => (
+                          <SelectItem key={family.id} value={family.id}>
+                            {family.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <div className="form-help">
-                      亮度过低的档位对亮度型无效、色度型却不需要那么狠；选了会自动把清晰度档位收到合适范围
+                      {SCHEME_FAMILIES.find((family) => family.id === knownScheme)?.summary ??
+                        "亮度过低的档位对亮度型无效、色度型却不需要那么狠；选了会自动把清晰度档位收到合适范围"}
                     </div>
                   </div>
                   <div className="field">

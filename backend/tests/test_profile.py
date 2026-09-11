@@ -19,6 +19,18 @@ def test_complexity_monotonic() -> None:
     assert 0.0 <= flat_profile.temporal_coherence <= 1.0
 
 
+def test_scheme_document_matches_engine_maps() -> None:
+    """前端「已知来源」下拉与说明必须与引擎映射同源（审计 R2）。"""
+    document = {item["id"]: item for item in profile.scheme_document()}
+    assert set(document) == {"luma", "chroma"}
+    for family_id, item in document.items():
+        assert item["attack"] == profile.SCHEME_ATTACK[family_id]
+        assert item["max_edge"] == profile.SCHEME_MAX_EDGE[family_id]
+        assert item["label"] and item["summary"]
+    # 亮度/低频类必须比色度类更狠（research §19.7）。
+    assert document["luma"]["max_edge"] < document["chroma"]["max_edge"]
+
+
 def test_known_scheme_mapping() -> None:
     frames = np.random.default_rng(1).uniform(0, 1, (6, 32, 32, 3)).astype(np.float32)
     assert profile.profile_frames(frames, "videoseal").suggested_attack == "luma"

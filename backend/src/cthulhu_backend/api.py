@@ -573,7 +573,10 @@ def select_ffmpeg(request: PathRequest) -> dict:
 def install_ffmpeg() -> dict:
     """后台下载静态视频处理引擎，前端轮询状态直到完成。"""
     target = os.environ.get("CTHULHU_FFMPEG_INSTALL_DIR") or _default_ffmpeg_install_dir()
-    return ffmpeg_installer.install_ffmpeg(target)
+    return ffmpeg_installer.install_ffmpeg(
+        target,
+        on_installed=lambda directory: db.save_settings({"ffmpeg_dir": directory}),
+    )
 
 
 @router.get("/ffmpeg/install")

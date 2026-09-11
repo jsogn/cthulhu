@@ -3,7 +3,9 @@
 产物：
 - `backend/openapi.json`：请求/响应类型源，`pnpm --dir ui generate-api` 消费；
 - `ui/src/lib/tiers.generated.ts`：清晰度档位表（唯一真值在 `tiers.py`），
-  面板与模板编辑器都从这里取数值，避免同一决策多处手写后漂移（审计 R3）。
+  面板与模板编辑器都从这里取数值，避免同一决策多处手写后漂移（审计 R3）；
+- `ui/src/lib/schemes.generated.ts`：已知来源方案家族（唯一真值在
+  `transform/profile.py`），前端只展示，不再自己维护一份映射（审计 R2）。
 """
 
 from __future__ import annotations
@@ -22,10 +24,14 @@ from cthulhu_backend.tiers import (
     TIER_DETAIL_SIGMA,
     tiers_document,
 )
+from cthulhu_backend.transform.profile import scheme_document
 
 TARGET = pathlib.Path(__file__).resolve().parents[1] / "openapi.json"
 TIERS_TARGET = (
     pathlib.Path(__file__).resolve().parents[2] / "ui" / "src" / "lib" / "tiers.generated.ts"
+)
+SCHEMES_TARGET = (
+    pathlib.Path(__file__).resolve().parents[2] / "ui" / "src" / "lib" / "schemes.generated.ts"
 )
 
 
@@ -78,6 +84,37 @@ def _tiers_module() -> str:
     )
 
 
+def _schemes_module() -> str:
+    """把 `profile.SCHEME_FAMILIES` 渲染成前端只读表。"""
+    families = scheme_document()
+    rows = ",\n".join(
+        "  {\n"
+        f'    id: "{family["id"]}",\n'
+        f'    label: "{family["label"]}",\n'
+        f'    summary: "{family["summary"]}",\n'
+        f'    attack: "{family["attack"]}",\n'
+        f'    max_edge: {family["max_edge"]},\n'
+        "  }"
+        for family in families
+    )
+    ids = " | ".join(f'"{family["id"]}"' for family in families)
+    return (
+        "/** 由 backend/scripts/export_openapi.py 从 transform/profile.py 生成；请勿手改。 */\n"
+        "\n"
+        f"export type SchemeFamilyId = {ids};\n"
+        "\n"
+        "export interface SchemeFamily {\n"
+        "  id: SchemeFamilyId;\n"
+        "  label: string;\n"
+        "  summary: string;\n"
+        "  attack: string;\n"
+        "  max_edge: number;\n"
+        "}\n"
+        "\n"
+        "export const SCHEME_FAMILIES: readonly SchemeFamily[] = [\n" + rows + ",\n];\n"
+    )
+
+
 def main() -> None:
     spec = app.openapi()
     TARGET.write_text(
@@ -87,6 +124,8 @@ def main() -> None:
     print(f"已写入 {TARGET}")
     TIERS_TARGET.write_text(_tiers_module(), encoding="utf-8")
     print(f"已写入 {TIERS_TARGET}")
+    SCHEMES_TARGET.write_text(_schemes_module(), encoding="utf-8")
+    print(f"已写入 {SCHEMES_TARGET}")
 
 
 if __name__ == "__main__":
