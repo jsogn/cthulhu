@@ -47,14 +47,9 @@ class AssaultParams:
     fft_phase: float = 0.0
     dwt_detail: float = 0.0
     hsv_jitter: float = 0.0
-    flow_disturb: float = 0.0
-    texture_inject: float = 0.0
     copy_field: np.ndarray | None = None
     face_field: np.ndarray | None = None
-    multiscale: float = 0.0
-    complexity_trap: float = 0.0
     face_perturb: float = 0.0
-    temporal_blur: float = 0.0
     copy_attack: float = 0.0
 
     @property
@@ -75,12 +70,7 @@ class AssaultParams:
                 self.fft_phase > 0,
                 self.dwt_detail > 0,
                 self.hsv_jitter > 0,
-                self.flow_disturb > 0,
-                self.texture_inject > 0,
-                self.multiscale > 0,
-                self.complexity_trap > 0,
                 self.face_perturb > 0,
-                self.temporal_blur > 0,
                 self.copy_attack > 0,
             )
         )
@@ -726,20 +716,10 @@ def apply(
         work = regenerate.dwt_detail(work, params.dwt_detail, rng)
     if params.hsv_jitter > 0:
         work = regenerate.hsv_jitter(work, params.hsv_jitter, rng)
-    if params.flow_disturb > 0:
-        work = regenerate.flow_disturb(work, params.flow_disturb, rng)
-    if params.texture_inject > 0:
-        work = regenerate.texture_inject(work, params.texture_inject, rng)
     if params.copy_attack > 0:
         work = regenerate.copy_attack(work, params.copy_attack, rng, field=params.copy_field)
-    if params.multiscale > 0:
-        work = regenerate.multiscale_perturb(work, params.multiscale, rng)
-    if params.complexity_trap > 0:
-        work = regenerate.complexity_trap(work, params.complexity_trap, rng)
     if params.face_perturb > 0:
         work = regenerate.face_perturb(work, params.face_perturb, rng, field=params.face_field)
-    if params.temporal_blur > 0:
-        work = regenerate.temporal_blur(work, params.temporal_blur)
     if params.drop_every > 0:
         work = drop_duplicate(work, params.drop_every)
     return work

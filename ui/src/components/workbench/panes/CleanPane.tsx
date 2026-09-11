@@ -117,18 +117,10 @@ export function CleanPane({
     setJitterOn,
     jitter,
     setJitter,
-    textureOn,
-    setTextureOn,
-    texture,
-    setTexture,
     faceOn,
     setFaceOn,
     face,
     setFace,
-    temporalBlurOn,
-    setTemporalBlurOn,
-    temporalBlur,
-    setTemporalBlur,
     lpcOn,
     setLpcOn,
     lpc,
@@ -866,27 +858,6 @@ export function CleanPane({
               <Switch checked={spoof} onCheckedChange={setSpoof} />
             </div>
             {switchCard(
-              "纹理/复杂度注入",
-              "向低纹理区注入纹理并拉平复杂度分布",
-              "fp",
-              "slow",
-              "heavy",
-              textureOn,
-              setTextureOn,
-              textureOn ? (
-                <div className="field">
-                  <span className="field-label">注入强度 {texture.toFixed(2)}</span>
-                  <Slider
-                    value={[texture]}
-                    min={0.01}
-                    max={0.05}
-                    step={0.005}
-                    onValueChange={(values) => setTexture(values[0] ?? 0.04)}
-                  />
-                </div>
-              ) : undefined,
-            )}
-            {switchCard(
               "神经对抗",
               "黑盒攻击 DINOv2 判重描述子，压拷贝检测 embedding · 较慢",
               "fp",
@@ -926,27 +897,6 @@ export function CleanPane({
                     max={0.08}
                     step={0.01}
                     onValueChange={(values) => setFace(values[0] ?? 0.04)}
-                  />
-                </div>
-              ) : undefined,
-            )}
-            {switchCard(
-              "时序模糊",
-              "帧间时域平滑，破坏逐帧匹配与帧差结构",
-              "dual",
-              "mid",
-              "heavy",
-              temporalBlurOn,
-              setTemporalBlurOn,
-              temporalBlurOn ? (
-                <div className="field">
-                  <span className="field-label">模糊强度 {temporalBlur.toFixed(2)}</span>
-                  <Slider
-                    value={[temporalBlur]}
-                    min={0.05}
-                    max={0.5}
-                    step={0.05}
-                    onValueChange={(values) => setTemporalBlur(values[0] ?? 0.25)}
                   />
                 </div>
               ) : undefined,

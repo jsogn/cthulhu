@@ -74,7 +74,6 @@ def main() -> None:
             frames, list(range(len(frames))), 0.4)),
         ("色彩微扰", lambda: video_transform.regrade(
             frames.astype(np.float32) / 255.0, rng)),
-        ("时序模糊 0.25", lambda: regenerate.temporal_blur(frames, 0.25)),
         ("伪水印注入 Δ6", lambda: strategies._embed_qim_frames(
             frames.astype(np.float32) / 255.0, spoof_bits, 6)),
         ("跨帧估计 0.6", lambda: regenerate.temporal_subtract(frames, 0.6)),
@@ -83,10 +82,6 @@ def main() -> None:
         ("DCT 重量化 12", lambda: extra_attacks.dct_requant(frames, 12.0)),
         ("像素重写 超分+CLAHE", lambda: regenerate.clahe_rewrite(
             regenerate.sr_rewrite(frames), 2.0)),
-        ("光流 1.5", lambda: regenerate.flow_disturb(frames, 1.5, rng)),
-        ("纹理 0.04", lambda: regenerate.texture_inject(frames, 0.04, rng)),
-        ("多尺度 0.02", lambda: regenerate.multiscale_perturb(frames, 0.02, rng)),
-        ("复杂度 0.1", lambda: regenerate.complexity_trap(frames, 0.1, rng)),
         ("pHash ε=0.08", lambda: adversarial.attack_frames(frames, epsilon=0.08)),
     ]
     for name, fn in cases:

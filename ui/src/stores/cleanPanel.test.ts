@@ -38,12 +38,7 @@ describe("cleanPanel store", () => {
       jitter: 0.01,
       perspective: 0.02,
       warp: 0.004,
-      flowDisturb: 1.5,
-      textureInject: 0.03,
-      multiscale: 0.03,
-      complexityTrap: 0.07,
       facePerturb: 0.05,
-      temporalBlur: 0.3,
       lpcAttack: 0.9,
       copyAttack: 0.06,
       nativeTemporal: true,
@@ -103,16 +98,8 @@ describe("cleanPanel store", () => {
     expect(state.shear).toBe(0.02);
     expect(state.jitterOn).toBe(true);
     expect(state.jitter).toBe(0.01);
-    expect(state.flowOn).toBe(true);
-    expect(state.flow).toBe(1.5);
-    expect(state.textureOn).toBe(true);
-    expect(state.texture).toBe(0.03);
-    expect(state.multiscaleOn).toBe(true);
-    expect(state.multiscale).toBe(0.03);
     expect(state.faceOn).toBe(true);
     expect(state.face).toBe(0.05);
-    expect(state.temporalBlurOn).toBe(true);
-    expect(state.temporalBlur).toBe(0.3);
     expect(state.lpcOn).toBe(true);
     expect(state.lpc).toBe(0.9);
     expect(state.neuralOn).toBe(true);

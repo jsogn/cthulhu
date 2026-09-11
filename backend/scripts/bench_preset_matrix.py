@@ -86,15 +86,10 @@ def payload_to_options(payload: dict) -> dict:
         ("dwtDetail", "dwt_detail"),
         ("facePerturb", "face_perturb"), ("lpcAttack", "lpc_attack"),
         ("copyAttack", "copy_attack"),
-        ("flowDisturb", "flow_disturb"), ("multiscale", "multiscale"),
-        ("temporalBlur", "temporal_blur"),
     ]
     for source, target in simple:
         if payload.get(source, 0):
             opts[target] = payload[source]
-    if payload.get("textureInject", 0):
-        opts["texture_inject"] = payload["textureInject"]
-        opts["complexity_trap"] = payload["textureInject"] * 2.5
     if payload.get("nativeTemporal"):
         opts["native_temporal"] = True
     if payload.get("transcodeChain"):

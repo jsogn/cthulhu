@@ -43,13 +43,7 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     ...(state.warpOn ? { warp: state.warp } : {}),
     ...(state.shearOn ? { perspective: state.shear } : {}),
     ...(state.jitterOn ? { jitter: state.jitter } : {}),
-    ...(state.flowOn ? { flow_disturb: state.flow } : {}),
-    ...(state.textureOn
-      ? { texture_inject: state.texture, complexity_trap: state.texture * 2.5 }
-      : {}),
-    ...(state.multiscaleOn ? { multiscale: state.multiscale } : {}),
     ...(state.faceOn ? { face_perturb: state.face } : {}),
-    ...(state.temporalBlurOn ? { temporal_blur: state.temporalBlur } : {}),
     ...(state.lpcOn ? { lpc_attack: state.lpc } : {}),
     ...(state.neuralOn ? { copy_attack: state.neural } : {}),
     ...(state.purifyOn

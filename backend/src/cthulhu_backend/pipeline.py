@@ -704,12 +704,7 @@ def _prepare_desensitize(
         fft_phase=opts.fft_phase,
         dwt_detail=opts.dwt_detail,
         hsv_jitter=opts.hsv_jitter,
-        flow_disturb=opts.flow_disturb,
-        texture_inject=opts.texture_inject,
-        multiscale=opts.multiscale,
-        complexity_trap=opts.complexity_trap,
         face_perturb=opts.face_perturb,
-        temporal_blur=opts.temporal_blur,
         copy_attack=opts.copy_attack,
     )
     saliency_obj = extra_attacks.saliency_layout(opts.seed, opts.saliency)
@@ -905,12 +900,7 @@ def _prepare_desensitize(
         and opts.temporal_sub <= 0
         and opts.fft_phase <= 0
         and opts.dwt_detail <= 0
-        and opts.flow_disturb <= 0
-        and opts.texture_inject <= 0
-        and opts.multiscale <= 0
-        and opts.complexity_trap <= 0
         and opts.face_perturb <= 0
-        and opts.temporal_blur <= 0
         and opts.copy_attack <= 0
         and opts.hsv_jitter <= 0
         and opts.dct_step <= 0

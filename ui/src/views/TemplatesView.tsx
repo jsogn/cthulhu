@@ -63,11 +63,7 @@ const NUMERIC_KEYS = [
   "temporalSub",
   "fftPhase",
   "dwtDetail",
-  "flowDisturb",
-  "textureInject",
-  "multiscale",
   "facePerturb",
-  "temporalBlur",
   "lpcAttack",
   "copyAttack",
 ] as const;
@@ -80,19 +76,7 @@ function numericEnabled(payload: TemplatePayload): NumericEnabled {
   const enabled = Object.fromEntries(
     NUMERIC_KEYS.map((key) => [key, (payload[key] ?? 0) > 0]),
   ) as NumericEnabled;
-  if (enabled.textureInject || (payload.complexityTrap ?? 0) > 0) {
-    enabled.textureInject = true;
-  }
   return enabled;
-}
-
-/** 编辑旧模板时把单字段兜底成工作台可显示的默认值。 */
-function editablePayload(payload: TemplatePayload): TemplatePayload {
-  const next = { ...payload };
-  if ((next.textureInject ?? 0) <= 0 && (next.complexityTrap ?? 0) > 0) {
-    next.textureInject = Math.min(0.05, next.complexityTrap / 2.5);
-  }
-  return next;
 }
 
 export default function TemplatesView() {
@@ -135,7 +119,6 @@ export default function TemplatesView() {
       for (const key of NUMERIC_KEYS) {
         if (!enabled[key]) payload[key] = 0;
       }
-      payload.complexityTrap = enabled.textureInject ? payload.textureInject * 2.5 : 0;
       if (editing) {
         await updateTemplate(editing.id, finalName, payload);
       } else {
@@ -161,7 +144,7 @@ export default function TemplatesView() {
   };
 
   const openEdit = (template: TemplateInfo) => {
-    const payload = editablePayload(payloadOf(template));
+    const payload = payloadOf(template);
     setEditing(template);
     setName(template.name);
     setForm(payload);
@@ -394,41 +377,6 @@ export default function TemplatesView() {
           max={1}
           step={0.05}
           onValueChange={(values) => setField("fftPhase", values[0] ?? 0.5)}
-        />
-      </div>
-    ) : undefined,
-  );
-
-  const textureRow = weaponCard(
-    "纹理/复杂度注入",
-    "向低纹理区注入纹理并拉平复杂度分布",
-    "fp",
-    "slow",
-    "heavy",
-    enabled.textureInject,
-    (checked) => {
-      setNumericEnabled("textureInject", checked);
-      if (checked && (form.textureInject ?? 0) <= 0 && (form.complexityTrap ?? 0) <= 0) {
-        setForm((current) => ({ ...current, textureInject: 0.04, complexityTrap: 0.1 }));
-      }
-    },
-    enabled.textureInject ? (
-      <div className="field">
-        <span className="field-label">注入强度 {form.textureInject.toFixed(2)}</span>
-        <Slider
-          aria-label="纹理注入强度"
-          value={[form.textureInject]}
-          min={0.01}
-          max={0.05}
-          step={0.005}
-          onValueChange={(values) => {
-            const value = values[0] ?? 0.04;
-            setForm((current) => ({
-              ...current,
-              textureInject: value,
-              complexityTrap: value * 2.5,
-            }));
-          }}
         />
       </div>
     ) : undefined,
@@ -913,23 +861,6 @@ export default function TemplatesView() {
               )}
               {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测", "wm", "mid", "mild", "spoof")}
               {sliderRow(
-                "光流一致性破坏",
-                "按运动加权的平滑扰动重采样，改运动指纹",
-                "fp",
-                "fast",
-                "heavy",
-                "flowDisturb",
-                {
-                  min: 0.5,
-                  max: 2.5,
-                  step: 0.1,
-                  onValue: 1.5,
-                  ariaLabel: "光流扰动强度",
-                  label: (value) => `扰动强度 ${value.toFixed(1)}px`,
-                },
-              )}
-              {textureRow}
-              {sliderRow(
                 "神经对抗（DINOv2 判重代理）",
                 "黑盒攻击 DINOv2 判重描述子，压拷贝检测 embedding · 较慢",
                 "fp",
@@ -946,22 +877,6 @@ export default function TemplatesView() {
                 },
               )}
               {sliderRow(
-                "多尺度特征扰动（DMFF）",
-                "金字塔各尺度带限扰动，8/16/32 签名同步偏移",
-                "fp",
-                "slow",
-                "heavy",
-                "multiscale",
-                {
-                  min: 0.005,
-                  max: 0.04,
-                  step: 0.005,
-                  onValue: 0.02,
-                  ariaLabel: "多尺度扰动强度",
-                  label: (value) => `扰动强度 ${value.toFixed(2)}`,
-                },
-              )}
-              {sliderRow(
                 "人脸抗AI扰动",
                 "仅在脸部区域注入扰动，破坏人脸识别特征",
                 "face",
@@ -975,22 +890,6 @@ export default function TemplatesView() {
                   onValue: 0.04,
                   ariaLabel: "人脸扰动强度",
                   label: (value) => `扰动强度 ${value.toFixed(2)}`,
-                },
-              )}
-              {sliderRow(
-                "时序模糊",
-                "帧间时域平滑，破坏逐帧匹配与帧差结构",
-                "dual",
-                "mid",
-                "heavy",
-                "temporalBlur",
-                {
-                  min: 0.05,
-                  max: 0.5,
-                  step: 0.05,
-                  onValue: 0.25,
-                  ariaLabel: "时序模糊强度",
-                  label: (value) => `模糊强度 ${value.toFixed(2)}`,
                 },
               )}
 

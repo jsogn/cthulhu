@@ -42,16 +42,8 @@ const CLEAN_DEFAULTS = {
   shear: 0.01,
   jitterOn: false,
   jitter: 0.005,
-  flowOn: false,
-  flow: 1.5,
-  textureOn: false,
-  texture: 0.04,
-  multiscaleOn: false,
-  multiscale: 0.02,
   faceOn: false,
   face: 0.04,
-  temporalBlurOn: false,
-  temporalBlur: 0.25,
   lpcOn: false,
   lpc: 0.5,
   neuralOn: false,
@@ -116,16 +108,8 @@ export interface CleanPanelState {
   shear: number;
   jitterOn: boolean;
   jitter: number;
-  flowOn: boolean;
-  flow: number;
-  textureOn: boolean;
-  texture: number;
-  multiscaleOn: boolean;
-  multiscale: number;
   faceOn: boolean;
   face: number;
-  temporalBlurOn: boolean;
-  temporalBlur: number;
   lpcOn: boolean;
   lpc: number;
   neuralOn: boolean;
@@ -188,16 +172,8 @@ export interface CleanPanelState {
   setShear: (value: number) => void;
   setJitterOn: (value: boolean) => void;
   setJitter: (value: number) => void;
-  setFlowOn: (value: boolean) => void;
-  setFlow: (value: number) => void;
-  setTextureOn: (value: boolean) => void;
-  setTexture: (value: number) => void;
-  setMultiscaleOn: (value: boolean) => void;
-  setMultiscale: (value: number) => void;
   setFaceOn: (value: boolean) => void;
   setFace: (value: number) => void;
-  setTemporalBlurOn: (value: boolean) => void;
-  setTemporalBlur: (value: number) => void;
   setLpcOn: (value: boolean) => void;
   setLpc: (value: number) => void;
   setNeuralOn: (value: boolean) => void;
@@ -331,16 +307,8 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
   setShear: (shear) => set({ shear }),
   setJitterOn: (jitterOn) => set({ jitterOn }),
   setJitter: (jitter) => set({ jitter }),
-  setFlowOn: (flowOn) => set({ flowOn }),
-  setFlow: (flow) => set({ flow }),
-  setTextureOn: (textureOn) => set({ textureOn }),
-  setTexture: (texture) => set({ texture }),
-  setMultiscaleOn: (multiscaleOn) => set({ multiscaleOn }),
-  setMultiscale: (multiscale) => set({ multiscale }),
   setFaceOn: (faceOn) => set({ faceOn }),
   setFace: (face) => set({ face }),
-  setTemporalBlurOn: (temporalBlurOn) => set({ temporalBlurOn }),
-  setTemporalBlur: (temporalBlur) => set({ temporalBlur }),
   setLpcOn: (lpcOn) => set({ lpcOn }),
   setLpc: (lpc) => set({ lpc }),
   setNeuralOn: (neuralOn) => set({ neuralOn }),
@@ -496,33 +464,11 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
       jitterOn: (payload.jitter ?? 0) > 0,
       jitter:
         (payload.jitter ?? 0) > 0 ? (payload.jitter ?? CLEAN_DEFAULTS.jitter) : CLEAN_DEFAULTS.jitter,
-      flowOn: (payload.flowDisturb ?? 0) > 0,
-      flow:
-        (payload.flowDisturb ?? 0) > 0
-          ? (payload.flowDisturb ?? CLEAN_DEFAULTS.flow)
-          : CLEAN_DEFAULTS.flow,
-      textureOn: (payload.textureInject ?? 0) > 0 || (payload.complexityTrap ?? 0) > 0,
-      texture:
-        (payload.textureInject ?? 0) > 0
-          ? (payload.textureInject ?? 0.04)
-          : (payload.complexityTrap ?? 0) > 0
-            ? Math.min(0.05, (payload.complexityTrap ?? 0.06) / 2.5)
-            : CLEAN_DEFAULTS.texture,
-      multiscaleOn: (payload.multiscale ?? 0) > 0,
-      multiscale:
-        (payload.multiscale ?? 0) > 0
-          ? (payload.multiscale ?? CLEAN_DEFAULTS.multiscale)
-          : CLEAN_DEFAULTS.multiscale,
       faceOn: (payload.facePerturb ?? 0) > 0,
       face:
         (payload.facePerturb ?? 0) > 0
           ? (payload.facePerturb ?? CLEAN_DEFAULTS.face)
           : CLEAN_DEFAULTS.face,
-      temporalBlurOn: (payload.temporalBlur ?? 0) > 0,
-      temporalBlur:
-        (payload.temporalBlur ?? 0) > 0
-          ? (payload.temporalBlur ?? CLEAN_DEFAULTS.temporalBlur)
-          : CLEAN_DEFAULTS.temporalBlur,
       lpcOn: (payload.lpcAttack ?? 0) > 0,
       lpc:
         (payload.lpcAttack ?? 0) > 0

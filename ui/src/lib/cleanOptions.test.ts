@@ -72,16 +72,8 @@ describe("makeCleanOptions", () => {
         fftOn: true,
         fftPhase: 0.4,
         dwtDetailOn: false,
-        flowOn: true,
-        flow: 1.5,
-        textureOn: true,
-        texture: 0.03,
-        multiscaleOn: true,
-        multiscale: 0.03,
         faceOn: true,
         face: 0.05,
-        temporalBlurOn: true,
-        temporalBlur: 0.3,
         lpcOn: true,
         lpc: 0.9,
         neuralOn: true,
@@ -92,12 +84,7 @@ describe("makeCleanOptions", () => {
     expect(options.native_temporal).toBe(true);
     expect(options.fft_phase).toBe(0.4);
     expect(options.dwt_detail).toBeUndefined();
-    expect(options.flow_disturb).toBe(1.5);
-    expect(options.texture_inject).toBe(0.03);
-    expect(options.complexity_trap).toBeCloseTo(0.075);
-    expect(options.multiscale).toBe(0.03);
     expect(options.face_perturb).toBe(0.05);
-    expect(options.temporal_blur).toBe(0.3);
     expect(options.lpc_attack).toBe(0.9);
     expect(options.copy_attack).toBe(0.06);
   });
@@ -107,12 +94,7 @@ describe("makeCleanOptions", () => {
     expect(options.temporal_sub).toBeUndefined();
     expect(options.fft_phase).toBeUndefined();
     expect(options.dwt_detail).toBeUndefined();
-    expect(options.flow_disturb).toBeUndefined();
-    expect(options.texture_inject).toBeUndefined();
-    expect(options.multiscale).toBeUndefined();
-    expect(options.complexity_trap).toBeUndefined();
     expect(options.face_perturb).toBeUndefined();
-    expect(options.temporal_blur).toBeUndefined();
     expect(options.lpc_attack).toBeUndefined();
     expect(options.copy_attack).toBeUndefined();
   });

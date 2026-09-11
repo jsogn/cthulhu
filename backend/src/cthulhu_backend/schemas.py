@@ -86,12 +86,7 @@ class DesensitizeOptions(BaseModel):
     fft_phase: float = Field(0.0, ge=0, le=1)
     dwt_detail: float = Field(0.0, ge=0, le=1)
     hsv_jitter: float = Field(0.0, ge=0, le=30)
-    flow_disturb: float = Field(0.0, ge=0, le=3)
-    texture_inject: float = Field(0.0, ge=0, le=0.1)
-    multiscale: float = Field(0.0, ge=0, le=0.1)
-    complexity_trap: float = Field(0.0, ge=0, le=0.2)
     face_perturb: float = Field(0.0, ge=0, le=0.2)
-    temporal_blur: float = Field(0.0, ge=0, le=0.5)
     lpc_attack: float = Field(0.0, ge=0, le=1)
     copy_attack: float = Field(0.0, ge=0, le=0.2)
     native_temporal: bool = False
@@ -179,12 +174,7 @@ class TemplatePayload(BaseModel):
     jitter: float = 0.0
     perspective: float = 0.0
     warp: float = 0.0
-    flowDisturb: float = 0.0
-    textureInject: float = 0.0
-    multiscale: float = 0.0
-    complexityTrap: float = 0.0
     facePerturb: float = 0.0
-    temporalBlur: float = 0.0
     lpcAttack: float = 0.0
     copyAttack: float = 0.0
     nativeTemporal: bool = False

@@ -908,35 +908,10 @@ export interface components {
              */
             hsv_jitter: number;
             /**
-             * Flow Disturb
-             * @default 0
-             */
-            flow_disturb: number;
-            /**
-             * Texture Inject
-             * @default 0
-             */
-            texture_inject: number;
-            /**
-             * Multiscale
-             * @default 0
-             */
-            multiscale: number;
-            /**
-             * Complexity Trap
-             * @default 0
-             */
-            complexity_trap: number;
-            /**
              * Face Perturb
              * @default 0
              */
             face_perturb: number;
-            /**
-             * Temporal Blur
-             * @default 0
-             */
-            temporal_blur: number;
             /**
              * Lpc Attack
              * @default 0
@@ -1258,35 +1233,10 @@ export interface components {
              */
             warp: number;
             /**
-             * Flowdisturb
-             * @default 0
-             */
-            flowDisturb: number;
-            /**
-             * Textureinject
-             * @default 0
-             */
-            textureInject: number;
-            /**
-             * Multiscale
-             * @default 0
-             */
-            multiscale: number;
-            /**
-             * Complexitytrap
-             * @default 0
-             */
-            complexityTrap: number;
-            /**
              * Faceperturb
              * @default 0
              */
             facePerturb: number;
-            /**
-             * Temporalblur
-             * @default 0
-             */
-            temporalBlur: number;
             /**
              * Lpcattack
              * @default 0

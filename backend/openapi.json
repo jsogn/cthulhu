@@ -1889,46 +1889,11 @@
             "title": "Hsv Jitter",
             "default": 0.0
           },
-          "flow_disturb": {
-            "type": "number",
-            "maximum": 3.0,
-            "minimum": 0.0,
-            "title": "Flow Disturb",
-            "default": 0.0
-          },
-          "texture_inject": {
-            "type": "number",
-            "maximum": 0.1,
-            "minimum": 0.0,
-            "title": "Texture Inject",
-            "default": 0.0
-          },
-          "multiscale": {
-            "type": "number",
-            "maximum": 0.1,
-            "minimum": 0.0,
-            "title": "Multiscale",
-            "default": 0.0
-          },
-          "complexity_trap": {
-            "type": "number",
-            "maximum": 0.2,
-            "minimum": 0.0,
-            "title": "Complexity Trap",
-            "default": 0.0
-          },
           "face_perturb": {
             "type": "number",
             "maximum": 0.2,
             "minimum": 0.0,
             "title": "Face Perturb",
-            "default": 0.0
-          },
-          "temporal_blur": {
-            "type": "number",
-            "maximum": 0.5,
-            "minimum": 0.0,
-            "title": "Temporal Blur",
             "default": 0.0
           },
           "lpc_attack": {
@@ -2428,34 +2393,9 @@
             "title": "Warp",
             "default": 0.0
           },
-          "flowDisturb": {
-            "type": "number",
-            "title": "Flowdisturb",
-            "default": 0.0
-          },
-          "textureInject": {
-            "type": "number",
-            "title": "Textureinject",
-            "default": 0.0
-          },
-          "multiscale": {
-            "type": "number",
-            "title": "Multiscale",
-            "default": 0.0
-          },
-          "complexityTrap": {
-            "type": "number",
-            "title": "Complexitytrap",
-            "default": 0.0
-          },
           "facePerturb": {
             "type": "number",
             "title": "Faceperturb",
-            "default": 0.0
-          },
-          "temporalBlur": {
-            "type": "number",
-            "title": "Temporalblur",
             "default": 0.0
           },
           "lpcAttack": {
