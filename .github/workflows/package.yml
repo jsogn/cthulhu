@@ -32,8 +32,7 @@ jobs:
 
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 11
+        # 与 check.yml 同一口径：版本由 package.json 的 packageManager 决定。
 
       - name: 安装 Node
         uses: actions/setup-node@v4

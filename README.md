@@ -138,6 +138,15 @@ pnpm package                 # 前端构建 → PyInstaller 后端 → electron-
 内置机制已就绪（`packaging/fetch_ffmpeg.sh` 获取静态构建），macOS 签名/公证与
 Windows 构建为待办。
 
+### CI（GitHub Actions，私有仓库）
+
+- `Check`：**手动触发或 PR 时跑**（typecheck / 测试 / 契约漂移）；push 到 main
+  不再自动跑——本地提交前跑的命令与它完全一致，自动跑只会带来失败邮件；
+- `Package`：打 `v*` tag 或手动触发，在云端出 macOS arm64 / Windows 安装包
+  （本机磁盘紧张时这是唯一能验证打包链路的路径）；
+- 两个 workflow 都不再写 pnpm 版本：以 `package.json` 的 `packageManager`
+  为唯一来源（两处同时指定会让 `pnpm/action-setup` 直接报错）。
+
 报告输出到 `backend/data/`（已忽略入库）。当前实现：LSB / 空域扩频 / DCT-QIM /
 回声隐藏等参考嵌入器，去噪 / 重量化 / 几何 / 时序 / 协同平均 / 音频变速等
 鲁棒性压力测试，BER / PSNR / SSIM / VMAF（对齐后）指标，真实视频解码/编码、
