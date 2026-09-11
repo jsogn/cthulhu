@@ -1,4 +1,5 @@
-"""BER / PSNR / SSIM 客观指标。"""
+"""客观指标（评估层）：PSNR / SSIM / BER 由中立层 `quality` 提供，本模块补齐
+依赖 ffmpeg、配准与对齐的部分（对齐 PSNR/SSIM、VMAF、时序稳定性等）。"""
 
 from __future__ import annotations
 
@@ -6,42 +7,15 @@ import os
 import tempfile
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, zoom
+from scipy.ndimage import zoom
 
 from cthulhu_backend.media import ffmpeg
+from cthulhu_backend.quality import (  # noqa: F401 - re-export 给历史调用方
+    ber,
+    psnr,
+    ssim,
+)
 from cthulhu_backend.sample_prep.align import estimate_shift
-from cthulhu_backend.watermark.common import bit_error_rate
-
-
-def psnr(reference: np.ndarray, candidate: np.ndarray) -> float:
-    mse = float(np.mean((np.asarray(reference) - np.asarray(candidate)) ** 2))
-    if mse == 0:
-        return float("inf")
-    return float(-10 * np.log10(mse))
-
-
-def ssim(reference: np.ndarray, candidate: np.ndarray, window: int = 11, sigma: float = 1.5) -> float:
-    ref = np.asarray(reference, dtype=np.float64)
-    cand = np.asarray(candidate, dtype=np.float64)
-    kernel = np.outer(
-        np.exp(-((np.arange(window) - window // 2) ** 2) / (2 * sigma**2)),
-        np.exp(-((np.arange(window) - window // 2) ** 2) / (2 * sigma**2)),
-    )
-    kernel /= kernel.sum()
-    mu1 = gaussian_filter(ref, sigma=sigma)
-    mu2 = gaussian_filter(cand, sigma=sigma)
-    mu1_sq, mu2_sq, mu12 = mu1**2, mu2**2, mu1 * mu2
-    sigma1_sq = gaussian_filter(ref**2, sigma=sigma) - mu1_sq
-    sigma2_sq = gaussian_filter(cand**2, sigma=sigma) - mu2_sq
-    sigma12 = gaussian_filter(ref * cand, sigma=sigma) - mu12
-    c1, c2 = 0.01**2, 0.03**2
-    num = (2 * mu12 + c1) * (2 * sigma12 + c2)
-    den = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
-    return float(np.mean(num / den))
-
-
-def ber(ref_bits: list[int], out_bits: list[int]) -> float:
-    return bit_error_rate(ref_bits, out_bits)
 
 
 def aligned_psnr(reference: np.ndarray, candidate: np.ndarray) -> float:

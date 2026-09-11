@@ -5,7 +5,8 @@
 
 - 帧一律是 uint8 RGB `(N,H,W,3)`，读取走 pyav 之外的唯一路径 ffmpeg；
 - 基准方案（SS/QIM/DWT/DFT）与比特一致率（BA/BER）来自生产 watermark 包；
-- 画质指标直接用 `evaluate.metrics`（与后端清洗报告同源），不引入 skimage。
+- 画质指标直接用中立层 `quality`（`evaluate.metrics` 亦由其提供，与后端清洗
+  报告同源），不引入 skimage。
 
 新脚本一律基于本模块；历史脚本按需迁移（不强制一次改完）。
 
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from cthulhu_backend.evaluate import metrics
+from cthulhu_backend import quality as quality_metrics
 from cthulhu_backend.media import ffmpeg as backend_ffmpeg
 from cthulhu_backend.watermark import common, dft, dwt, qim, ss
 
@@ -221,6 +222,6 @@ def quality(reference: np.ndarray, attacked: np.ndarray) -> tuple[float, float]:
     count = min(len(ref), len(atk))
     if count == 0:
         return float("inf"), 1.0
-    psnr_values = [metrics.psnr(ref[index], atk[index]) for index in range(count)]
-    ssim_values = [metrics.ssim(ref[index], atk[index]) for index in range(count)]
+    psnr_values = [quality_metrics.psnr(ref[index], atk[index]) for index in range(count)]
+    ssim_values = [quality_metrics.ssim(ref[index], atk[index]) for index in range(count)]
     return float(np.mean(psnr_values)), float(np.mean(ssim_values))

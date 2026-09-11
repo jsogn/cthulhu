@@ -12,6 +12,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.ndimage import median_filter
 
+from cthulhu_backend.quality import ssim as quality_ssim
+
 _DCT8_CACHE: np.ndarray | None = None
 
 
@@ -276,8 +278,6 @@ def _ssim_proxy(
     """SSIM 代理：帧抽样 + 空间降采样，控制块级评估的内存与耗时。"""
     from scipy.ndimage import zoom
 
-    from cthulhu_backend.evaluate import metrics
-
     ref = np.asarray(reference, dtype=np.float32)
     cand = np.asarray(candidate, dtype=np.float32)
     if ref.ndim >= 3 and len(ref) > max_frames:
@@ -296,7 +296,7 @@ def _ssim_proxy(
         if scale < 1.0:
             ref = zoom(ref, (1.0, scale, scale), order=1)
             cand = zoom(cand, (1.0, scale, scale), order=1)
-    return metrics.ssim(ref, cand)
+    return quality_ssim(ref, cand)
 
 
 def _spatial_kernel(shape: tuple[int, ...], size: int) -> tuple[int, ...]:

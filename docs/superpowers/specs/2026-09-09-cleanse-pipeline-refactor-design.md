@@ -615,6 +615,11 @@ Architecture 95 / Tech Debt 93 / Test Quality 98）。上一轮 1 Critical / 2 W
    规避（`similarity/embedding.py:69`、`transform/extra_attacks.py:280`），模块级无环，
    但生产 `transform` 反向依赖评估层 `evaluate.metrics`。修法：把 psnr/ssim/ber 等
    纯指标下沉到中立模块（如 `numeric` / 新增 `quality`），两侧只依赖该模块。
+   **已修**：新增中立层 `quality.py`（`psnr` / `ssim` / `ber`），`evaluate.metrics`
+   改为 re-export（历史调用方与测试不受影响），`transform/extra_attacks.py` 与
+   `similarity/embedding.py` 去掉两处延迟导入、直接依赖 `quality`；复查包级互依
+   已清零（`transform → evaluate` / `similarity → evaluate` 均为 0），并新增
+   `backend/tests/test_layering.py` 守卫（含函数内延迟导入的写法）防回归。
 2. 🟡 **R1 长函数**：`prepare_desensitize` 仍有 337 行（`pipeline.py:612`）。已达成上轮
    ≤350 行目标且已拆为线性委派，故由 Critical 降为 Warning；若要继续收口，下一步是
    把原生时序滤镜图装配与分块预算计算拆出。同类还有 `_encode_desensitize` 272 行、

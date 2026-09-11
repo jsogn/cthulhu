@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from cthulhu_backend.quality import ssim as quality_ssim
+
 
 def resize_blockmean(arr: np.ndarray, size: int) -> np.ndarray:
     """块均值降采样到 size×size，等价于低通缩略图。"""
@@ -64,10 +66,6 @@ def similarity_report(
     max_frames: int = 60,
 ) -> dict:
     """输出内容/运动/哈希/画质四维相似度与下降量。"""
-    # 函数级延迟导入：破 evaluate ⇄ similarity ⇄ fingerprint 的静态循环依赖，
-    # 与 transform/extra_attacks.py 的既有破环方式一致。
-    from cthulhu_backend.evaluate import metrics
-
     ref = np.asarray(reference_frames)
     cand = np.asarray(candidate_frames)
     # 内容 embedding 是帧均值池化，抽样不影响口径；运动 embedding 抽样后仍保留节奏信息。
@@ -83,7 +81,7 @@ def similarity_report(
     n = min(len(ref), len(cand), 8)
     sample_idx = np.linspace(0, min(len(ref), len(cand)) - 1, max(n, 1)).astype(int)
     dhash_agree = float(np.mean([dhash_agreement(dhash(ref[i]), dhash(cand[i])) for i in sample_idx]))
-    ssim_mean = float(np.mean([metrics.ssim(ref[i], cand[i]) for i in sample_idx]))
+    ssim_mean = float(np.mean([quality_ssim(ref[i], cand[i]) for i in sample_idx]))
 
     return {
         "content_cosine": round(content_cos, 4),
