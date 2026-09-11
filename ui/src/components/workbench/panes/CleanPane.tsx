@@ -119,22 +119,10 @@ export function CleanPane({
     setJitterOn,
     jitter,
     setJitter,
-    nonintOn,
-    setNonintOn,
-    nonintRatio,
-    setNonintRatio,
-    flowOn,
-    setFlowOn,
-    flow,
-    setFlow,
     textureOn,
     setTextureOn,
     texture,
     setTexture,
-    multiscaleOn,
-    setMultiscaleOn,
-    multiscale,
-    setMultiscale,
     faceOn,
     setFaceOn,
     face,
@@ -174,8 +162,6 @@ export function CleanPane({
     setEmbeddingAttack,
     embeddingStrength,
     setEmbeddingStrength,
-    embeddingVariant,
-    setEmbeddingVariant,
     embeddingAggressive,
     setEmbeddingAggressive,
     autoProfile,
@@ -509,20 +495,6 @@ export function CleanPane({
                   </div>
                   <div className="switch">
                     <div>
-                      <div className="switch-label">精确频带重写</div>
-                      <div className="switch-desc">
-                        按实测水印频带精确改写低频并加随机量化；关闭则退回粗略的高斯平滑替换
-                      </div>
-                    </div>
-                    <Switch
-                      checked={embeddingVariant === "v2"}
-                      onCheckedChange={(checked) =>
-                        setEmbeddingVariant(checked ? "v2" : "legacy")
-                      }
-                    />
-                  </div>
-                  <div className="switch">
-                    <div>
                       <div className="switch-label">增强重写（更强，画质代价更高）</div>
                       <div className="switch-desc">
                         破坏固定分块对齐，并覆盖色度子采样网格；画质代价更高
@@ -792,27 +764,6 @@ export function CleanPane({
               <Switch checked={aiDenoise} onCheckedChange={setAiDenoise} />
             </div>
             {switchCard(
-              "非整缩重采样",
-              "先放大再回压，打散像素网格与块对齐",
-              "dual",
-              "fast",
-              "mild",
-              nonintOn,
-              setNonintOn,
-              nonintOn ? (
-                <div className="field">
-                  <span className="field-label">缩放比例 {(nonintRatio * 100).toFixed(1)}%</span>
-                  <Slider
-                    value={[nonintRatio]}
-                    min={0.005}
-                    max={0.03}
-                    step={0.005}
-                    onValueChange={(values) => setNonintRatio(values[0] ?? 0.01)}
-                  />
-                </div>
-              ) : undefined,
-            )}
-            {switchCard(
               "跨帧估计相减",
               "估计帧间固定水印并过减，会削弱静态字幕/背景边缘",
               "wm",
@@ -929,27 +880,6 @@ export function CleanPane({
               <Switch checked={spoof} onCheckedChange={setSpoof} />
             </div>
             {switchCard(
-              "光流一致性破坏",
-              "按运动加权的平滑扰动重采样，改运动指纹",
-              "fp",
-              "fast",
-              "heavy",
-              flowOn,
-              setFlowOn,
-              flowOn ? (
-                <div className="field">
-                  <span className="field-label">扰动强度 {flow.toFixed(1)}px</span>
-                  <Slider
-                    value={[flow]}
-                    min={0.5}
-                    max={2.5}
-                    step={0.1}
-                    onValueChange={(values) => setFlow(values[0] ?? 2)}
-                  />
-                </div>
-              ) : undefined,
-            )}
-            {switchCard(
               "纹理/复杂度注入",
               "向低纹理区注入纹理并拉平复杂度分布",
               "fp",
@@ -991,27 +921,6 @@ export function CleanPane({
                     />
                   </div>
                 </>
-              ) : undefined,
-            )}
-            {switchCard(
-              "多尺度特征扰动（DMFF）",
-              "金字塔各尺度带限扰动，8/16/32 签名同步偏移",
-              "fp",
-              "slow",
-              "heavy",
-              multiscaleOn,
-              setMultiscaleOn,
-              multiscaleOn ? (
-                <div className="field">
-                  <span className="field-label">扰动强度 {multiscale.toFixed(2)}</span>
-                  <Slider
-                    value={[multiscale]}
-                    min={0.005}
-                    max={0.04}
-                    step={0.005}
-                    onValueChange={(values) => setMultiscale(values[0] ?? 0.02)}
-                  />
-                </div>
               ) : undefined,
             )}
             {switchCard(
