@@ -44,7 +44,6 @@ from cthulhu_backend.transform.postprocess import (
 )
 
 TAESD_MODEL_ID = os.environ.get("CTHULHU_PURIFY_TAESD_MODEL", "madebyollin/taesd")
-GEN_MODEL_ID = os.environ.get("CTHULHU_PURIFY_GEN_MODEL", "stabilityai/sd-turbo")
 ALLOW_DOWNLOAD_ENV = "CTHULHU_PURIFY_ALLOW_DOWNLOAD"
 MODEL_DIR_ENV = "CTHULHU_PURIFY_MODEL_DIR"
 # 细节回注带宽（σ）与后置锐化：水印在低频、字幕/纹理在中频，σ 决定回注多宽。
@@ -71,14 +70,8 @@ SUBTITLE_MASK_SOFT_SIGMA = 6.0
 SUBTITLE_MASK_GAIN = 1.5
 DEFAULT_DETAIL_SIGMA = 0.0  # 0 = 自动（按帧长边换算）
 
-# 生成式档（A）：扩散 img2img 按语义重画，人脸/字幕不会被瓶颈磨掉。
-# 实测甜点区：长边 512、strength 0.15、2 步；strength 越高字幕越容易被重画成乱码。
-ENGINE_LATENT = "latent"
-ENGINE_GENERATIVE = "generative"
-ENGINES = (ENGINE_LATENT, ENGINE_GENERATIVE)
-GEN_STRENGTH = 0.15
-GEN_STEPS = 2
-GEN_MAX_EDGE = 512
+# 生成式档（A，扩散 img2img）尚未实现：参数与验收判据在设计文档 §6，
+# 落地时按那份形态重新引入权重与档位，不在这里预留未消费的常量。
 
 logger = logging.getLogger(__name__)
 

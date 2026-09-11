@@ -40,7 +40,7 @@ def test_known_scheme_mapping() -> None:
     assert "无法可靠识别" in unknown.note
 
 
-def test_deterministic() -> None:
+def test_profile_is_deterministic_for_same_input() -> None:
     frames = np.random.default_rng(2).uniform(0, 1, (6, 32, 32, 3)).astype(np.float32)
     assert profile.profile_frames(frames).as_dict() == profile.profile_frames(frames).as_dict()
 

@@ -81,7 +81,7 @@ def test_geometric_and_temporal_run():
     assert temporal.drop_duplicate(frames).shape == frames.shape
 
 
-def test_metrics():
+def test_metrics_psnr_ssim_boundaries():
     assert metrics.psnr(FRAME, FRAME) == float("inf")
     assert metrics.ssim(FRAME, FRAME) > 0.999
     assert abs(metrics.psnr(FRAME, FRAME + 0.1) - 20.0) < 0.01

@@ -31,5 +31,16 @@
       "suggestion": 3
     },
     "scope": "cthulhu 全项目"
+  },
+  {
+    "date": "2026-09-11",
+    "mode": "Health Dashboard",
+    "score": 95,
+    "findings": {
+      "critical": 0,
+      "warning": 2,
+      "suggestion": 3
+    },
+    "scope": "cthulhu 全项目（§8 四项修复后复扫）"
   }
 ]

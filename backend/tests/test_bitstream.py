@@ -15,7 +15,7 @@ from cthulhu_backend.media import ffmpeg
 needs_ffmpeg = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="需要 ffmpeg/ffprobe")
 
 
-def test_stats_helpers():
+def test_stats_helpers_periodic_autocorr_and_entropy():
     periodic = [1.0, -1.0] * 8
     random = list(np.random.default_rng(0).standard_normal(32))
     assert autocorr_peak(periodic) > 0.9

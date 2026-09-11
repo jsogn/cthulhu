@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -396,9 +395,10 @@ def dct_requant_plane(work: np.ndarray, step: float, sub_batch: int = 32) -> np.
 
     from concurrent.futures import ThreadPoolExecutor
 
-    thread_hint = os.environ.get("CTHULHU_TRANSFORM_THREADS")
-    internal_workers = int(thread_hint) if thread_hint and thread_hint.isdigit() else 4
-    with ThreadPoolExecutor(max_workers=internal_workers) as pool:
+    from cthulhu_backend import parallel
+
+    # 与逐帧武器共用同一个线程旋钮（默认 4：子批 matmul 再多收益有限）。
+    with ThreadPoolExecutor(max_workers=parallel.configured_workers(4)) as pool:
         for start, end, recon_frame in pool.map(run, jobs):
             out[start:end] = recon_frame
     return out[:, :h, :w]

@@ -604,3 +604,28 @@ Source: Osherove — Test isolation；Meszaros — Implementation coupling。
 每项完成后：后端 `CTHULHU_PURIFY_MODEL_DIR=$PWD/packaging/models uv run --project backend --extra purify python -m pytest backend/tests -q -p no:warnings` + `ruff check`；
 前端 `export PATH="$HOME/.nvm/versions/node/v22.21.1/bin:$PATH"` 后 `pnpm --dir ui typecheck && pnpm --dir ui test && pnpm --dir ui build && pnpm --dir electron test`；
 改后端 schema 后必须重跑 `export_openapi.py` + `pnpm --dir ui generate-api`。
+
+### 🔁 复扫（2026-09-11，四项修复后）
+
+**综合分 92 → 95**（无 diff，Code Quality 维度按规则跳过，权重 0.40/0.33/0.27 分摊：
+Architecture 95 / Tech Debt 93 / Test Quality 98）。上一轮 1 Critical / 2 Warning /
+3 Suggestion 全部消项。本轮新发现 0 Critical / 2 Warning / 3 Suggestion：
+
+1. 🟡 **R5 包级互依**：`evaluate ⇄ fingerprint ⇄ similarity` 静态环靠函数内延迟导入
+   规避（`similarity/embedding.py:69`、`transform/extra_attacks.py:280`），模块级无环，
+   但生产 `transform` 反向依赖评估层 `evaluate.metrics`。修法：把 psnr/ssim/ber 等
+   纯指标下沉到中立模块（如 `numeric` / 新增 `quality`），两侧只依赖该模块。
+2. 🟡 **R1 长函数**：`prepare_desensitize` 仍有 337 行（`pipeline.py:612`）。已达成上轮
+   ≤350 行目标且已拆为线性委派，故由 Critical 降为 Warning；若要继续收口，下一步是
+   把原生时序滤镜图装配与分块预算计算拆出。同类还有 `_encode_desensitize` 272 行、
+   `init_db` 128 行（未计入本次展示上限）。
+3. 🟢 **R3 配置双解析**：`CTHULHU_TRANSFORM_THREADS` 在 `parallel.default_workers()`
+   （默认 min(8, CPU)）与 `extra_attacks.dct_requant_plane`（默认 4）各解析一次——
+   已统一为 `parallel.configured_workers(fallback)`。
+4. 🟢 **R4 死配置**：`purify.py` 残留 7 个生成式引擎常量（`GEN_MODEL_ID`、`ENGINE_*`、
+   `GEN_*`）无任何消费方——已删除，改为一行指向 §6 的说明（A 档落地时按该形态重新引入）。
+5. 🟢 **T2 测试缝隙 / T1 命名**：仍有 11 处 `monkeypatch.setattr(模块, "私有名")` 注入点
+   （已从「直接断言私有实现」收敛为「仅测试替身」）；3 个测试名不表意
+   （`test_deterministic` / `test_metrics` / `test_stats_helpers`），已改名。
+
+第 3/4/5 项与本记录同批修掉（后端 296 项 + ruff 全绿）；第 1/2 项留作后续。

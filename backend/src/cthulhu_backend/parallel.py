@@ -16,15 +16,24 @@ import numpy as np
 _DEFAULT_WORKERS = min(8, os.cpu_count() or 1)
 
 
-def default_workers() -> int:
-    """默认并行线程数：环境变量优先，否则取 min(8, CPU 核数)。"""
+def configured_workers(fallback: int) -> int:
+    """线程数解析的唯一入口：CTHULHU_TRANSFORM_THREADS 优先，否则用调用方默认值。
+
+    以前各模块自己解析这个环境变量（默认值还不一致），改一处忘另一处就会出现
+    「同一个旋钮两套语义」；统一走这里。
+    """
     raw = os.environ.get("CTHULHU_TRANSFORM_THREADS")
     if raw:
         try:
             return max(1, int(raw))
         except ValueError:
             pass
-    return _DEFAULT_WORKERS
+    return fallback
+
+
+def default_workers() -> int:
+    """默认并行线程数：环境变量优先，否则取 min(8, CPU 核数)。"""
+    return configured_workers(_DEFAULT_WORKERS)
 
 
 def map_frames(
