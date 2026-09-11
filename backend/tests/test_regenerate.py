@@ -58,35 +58,6 @@ def test_fft_phase_preserves_energy_and_layout():
     assert drift < 0.1
 
 
-def test_fft_magnitude_preserves_energy_and_layout():
-    clean = samples.make_cut_video(2, 4, 96, 64, seed=4)
-    out = regenerate.fft_magnitude(clean, strength=0.6, rng=np.random.default_rng(7))
-    assert out.shape == clean.shape
-    assert out.dtype == clean.dtype
-    assert np.isfinite(out).all()
-    drift = abs(float(np.mean(out**2)) - float(np.mean(clean**2))) / float(np.mean(clean**2))
-    assert drift < 0.35
-
-
-def test_noninteger_rescale_keeps_layout_and_disturbs_qim():
-    clean = samples.make_cut_video(2, 8, 96, 64, seed=5)
-    out = regenerate.noninteger_rescale(clean, ratio=0.02)
-    assert out.shape == clean.shape
-    assert out.dtype == clean.dtype
-    mse = float(np.mean((clean - out) ** 2))
-    psnr = 10 * np.log10(1.0 / mse)
-    assert psnr > 25
-
-    from cthulhu_backend.watermark import qim
-
-    watermarked = np.stack([qim.embed(f, BITS, delta=20) for f in clean])
-    attacked = regenerate.noninteger_rescale(watermarked, ratio=0.03)
-    after = float(
-        np.mean([metrics.ber(REF, qim.extract(f, 64, delta=20)) for f in attacked])
-    )
-    assert after > 0.08
-
-
 def test_hsv_jitter_color_only():
     clean = samples.make_cut_video(2, 4, 96, 64, seed=5)
     color = np.stack([np.stack([f, f, f], axis=-1) for f in clean])

@@ -45,10 +45,8 @@ class AssaultParams:
     drop_every: int = 0
     temporal_sub: float = 0.0
     fft_phase: float = 0.0
-    fft_mag: float = 0.0
     dwt_detail: float = 0.0
     hsv_jitter: float = 0.0
-    nonint_ratio: float = 0.0
     flow_disturb: float = 0.0
     texture_inject: float = 0.0
     copy_field: np.ndarray | None = None
@@ -75,10 +73,8 @@ class AssaultParams:
                 self.drop_every > 0,
                 self.temporal_sub > 0,
                 self.fft_phase > 0,
-                self.fft_mag > 0,
                 self.dwt_detail > 0,
                 self.hsv_jitter > 0,
-                self.nonint_ratio > 0,
                 self.flow_disturb > 0,
                 self.texture_inject > 0,
                 self.multiscale > 0,
@@ -710,8 +706,6 @@ def apply(
         work = perspective_shear(work, params.perspective, rng)
     if params.warp > 0:
         work = local_warp(work, params.warp, rng)
-    if params.nonint_ratio > 0:
-        work = regenerate.noninteger_rescale(work, params.nonint_ratio)
     if params.median > 0:
         work = median(work, params.median)
     if params.noise > 0:
@@ -728,8 +722,6 @@ def apply(
         work = regenerate.temporal_subtract(work, params.temporal_sub)
     if params.fft_phase > 0:
         work = regenerate.fft_phase(work, params.fft_phase, rng)
-    if params.fft_mag > 0:
-        work = regenerate.fft_magnitude(work, params.fft_mag, rng)
     if params.dwt_detail > 0:
         work = regenerate.dwt_detail(work, params.dwt_detail, rng)
     if params.hsv_jitter > 0:

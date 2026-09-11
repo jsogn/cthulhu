@@ -1875,13 +1875,6 @@
             "title": "Fft Phase",
             "default": 0.0
           },
-          "fft_mag": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Fft Mag",
-            "default": 0.0
-          },
           "dwt_detail": {
             "type": "number",
             "maximum": 1.0,
@@ -1894,13 +1887,6 @@
             "maximum": 30.0,
             "minimum": 0.0,
             "title": "Hsv Jitter",
-            "default": 0.0
-          },
-          "nonint_ratio": {
-            "type": "number",
-            "maximum": 0.1,
-            "minimum": 0.0,
-            "title": "Nonint Ratio",
             "default": 0.0
           },
           "flow_disturb": {
@@ -2422,19 +2408,9 @@
             "title": "Dwtdetail",
             "default": 0.0
           },
-          "fftMag": {
-            "type": "number",
-            "title": "Fftmag",
-            "default": 0.0
-          },
           "hsvJitter": {
             "type": "number",
             "title": "Hsvjitter",
-            "default": 0.0
-          },
-          "nonintRatio": {
-            "type": "number",
-            "title": "Nonintratio",
             "default": 0.0
           },
           "jitter": {

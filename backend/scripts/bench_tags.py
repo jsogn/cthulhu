@@ -74,13 +74,11 @@ def main() -> None:
             frames, list(range(len(frames))), 0.4)),
         ("色彩微扰", lambda: video_transform.regrade(
             frames.astype(np.float32) / 255.0, rng)),
-        ("非整缩 0.01", lambda: regenerate.noninteger_rescale(frames, 0.01)),
         ("时序模糊 0.25", lambda: regenerate.temporal_blur(frames, 0.25)),
         ("伪水印注入 Δ6", lambda: strategies._embed_qim_frames(
             frames.astype(np.float32) / 255.0, spoof_bits, 6)),
         ("跨帧估计 0.6", lambda: regenerate.temporal_subtract(frames, 0.6)),
         ("FFT 相位 0.5", lambda: regenerate.fft_phase(frames, 0.5, rng)),
-        ("FFT 幅度 0.7", lambda: regenerate.fft_magnitude(frames, 0.7, rng)),
         ("小波细节 0.8", lambda: regenerate.dwt_detail(frames, 0.8, rng)),
         ("DCT 重量化 12", lambda: extra_attacks.dct_requant(frames, 12.0)),
         ("像素重写 超分+CLAHE", lambda: regenerate.clahe_rewrite(

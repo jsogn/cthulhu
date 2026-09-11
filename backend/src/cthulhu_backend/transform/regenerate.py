@@ -122,44 +122,6 @@ def fft_phase(
     return _as_original(new_luma, original_dtype)
 
 
-def fft_magnitude(
-    frames: np.ndarray,
-    strength: float,
-    rng: np.random.Generator,
-    radius_frac: float = 0.35,
-) -> np.ndarray:
-    """FFT 幅度扰动：亮度通道中高频幅值按强度随机缩放，相位保持不变。
-
-    DFT 幅值调制的扩频水印把信息写在系数幅值上，缩放幅值即破坏载荷；
-    只动中高频（半径大于 radius_frac×Nyquist），低频与大结构观感稳定。
-    """
-    if strength <= 0:
-        return frames
-    from cthulhu_backend.parallel import map_frames
-
-    work, original_dtype = _as_float(frames)
-    if work.ndim == 4:
-        luma = 0.299 * work[..., 0] + 0.587 * work[..., 1] + 0.114 * work[..., 2]
-    else:
-        luma = work
-
-    def one(frame: np.ndarray) -> np.ndarray:
-        h, w = frame.shape
-        spectrum = np.fft.rfft2(frame)
-        magnitude = np.abs(spectrum)
-        phase = np.angle(spectrum)
-        mask = _radial_mask(h, w, radius_frac)
-        noise = rng.uniform(-1.0, 1.0, spectrum.shape).astype(np.float32)
-        scaled = magnitude * (1.0 + strength * mask * noise)
-        return np.fft.irfft2(scaled * np.exp(1j * phase), s=(h, w))
-
-    new_luma = np.stack(map_frames(one, [luma[i] for i in range(len(luma))]))
-    if work.ndim == 4:
-        delta = (new_luma - luma)[..., None]
-        return _as_original(work + delta, original_dtype)
-    return _as_original(new_luma, original_dtype)
-
-
 def dwt_detail(
     frames: np.ndarray,
     strength: float,
@@ -224,37 +186,6 @@ def hsv_jitter(
 
     # OpenCV 在多线程析构时存在 TLS 崩溃风险，色相抖动顺序执行。
     return np.stack([one(item) for item in zip(frames, hue_deltas, sat_factors)])
-
-
-def noninteger_rescale(frames: np.ndarray, ratio: float) -> np.ndarray:
-    """非整缩重采样：先放大 (1+ratio) 倍再回压原尺寸，打散像素网格对齐。"""
-    if ratio <= 0:
-        return frames
-    from PIL import Image
-
-    from cthulhu_backend.parallel import map_frames
-
-    is_u8 = frames.dtype == np.uint8
-
-    def one(frame: np.ndarray) -> np.ndarray:
-        h, w = frame.shape[:2]
-        if is_u8:
-            base = frame
-        else:
-            base = (np.clip(frame, 0, 1) * 255).round().astype(np.uint8)
-        mode = "RGB" if base.ndim == 3 else "L"
-        image = Image.fromarray(base, mode=mode)
-        up = image.resize(
-            (max(2, round(w * (1.0 + ratio))), max(2, round(h * (1.0 + ratio)))),
-            Image.BILINEAR,
-        )
-        down = up.resize((w, h), Image.LANCZOS)
-        result = np.asarray(down)
-        if is_u8:
-            return result.astype(np.uint8)
-        return result.astype(frames.dtype) / 255.0
-
-    return map_frames(one, frames)
 
 
 def flow_disturb(

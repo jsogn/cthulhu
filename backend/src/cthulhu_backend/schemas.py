@@ -84,10 +84,8 @@ class DesensitizeOptions(BaseModel):
     drop_every: int = Field(0, ge=0, le=1000)
     temporal_sub: float = Field(0.0, ge=0, le=4)
     fft_phase: float = Field(0.0, ge=0, le=1)
-    fft_mag: float = Field(0.0, ge=0, le=1)
     dwt_detail: float = Field(0.0, ge=0, le=1)
     hsv_jitter: float = Field(0.0, ge=0, le=30)
-    nonint_ratio: float = Field(0.0, ge=0, le=0.1)
     flow_disturb: float = Field(0.0, ge=0, le=3)
     texture_inject: float = Field(0.0, ge=0, le=0.1)
     multiscale: float = Field(0.0, ge=0, le=0.1)
@@ -177,9 +175,7 @@ class TemplatePayload(BaseModel):
     temporalSub: float = 0.0
     fftPhase: float = 0.0
     dwtDetail: float = 0.0
-    fftMag: float = 0.0
     hsvJitter: float = 0.0
-    nonintRatio: float = 0.0
     jitter: float = 0.0
     perspective: float = 0.0
     warp: float = 0.0

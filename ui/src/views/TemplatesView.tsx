@@ -60,10 +60,8 @@ const NUMERIC_KEYS = [
   "requant",
   "noise",
   "dctStep",
-  "nonintRatio",
   "temporalSub",
   "fftPhase",
-  "fftMag",
   "dwtDetail",
   "flowDisturb",
   "textureInject",
@@ -82,10 +80,6 @@ function numericEnabled(payload: TemplatePayload): NumericEnabled {
   const enabled = Object.fromEntries(
     NUMERIC_KEYS.map((key) => [key, (payload[key] ?? 0) > 0]),
   ) as NumericEnabled;
-  if (enabled.fftPhase || enabled.fftMag) {
-    enabled.fftPhase = true;
-    enabled.fftMag = true;
-  }
   if (enabled.textureInject || (payload.complexityTrap ?? 0) > 0) {
     enabled.textureInject = true;
   }
@@ -95,8 +89,6 @@ function numericEnabled(payload: TemplatePayload): NumericEnabled {
 /** 编辑旧模板时把单字段兜底成工作台可显示的默认值。 */
 function editablePayload(payload: TemplatePayload): TemplatePayload {
   const next = { ...payload };
-  if ((next.fftPhase ?? 0) <= 0 && (next.fftMag ?? 0) > 0) next.fftPhase = 0.5;
-  if ((next.fftMag ?? 0) <= 0 && (next.fftPhase ?? 0) > 0) next.fftMag = 0.1;
   if ((next.textureInject ?? 0) <= 0 && (next.complexityTrap ?? 0) > 0) {
     next.textureInject = Math.min(0.05, next.complexityTrap / 2.5);
   }
@@ -380,46 +372,30 @@ export default function TemplatesView() {
     ) : undefined,
   );
 
-  const fftOn = enabled.fftPhase || enabled.fftMag;
+  const fftOn = enabled.fftPhase;
   const fftRow = weaponCard(
-    "FFT 扰动（相位+幅度）",
-    "打散中高频相位并随机缩放幅值，覆盖 DFT 域两类水印",
+    "FFT 相位扰动",
+    "打散中高频相位，覆盖依赖相位相关的 DFT 域水印",
     "wm",
     "mid",
     "heavy",
     fftOn,
     (checked) => {
-      setEnabled((current) => ({ ...current, fftPhase: checked, fftMag: checked }));
-      if (checked) {
-        if ((form.fftPhase ?? 0) <= 0) setField("fftPhase", 0.5);
-        if ((form.fftMag ?? 0) <= 0) setField("fftMag", 0.1);
-      }
+      setNumericEnabled("fftPhase", checked);
+      if (checked && (form.fftPhase ?? 0) <= 0) setField("fftPhase", 0.5);
     },
     fftOn ? (
-      <>
-        <div className="field">
-          <span className="field-label">相位强度 {form.fftPhase.toFixed(2)}</span>
-          <Slider
-            aria-label="FFT 相位强度"
-            value={[form.fftPhase]}
-            min={0.1}
-            max={1}
-            step={0.05}
-            onValueChange={(values) => setField("fftPhase", values[0] ?? 0.5)}
-          />
-        </div>
-        <div className="field">
-          <span className="field-label">幅度强度 {form.fftMag.toFixed(2)}</span>
-          <Slider
-            aria-label="FFT 幅度强度"
-            value={[form.fftMag]}
-            min={0.1}
-            max={1}
-            step={0.05}
-            onValueChange={(values) => setField("fftMag", values[0] ?? 0.1)}
-          />
-        </div>
-      </>
+      <div className="field">
+        <span className="field-label">相位强度 {form.fftPhase.toFixed(2)}</span>
+        <Slider
+          aria-label="FFT 相位强度"
+          value={[form.fftPhase]}
+          min={0.1}
+          max={1}
+          step={0.05}
+          onValueChange={(values) => setField("fftPhase", values[0] ?? 0.5)}
+        />
+      </div>
     ) : undefined,
   );
 
@@ -901,22 +877,6 @@ export default function TemplatesView() {
                 },
               )}
               {switchRow("空间降噪", "removegrain 轻降噪，破坏扩频/QIM/DWT 水印", "wm", "fast", "none", "denoise")}
-              {sliderRow(
-                "非整缩重采样",
-                "先放大再回压，打散像素网格与块对齐",
-                "dual",
-                "fast",
-                "mild",
-                "nonintRatio",
-                {
-                  min: 0.005,
-                  max: 0.03,
-                  step: 0.005,
-                  onValue: 0.01,
-                  ariaLabel: "非整缩重采样比例",
-                  label: (value) => `缩放比例 ${(value * 100).toFixed(1)}%`,
-                },
-              )}
               {temporalSubRow}
               {fftRow}
               {sliderRow(

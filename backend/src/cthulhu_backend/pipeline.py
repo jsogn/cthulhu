@@ -702,10 +702,8 @@ def _prepare_desensitize(
         drop_every=opts.drop_every,
         temporal_sub=temporal_eff,
         fft_phase=opts.fft_phase,
-        fft_mag=opts.fft_mag,
         dwt_detail=opts.dwt_detail,
         hsv_jitter=opts.hsv_jitter,
-        nonint_ratio=opts.nonint_ratio,
         flow_disturb=opts.flow_disturb,
         texture_inject=opts.texture_inject,
         multiscale=opts.multiscale,
@@ -906,9 +904,7 @@ def _prepare_desensitize(
         and opts.subtract_beta <= 0
         and opts.temporal_sub <= 0
         and opts.fft_phase <= 0
-        and opts.fft_mag <= 0
         and opts.dwt_detail <= 0
-        and opts.nonint_ratio <= 0
         and opts.flow_disturb <= 0
         and opts.texture_inject <= 0
         and opts.multiscale <= 0

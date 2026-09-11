@@ -71,10 +71,7 @@ describe("makeCleanOptions", () => {
         nativeTemporalOn: true,
         fftOn: true,
         fftPhase: 0.4,
-        fftMag: 0.7,
         dwtDetailOn: false,
-        nonintOn: true,
-        nonintRatio: 0.02,
         flowOn: true,
         flow: 1.5,
         textureOn: true,
@@ -94,9 +91,7 @@ describe("makeCleanOptions", () => {
     expect(options.temporal_sub).toBe(1.2);
     expect(options.native_temporal).toBe(true);
     expect(options.fft_phase).toBe(0.4);
-    expect(options.fft_mag).toBe(0.7);
     expect(options.dwt_detail).toBeUndefined();
-    expect(options.nonint_ratio).toBe(0.02);
     expect(options.flow_disturb).toBe(1.5);
     expect(options.texture_inject).toBe(0.03);
     expect(options.complexity_trap).toBeCloseTo(0.075);
@@ -111,9 +106,7 @@ describe("makeCleanOptions", () => {
     const options = makeCleanOptions(panelState());
     expect(options.temporal_sub).toBeUndefined();
     expect(options.fft_phase).toBeUndefined();
-    expect(options.fft_mag).toBeUndefined();
     expect(options.dwt_detail).toBeUndefined();
-    expect(options.nonint_ratio).toBeUndefined();
     expect(options.flow_disturb).toBeUndefined();
     expect(options.texture_inject).toBeUndefined();
     expect(options.multiscale).toBeUndefined();

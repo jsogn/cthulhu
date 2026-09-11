@@ -38,12 +38,11 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
     ...(state.audioStrongOn ? { audio_strong: true } : {}),
     ...(state.temporalSubOn ? { temporal_sub: state.temporalSub } : {}),
     ...(state.temporalSubOn && state.nativeTemporalOn ? { native_temporal: true } : {}),
-    ...(state.fftOn ? { fft_phase: state.fftPhase, fft_mag: state.fftMag } : {}),
+    ...(state.fftOn ? { fft_phase: state.fftPhase } : {}),
     ...(state.dwtDetailOn ? { dwt_detail: state.dwtDetail } : {}),
     ...(state.warpOn ? { warp: state.warp } : {}),
     ...(state.shearOn ? { perspective: state.shear } : {}),
     ...(state.jitterOn ? { jitter: state.jitter } : {}),
-    ...(state.nonintOn ? { nonint_ratio: state.nonintRatio } : {}),
     ...(state.flowOn ? { flow_disturb: state.flow } : {}),
     ...(state.textureOn
       ? { texture_inject: state.texture, complexity_trap: state.texture * 2.5 }

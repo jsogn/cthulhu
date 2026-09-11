@@ -83,9 +83,9 @@ def payload_to_options(payload: dict) -> dict:
         opts["phash_epsilon"] = payload.get("hashEpsilon", 0.08)
     simple = [
         ("temporalSub", "temporal_sub"), ("fftPhase", "fft_phase"),
-        ("fftMag", "fft_mag"), ("dwtDetail", "dwt_detail"),
+        ("dwtDetail", "dwt_detail"),
         ("facePerturb", "face_perturb"), ("lpcAttack", "lpc_attack"),
-        ("copyAttack", "copy_attack"), ("nonintRatio", "nonint_ratio"),
+        ("copyAttack", "copy_attack"),
         ("flowDisturb", "flow_disturb"), ("multiscale", "multiscale"),
         ("temporalBlur", "temporal_blur"),
     ]

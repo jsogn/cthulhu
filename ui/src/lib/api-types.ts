@@ -898,11 +898,6 @@ export interface components {
              */
             fft_phase: number;
             /**
-             * Fft Mag
-             * @default 0
-             */
-            fft_mag: number;
-            /**
              * Dwt Detail
              * @default 0
              */
@@ -912,11 +907,6 @@ export interface components {
              * @default 0
              */
             hsv_jitter: number;
-            /**
-             * Nonint Ratio
-             * @default 0
-             */
-            nonint_ratio: number;
             /**
              * Flow Disturb
              * @default 0
@@ -1248,20 +1238,10 @@ export interface components {
              */
             dwtDetail: number;
             /**
-             * Fftmag
-             * @default 0
-             */
-            fftMag: number;
-            /**
              * Hsvjitter
              * @default 0
              */
             hsvJitter: number;
-            /**
-             * Nonintratio
-             * @default 0
-             */
-            nonintRatio: number;
             /**
              * Jitter
              * @default 0

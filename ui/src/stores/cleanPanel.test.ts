@@ -33,10 +33,8 @@ describe("cleanPanel store", () => {
       recropOn: true,
       temporalSub: 1.0,
       fftPhase: 0.4,
-      fftMag: 0.7,
       dwtDetail: 0,
       hsvJitter: 0,
-      nonintRatio: 0.02,
       jitter: 0.01,
       perspective: 0.02,
       warp: 0.004,
@@ -98,7 +96,6 @@ describe("cleanPanel store", () => {
     expect(state.temporalSub).toBe(1.0);
     expect(state.fftOn).toBe(true);
     expect(state.fftPhase).toBe(0.4);
-    expect(state.fftMag).toBe(0.7);
     expect(state.dwtDetailOn).toBe(false);
     expect(state.warpOn).toBe(true);
     expect(state.warp).toBe(0.004);
@@ -106,8 +103,6 @@ describe("cleanPanel store", () => {
     expect(state.shear).toBe(0.02);
     expect(state.jitterOn).toBe(true);
     expect(state.jitter).toBe(0.01);
-    expect(state.nonintOn).toBe(true);
-    expect(state.nonintRatio).toBe(0.02);
     expect(state.flowOn).toBe(true);
     expect(state.flow).toBe(1.5);
     expect(state.textureOn).toBe(true);

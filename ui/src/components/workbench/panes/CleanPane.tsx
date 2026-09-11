@@ -101,8 +101,6 @@ export function CleanPane({
     setFftOn,
     fftPhase,
     setFftPhase,
-    fftMag,
-    setFftMag,
     dwtDetailOn,
     setDwtDetailOn,
     dwtDetail,
@@ -797,36 +795,24 @@ export function CleanPane({
               ) : undefined,
             )}
             {switchCard(
-              "FFT 扰动（相位+幅度）",
-              "打散中高频相位并随机缩放幅值，覆盖 DFT 域两类水印",
+              "FFT 相位扰动",
+              "打散中高频相位，覆盖依赖相位相关的 DFT 域水印",
               "wm",
               "mid",
               "heavy",
               fftOn,
               setFftOn,
               fftOn ? (
-                <>
-                  <div className="field">
-                    <span className="field-label">相位强度 {fftPhase.toFixed(2)}</span>
-                    <Slider
-                      value={[fftPhase]}
-                      min={0.1}
-                      max={1}
-                      step={0.05}
-                      onValueChange={(values) => setFftPhase(values[0] ?? 0.5)}
-                    />
-                  </div>
-                  <div className="field">
-                    <span className="field-label">幅度强度 {fftMag.toFixed(2)}</span>
-                    <Slider
-                      value={[fftMag]}
-                      min={0.1}
-                      max={1}
-                      step={0.05}
-                      onValueChange={(values) => setFftMag(values[0] ?? 0.5)}
-                    />
-                  </div>
-                </>
+                <div className="field">
+                  <span className="field-label">相位强度 {fftPhase.toFixed(2)}</span>
+                  <Slider
+                    value={[fftPhase]}
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    onValueChange={(values) => setFftPhase(values[0] ?? 0.5)}
+                  />
+                </div>
               ) : undefined,
             )}
             {switchCard(

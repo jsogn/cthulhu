@@ -34,7 +34,6 @@ const CLEAN_DEFAULTS = {
   nativeTemporalOn: true,
   fftOn: false,
   fftPhase: 0.5,
-  fftMag: 0.1,
   dwtDetailOn: false,
   dwtDetail: 0.8,
   warpOn: false,
@@ -43,8 +42,6 @@ const CLEAN_DEFAULTS = {
   shear: 0.01,
   jitterOn: false,
   jitter: 0.005,
-  nonintOn: false,
-  nonintRatio: 0.01,
   flowOn: false,
   flow: 1.5,
   textureOn: false,
@@ -111,7 +108,6 @@ export interface CleanPanelState {
   nativeTemporalOn: boolean;
   fftOn: boolean;
   fftPhase: number;
-  fftMag: number;
   dwtDetailOn: boolean;
   dwtDetail: number;
   warpOn: boolean;
@@ -120,8 +116,6 @@ export interface CleanPanelState {
   shear: number;
   jitterOn: boolean;
   jitter: number;
-  nonintOn: boolean;
-  nonintRatio: number;
   flowOn: boolean;
   flow: number;
   textureOn: boolean;
@@ -186,7 +180,6 @@ export interface CleanPanelState {
   setNativeTemporalOn: (value: boolean) => void;
   setFftOn: (value: boolean) => void;
   setFftPhase: (value: number) => void;
-  setFftMag: (value: number) => void;
   setDwtDetailOn: (value: boolean) => void;
   setDwtDetail: (value: number) => void;
   setWarpOn: (value: boolean) => void;
@@ -195,8 +188,6 @@ export interface CleanPanelState {
   setShear: (value: number) => void;
   setJitterOn: (value: boolean) => void;
   setJitter: (value: number) => void;
-  setNonintOn: (value: boolean) => void;
-  setNonintRatio: (value: number) => void;
   setFlowOn: (value: boolean) => void;
   setFlow: (value: number) => void;
   setTextureOn: (value: boolean) => void;
@@ -332,7 +323,6 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
   setNativeTemporalOn: (nativeTemporalOn) => set({ nativeTemporalOn }),
   setFftOn: (fftOn) => set({ fftOn }),
   setFftPhase: (fftPhase) => set({ fftPhase }),
-  setFftMag: (fftMag) => set({ fftMag }),
   setDwtDetailOn: (dwtDetailOn) => set({ dwtDetailOn }),
   setDwtDetail: (dwtDetail) => set({ dwtDetail }),
   setWarpOn: (warpOn) => set({ warpOn }),
@@ -341,8 +331,6 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
   setShear: (shear) => set({ shear }),
   setJitterOn: (jitterOn) => set({ jitterOn }),
   setJitter: (jitter) => set({ jitter }),
-  setNonintOn: (nonintOn) => set({ nonintOn }),
-  setNonintRatio: (nonintRatio) => set({ nonintRatio }),
   setFlowOn: (flowOn) => set({ flowOn }),
   setFlow: (flow) => set({ flow }),
   setTextureOn: (textureOn) => set({ textureOn }),
@@ -494,10 +482,9 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
           ? (payload.temporalSub ?? CLEAN_DEFAULTS.temporalSub)
           : CLEAN_DEFAULTS.temporalSub,
       nativeTemporalOn: payload.nativeTemporal ?? CLEAN_DEFAULTS.nativeTemporalOn,
-      fftOn: (payload.fftPhase ?? 0) > 0 || (payload.fftMag ?? 0) > 0,
+      fftOn: (payload.fftPhase ?? 0) > 0,
       fftPhase:
         (payload.fftPhase ?? 0) > 0 ? (payload.fftPhase ?? CLEAN_DEFAULTS.fftPhase) : CLEAN_DEFAULTS.fftPhase,
-      fftMag: (payload.fftMag ?? 0) > 0 ? (payload.fftMag ?? CLEAN_DEFAULTS.fftMag) : CLEAN_DEFAULTS.fftMag,
       dwtDetailOn: (payload.dwtDetail ?? 0) > 0,
       dwtDetail:
         (payload.dwtDetail ?? 0) > 0 ? (payload.dwtDetail ?? CLEAN_DEFAULTS.dwtDetail) : CLEAN_DEFAULTS.dwtDetail,
@@ -509,11 +496,6 @@ export const useCleanPanel = create<CleanPanelState>((set, get) => ({
       jitterOn: (payload.jitter ?? 0) > 0,
       jitter:
         (payload.jitter ?? 0) > 0 ? (payload.jitter ?? CLEAN_DEFAULTS.jitter) : CLEAN_DEFAULTS.jitter,
-      nonintOn: (payload.nonintRatio ?? 0) > 0,
-      nonintRatio:
-        (payload.nonintRatio ?? 0) > 0
-          ? (payload.nonintRatio ?? CLEAN_DEFAULTS.nonintRatio)
-          : CLEAN_DEFAULTS.nonintRatio,
       flowOn: (payload.flowDisturb ?? 0) > 0,
       flow:
         (payload.flowDisturb ?? 0) > 0
