@@ -39,65 +39,103 @@ def _wait(client: TestClient, job_id: str, timeout: float = 60.0) -> dict:
     raise TimeoutError("任务未在期限内结束")
 
 
-def test_restore_marks_interrupted_job_failed(client):
-    """进程中断的未完成任务标记为失败，不静默从头重跑。"""
-    job_id = uuid.uuid4().hex[:12]
-    db.save_job({
-        "id": job_id,
-        "name": "中断测试",
-        "status": "running",
-        "parallelism": 2,
-        "created_at": time.time(),
-        "tasks": [{
-            "id": "t1",
-            "kind": "detect",
-            "path": "/tmp/x.mp4",
-            "options": {},
-            "status": "running",
-            "percent": 30,
-            "result": None,
-            "error": None,
-        }],
-    })
-    fresh = JobQueue()
-    fresh.restore()
-    restored = fresh._jobs[job_id]
-    assert restored["status"] == "failed"
-    assert restored["tasks"][0]["status"] == "failed"
-    assert "进程重启中断" in restored["tasks"][0]["error"]
-    assert restored["tasks"][0]["progress_note"] == "进程重启中断"
-    db.delete_jobs("all")
+def _task(task_id: str, status: str, path: str = "/tmp/x.mp4", **extra) -> dict:
+    """构造一条持久化过的子任务记录。"""
+    return {
+        "id": task_id,
+        "kind": "detect",
+        "path": path,
+        "options": {},
+        "status": status,
+        "percent": 30 if status == "running" else 0,
+        "progress_note": None,
+        "elapsed": None,
+        "result": None,
+        "error": None,
+        **extra,
+    }
 
 
-def test_restore_does_not_auto_restart_interrupted_job():
-    """restore 之后 start 不会把中断任务重新跑一遍。"""
-    job_id = uuid.uuid4().hex[:12]
+def _save_job(job_id: str, tasks: list[dict], status: str = "running") -> None:
     db.save_job({
         "id": job_id,
         "name": "重启续跑",
-        "status": "running",
+        "status": status,
         "parallelism": 1,
         "created_at": time.time(),
-        "tasks": [{
-            "id": "t1",
-            "kind": "detect",
-            "path": "/no/such/file.mp4",
-            "options": {},
-            "status": "running",
-            "percent": 30,
-            "result": None,
-            "error": None,
-        }],
+        "tasks": tasks,
     })
+
+
+@pytest.fixture
+def fast_runners(monkeypatch):
+    """用假 runner 顶替真实检测/清洗，让续跑语义在毫秒级可验证。"""
+    calls: list[str] = []
+
+    def fake_runner(path, options, progress=None, stop=None, pause=None):
+        calls.append(path)
+        return {"path": path}
+
+    monkeypatch.setitem(jobs.RUNNERS, "detect", fake_runner)
+    return calls
+
+
+async def _wait_job(queue: JobQueue, job_id: str, timeout: float = 10.0) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = queue.get(job_id)
+        if job and job["status"] in {"done", "failed", "canceled"}:
+            return job
+        await asyncio.sleep(0.02)
+    raise TimeoutError("任务未在期限内结束")
+
+
+def test_restore_requeues_interrupted_task_and_keeps_done(fast_runners):
+    """进程重启后只重跑被打断的子任务，已完成项保持完成。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "done", "/tmp/a.mp4"), _task("t2", "running", "/tmp/b.mp4")])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        restored = queue.get(job_id)
+    finally:
+        db.delete_jobs("all")
+    assert restored["status"] == "queued"
+    assert [task["status"] for task in restored["tasks"]] == ["done", "queued"]
+    interrupted = restored["tasks"][1]
+    assert interrupted["percent"] == 0
+    assert interrupted["error"] is None
+    assert interrupted["resume_count"] == 1
+    assert "自动续跑" in interrupted["progress_note"]
+
+
+def test_restore_keeps_untouched_queued_task_clean():
+    """从没开始的排队任务不算中断，重启后直接继续且不留下重跑痕迹。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "queued", "/tmp/a.mp4")])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        task = queue.get(job_id)["tasks"][0]
+    finally:
+        db.delete_jobs("all")
+    assert task["status"] == "queued"
+    assert "resume_count" not in task
+    assert task["progress_note"] is None
+
+
+def test_restore_continues_interrupted_job_to_done(fast_runners):
+    """restore 之后调度器把中断的任务接着跑完，不再整批报废。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", "/tmp/a.mp4"), _task("t2", "queued", "/tmp/b.mp4")])
     queue = JobQueue()
 
     async def drive():
-        # 与 lifespan 相同的顺序：先恢复、再启动调度。
-        queue.restore()
+        # 与 lifespan 相同的顺序：先启动调度、再恢复未完成任务。
         queue.start()
+        queue.restore()
         try:
-            await asyncio.sleep(0.2)
-            return queue.get(job_id)
+            return await _wait_job(queue, job_id)
         finally:
             await queue.stop()
 
@@ -105,10 +143,72 @@ def test_restore_does_not_auto_restart_interrupted_job():
         job = asyncio.run(drive())
     finally:
         db.delete_jobs("all")
+    assert job["status"] == "done"
+    assert [task["status"] for task in job["tasks"]] == ["done", "done"]
+    assert sorted(fast_runners) == ["/tmp/a.mp4", "/tmp/b.mp4"]
+
+
+def test_restore_stops_auto_resume_after_limit():
+    """反复中断的素材不再自动重跑，标记失败交回手动重试。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", resume_count=jobs.MAX_AUTO_RESUME)])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        job = queue.get(job_id)
+        dispatched = not queue._inbox.empty()
+    finally:
+        db.delete_jobs("all")
     assert job["status"] == "failed"
     assert job["tasks"][0]["status"] == "failed"
-    assert "进程重启中断" in job["tasks"][0]["error"]
-    assert job["tasks"][0]["error"], "失败子任务缺少错误信息"
+    assert "手动重试" in job["tasks"][0]["error"]
+    assert not dispatched, "达到续跑上限的任务不应再自动重跑"
+
+
+def test_restore_keeps_paused_job_paused_and_resumable(fast_runners):
+    """重启后暂停态保留，但中断的子任务退回队列，点「继续」能真的跑起来。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", "/tmp/a.mp4")], status="paused")
+    queue = JobQueue()
+
+    async def drive():
+        queue.start()
+        queue.restore()
+        try:
+            paused = queue.get(job_id)
+            assert paused["status"] == "paused"
+            assert paused["tasks"][0]["status"] == "queued"
+            queue.resume(job_id)
+            return await _wait_job(queue, job_id)
+        finally:
+            await queue.stop()
+
+    try:
+        job = asyncio.run(drive())
+    finally:
+        db.delete_jobs("all")
+    assert job["status"] == "done"
+    assert fast_runners == ["/tmp/a.mp4"]
+
+
+def test_retry_clears_resume_budget():
+    """手动重试重新给一份自动续跑预算，不被此前的重启次数卡住。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(
+        job_id,
+        [_task("t1", "failed", error="进程重启中断", resume_count=jobs.MAX_AUTO_RESUME)],
+        status="failed",
+    )
+    try:
+        queue = JobQueue()
+        queue.restore()
+        job = queue.retry(job_id)
+    finally:
+        db.delete_jobs("all")
+    assert job is not None
+    assert job["tasks"][0]["status"] == "queued"
+    assert job["tasks"][0]["error"] is None
+    assert "resume_count" not in job["tasks"][0]
 
 
 @needs_ffmpeg

@@ -1,6 +1,6 @@
 {
   "name": "cthulhu-electron",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "packageManager": "pnpm@11.25.0",
   "description": "Cthulhu · 数字水印与内容指纹研究实验台（仅限研究学习与授权测试）",
   "author": "cthulhu",

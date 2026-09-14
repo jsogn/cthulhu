@@ -189,6 +189,9 @@ function JobCard({
 
   const renderTaskDetail = (task: JobInfo["tasks"][number]) => (
     <>
+      {task.status === "queued" && task.progress_note && (
+        <span className="text-xs text-muted-foreground">{task.progress_note}</span>
+      )}
       {task.status === "running" && (
         <>
           <span className="text-xs text-muted-foreground">

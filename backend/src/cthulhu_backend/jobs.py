@@ -85,6 +85,15 @@ RUNNERS = {
     "desensitize": _run_desensitize,
 }
 
+# 自动续跑上限：同一子任务累计被进程中断这么多次后不再自动重跑，避免
+# 「一跑就崩」的素材把引擎拖进「崩溃 → 重启 → 重跑」的死循环。
+MAX_AUTO_RESUME = 3
+
+
+def _resume_note(count_interruptions: bool) -> str:
+    """重启续跑的可见说明，让用户知道这条任务是重启后自动接回来的。"""
+    return "进程重启，已自动续跑" if count_interruptions else "重启后待继续"
+
 
 class JobQueue:
     """进程内任务队列：单消费者分发 + 全局并发闸门统一调度。
@@ -297,6 +306,8 @@ class JobQueue:
                 task["error"] = None
                 task["result"] = None
                 task.pop("started_at", None)
+                # 手动重试重新给一份自动续跑预算，不被此前的重启次数卡住。
+                task.pop("resume_count", None)
         job["status"] = "queued"
         job.pop("enqueue_seq", None)
         db.save_job(self.public_view(job))
@@ -304,20 +315,68 @@ class JobQueue:
         return job
 
     def restore(self) -> None:
-        """启动时载入持久化任务；中断任务标记为失败，不静默从头重跑。"""
+        """启动时载入持久化任务：未完成的自动续跑，只有反复中断才交回人工。
+
+        引擎重启（用户退出 / 引擎崩溃 / 看门狗强制重启）不再让整批任务报废：
+        排队中的任务本来就没开始，直接回到队列；运行中的任务整条重跑（管线
+        没有分段断点），并累计中断次数，达到上限后标记失败等待手动重试。
+        暂停中的任务保持暂停，只把中断的子任务退回队列，等用户点「继续」。
+        """
         for job in db.load_jobs():
-            if job["status"] in {"queued", "running"}:
-                for task in job["tasks"]:
-                    if task["status"] in {"queued", "running"}:
-                        task["status"] = "failed"
-                        task["percent"] = 0
-                        task["progress_note"] = "进程重启中断"
-                        task["error"] = "进程重启中断，当前版本不支持断点续跑；请手动重试"
-                job["status"] = "failed"
-                db.save_job(job)
+            if job["status"] == "paused":
+                # 暂停是用户意图，重启后继续暂停；但中断的子任务必须退回队列，
+                # 否则「继续」只会把状态改成运行态、实际没有任何任务在跑。
+                self._requeue_interrupted_tasks(job, count_interruptions=False)
                 self._jobs[job["id"]] = job
+                db.save_job(self.public_view(job))
+                continue
+            if job["status"] not in {"queued", "running"}:
+                self._jobs[job["id"]] = job
+                continue
+            self._requeue_interrupted_tasks(job, count_interruptions=True)
+            if any(task["status"] == "queued" for task in job["tasks"]):
+                job["status"] = "queued"
+                self._jobs[job["id"]] = job
+                db.save_job(self.public_view(job))
+                self._enqueue(job)
             else:
+                # 未完成项都撞上了续跑上限：整单交给人工，不再自动重跑。
+                job["status"] = self._derive_job_status(job["tasks"])
                 self._jobs[job["id"]] = job
+                db.save_job(self.public_view(job))
+
+    def _requeue_interrupted_tasks(self, job: dict, *, count_interruptions: bool) -> None:
+        """把中断的子任务退回队列，交回调度器重新分发。
+
+        运行中的任务没有分段断点，只能整条重跑；因此这里累计中断次数，
+        超过 MAX_AUTO_RESUME 次仍被中断的任务标记失败并提示手动重试。
+        """
+        for task in job["tasks"]:
+            if task["status"] not in {"queued", "running"}:
+                continue
+            interrupted = task["status"] == "running"
+            if interrupted and count_interruptions:
+                task["resume_count"] = int(task.get("resume_count") or 0) + 1
+            if int(task.get("resume_count") or 0) > MAX_AUTO_RESUME:
+                task["status"] = "failed"
+                task["percent"] = 0
+                task["progress_note"] = "进程重启中断"
+                task["error"] = (
+                    f"进程重启中断，已自动续跑 {MAX_AUTO_RESUME} 次仍未完成；请手动重试"
+                )
+                continue
+            task["status"] = "queued"
+            task["percent"] = 0
+            task["elapsed"] = None
+            task["result"] = None
+            task["error"] = None
+            task.pop("started_at", None)
+            # 只有真正被打断过（或已经续跑过）的任务才需要重启说明；
+            # 本来就在排队的任务没丢任何进度，保持干净。
+            was_interrupted = interrupted or int(task.get("resume_count") or 0) > 0
+            task["progress_note"] = (
+                _resume_note(count_interruptions) if was_interrupted else None
+            )
 
     def clear(self, scope: str = "all") -> int:
         """从内存移除任务并返回移除数量。"""
@@ -398,6 +457,9 @@ class JobQueue:
                         return
                     task["status"] = "running"
                     task["started_at"] = time.time()
+                    # 子任务状态变化即落库：进程重启后靠这份快照跳过已完成项、
+                    # 只重跑真正被打断的那几条，而不是整批从头再来。
+                    self._persist(job)
                     await self._publish_task(job, task)
 
                     def on_progress(percent: int, note: str) -> None:
@@ -434,6 +496,7 @@ class JobQueue:
                             task["status"] = "failed"
                             task["error"] = str(exc)
                     task["elapsed"] = round(time.time() - task.get("started_at", time.time()), 1)
+                    self._persist(job)
                     await self._publish_task(job, task)
                 finally:
                     await self._release_slot()
@@ -467,13 +530,17 @@ class JobQueue:
                 task["progress_note"] = "处理中断"
         # 与正常收尾路径共用同一终态规则：单条失败不影响整单，全部失败才算失败。
         job["status"] = self._derive_job_status(job["tasks"])
-        try:
-            db.save_job(self.public_view(job))
-        except Exception as exc:  # noqa: BLE001 - 持久化失败不掩盖原始错误
-            print(f"[jobs] 任务失败状态持久化失败（可忽略）：{exc}")
+        self._persist(job)
         await self._publish_job(job)
         self._cancelled.discard(job_id)
         self._paused.discard(job_id)
+
+    def _persist(self, job: dict) -> None:
+        """落库任务快照；写库失败只告警，不影响正在跑的批次。"""
+        try:
+            db.save_job(self.public_view(job))
+        except Exception as exc:  # noqa: BLE001 - 持久化失败不掩盖原始错误
+            print(f"[jobs] 任务状态持久化失败（可忽略）：{exc}")
 
     @staticmethod
     def _derive_job_status(tasks: list[dict]) -> str:
@@ -495,7 +562,7 @@ class JobQueue:
                     k: task.get(k)
                     for k in (
                         "id", "kind", "path", "options", "status", "percent",
-                        "progress_note", "elapsed", "error", "result",
+                        "progress_note", "elapsed", "error", "result", "resume_count",
                     )
                 },
             }
@@ -514,7 +581,7 @@ class JobQueue:
                     k: task.get(k)
                     for k in (
                         "id", "kind", "path", "options", "status", "percent",
-                        "progress_note", "elapsed", "error", "result",
+                        "progress_note", "elapsed", "error", "result", "resume_count",
                     )
                 }
                 for task in job["tasks"]

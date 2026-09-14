@@ -1,6 +1,6 @@
 {
   "name": "cthulhu",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
