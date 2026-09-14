@@ -22,6 +22,34 @@ def _write_taesd_dir(path: Path) -> None:
     (path / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
 
 
+def test_device_preference_env_overrides_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """设备偏好优先级：环境变量 > 设置项 > auto。"""
+    from cthulhu_backend import db
+
+    db.save_settings({"purify_device": "mps"})
+    try:
+        monkeypatch.delenv("CTHULHU_PURIFY_DEVICE", raising=False)
+        assert purify.device_preference() == "mps"
+        monkeypatch.setenv("CTHULHU_PURIFY_DEVICE", "cpu")
+        assert purify.device_preference() == "cpu"
+        monkeypatch.setenv("CTHULHU_PURIFY_DEVICE", "没这个设备")
+        assert purify.device_preference() == "mps", "非法环境变量值应被忽略"
+    finally:
+        db.save_settings({"purify_device": "auto"})
+
+
+def test_device_selection_honours_cpu_and_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
+    """显式要求 CPU 时不再走 GPU；指定了不可用的设备则退回 CPU。"""
+    monkeypatch.setenv("CTHULHU_PURIFY_DEVICE", "cpu")
+    assert purify._device_and_dtype()[0] == "cpu"
+
+    import torch
+
+    monkeypatch.setenv("CTHULHU_PURIFY_DEVICE", "cuda")
+    expected = "cuda" if torch.cuda.is_available() else "cpu"
+    assert purify._device_and_dtype()[0] == expected
+
+
 class FakeTaesd:
     """假 TAESD：encode/decode 是确定性的张量变换，并记录输入形状。"""
 

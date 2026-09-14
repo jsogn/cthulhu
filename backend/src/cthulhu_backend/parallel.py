@@ -36,6 +36,25 @@ def default_workers() -> int:
     return configured_workers(_DEFAULT_WORKERS)
 
 
+def limit_torch_threads(slots: int) -> int | None:
+    """按并发额度给 torch 分线程，返回实际设置的线程数（没装 torch 返回 None）。
+
+    torch 默认会按 CPU 核数开线程，任务队列里并发的每条清洗都会各自开一份：
+    10 核机器上并行 2 条就是 20 条线程互抢，表现为整体变慢、事件循环长时间
+    答不上探针。按并发均分后，总线程数仍约等于核数，单任务时不受影响。
+    """
+    try:
+        import torch
+    except Exception:  # noqa: BLE001 - 没装 torch（轻量档）时无需限制
+        return None
+    workers = max(1, (os.cpu_count() or 2) // max(1, int(slots)))
+    try:
+        torch.set_num_threads(workers)
+    except Exception:  # noqa: BLE001 - 版本差异不阻塞任务执行
+        return None
+    return workers
+
+
 def map_frames(
     fn: Callable[[np.ndarray], np.ndarray],
     frames: np.ndarray,

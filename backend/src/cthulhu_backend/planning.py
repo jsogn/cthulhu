@@ -17,11 +17,18 @@ from cthulhu_backend.transform import shots
 # 低内存机器兜底：256MiB。
 MAX_WORKING_BYTES = 256 * 1024**2
 
+# 工作预算占物理内存的比例，按机器档位分：预算给太满会把机器推进 swap，
+# 反而拖出「事件循环几十秒答不上探针」的长卡顿（2026-09-14 现场反馈）。
+_BUDGET_FRACTION_HIGH_RAM = 0.55  # ≥24GiB：内存宽裕，允许更长的分块
+_BUDGET_FRACTION_LOW_RAM = 0.45  # 4~24GiB：系统、界面与其他应用也要吃内存
+_BUDGET_FRACTION_TINY_RAM = 0.4  # <4GiB：连系统本身都紧张
+
 
 def memory_budget_bytes() -> int:
     """按物理内存自适应工作预算（256MB~32GB）。
 
-    大内存按 55% 取用，小内存（<4GB）按 40% 取用，避免预算超过物理内存。
+    大内存按 55% 取用；16GB 这一档只给 45%——用户机器上还有系统、浏览器和
+    界面的常驻占用，预算给满就会进 swap；<4GB 的小机器按 40% 取用。
     """
     try:
         total = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
@@ -29,7 +36,12 @@ def memory_budget_bytes() -> int:
         total = 0
     if total <= 0:
         return MAX_WORKING_BYTES
-    fraction = 0.55 if total >= 4 * 1024**3 else 0.4
+    if total >= 24 * 1024**3:
+        fraction = _BUDGET_FRACTION_HIGH_RAM
+    elif total >= 4 * 1024**3:
+        fraction = _BUDGET_FRACTION_LOW_RAM
+    else:
+        fraction = _BUDGET_FRACTION_TINY_RAM
     return max(MAX_WORKING_BYTES, min(32 * 1024**3, int(total * fraction)))
 
 

@@ -9,9 +9,9 @@ import time
 import uuid
 from typing import Any
 
-from cthulhu_backend import db, services
+from cthulhu_backend import db, heartbeat, parallel, services
 from cthulhu_backend.events import broker
-from cthulhu_backend.transform import strategies
+from cthulhu_backend.transform import purify, strategies
 from cthulhu_backend.version import APP_VERSION
 
 
@@ -89,10 +89,15 @@ RUNNERS = {
 # 「一跑就崩」的素材把引擎拖进「崩溃 → 重启 → 重跑」的死循环。
 MAX_AUTO_RESUME = 3
 
+# 同一子任务被打断到这么多次，说明机器扛不住当前并发（内存/线程互抢 → 引擎
+# 被看门狗判死）：本次重启改成单任务续跑，用吞吐换活下来。
+SAFE_MODE_AFTER = 2
 
-def _resume_note(count_interruptions: bool) -> str:
-    """重启续跑的可见说明，让用户知道这条任务是重启后自动接回来的。"""
-    return "进程重启，已自动续跑" if count_interruptions else "重启后待继续"
+
+def _resume_note(count_interruptions: bool, extra: list[str]) -> str:
+    """重启续跑的可见说明：讲清为什么被接回来、这次按什么方式跑。"""
+    base = "进程重启，已自动续跑" if count_interruptions else "重启后待继续"
+    return " · ".join([base, *[item for item in extra if item]])
 
 
 class JobQueue:
@@ -117,8 +122,13 @@ class JobQueue:
         self._seq = 0
         self._worker: asyncio.Task | None = None
         self._proc_tasks: set[asyncio.Task] = set()
+        # 反复被重启打断后进入的安全模式：并发降到 1，用吞吐换跑完。
+        self.safe_mode = False
 
     def start(self) -> None:
+        # 心跳线程只写一个小 JSON，供 Electron 主进程判断引擎是忙是死；
+        # 未配置路径时（测试、纯后端）完全不动。
+        heartbeat.start()
         # worker 缺失或已随旧事件循环结束（如测试的多 portal 场景）时，重建队列与任务。
         if self._worker is None or self._worker.done():
             # 重建队列前先把尚未消费的排队项搬过去，避免已入队任务被静默丢弃。
@@ -141,7 +151,8 @@ class JobQueue:
             value = int(db.load_settings().get("parallelism", self.default_parallelism))
         except (TypeError, ValueError):
             value = self.default_parallelism
-        return min(4, max(1, value))
+        capacity = min(4, max(1, value))
+        return 1 if self.safe_mode else capacity
 
     def is_idle(self) -> bool:
         """当前是否有任务占用并发槽：空闲时后台指标遍才允许启动。"""
@@ -155,6 +166,7 @@ class JobQueue:
             while self._active_slots >= self._slot_capacity():
                 await gate.wait()
             self._active_slots += 1
+        heartbeat.refresh(self._active_slots)
 
     async def _release_slot(self) -> None:
         gate = self._gate
@@ -163,6 +175,7 @@ class JobQueue:
         async with gate:
             self._active_slots = max(0, self._active_slots - 1)
             gate.notify_all()
+        heartbeat.refresh(self._active_slots)
 
     def _enqueue(self, job: dict) -> None:
         self._seq += 1
@@ -321,19 +334,40 @@ class JobQueue:
         排队中的任务本来就没开始，直接回到队列；运行中的任务整条重跑（管线
         没有分段断点），并累计中断次数，达到上限后标记失败等待手动重试。
         暂停中的任务保持暂停，只把中断的子任务退回队列，等用户点「继续」。
+        已经被打断过一次以上的批次进入安全模式（并发 1），换机器扛得住。
         """
-        for job in db.load_jobs():
+        loaded = db.load_jobs()
+        cause = heartbeat.restart_cause()
+        extras = [cause]
+        # 异常退出=原生崩溃（现场实测 MPS 推理会 SIGABRT）：把推理设备降到 CPU
+        # 再续跑，否则重启后的每一条都会掉进同一个坑。
+        if (
+            heartbeat.restart_abnormal()
+            and self._has_unfinished_tasks(loaded)
+            and self._degrade_purify_device()
+        ):
+            extras.append("推理已降级 CPU")
+        self.safe_mode = any(
+            int(task.get("resume_count") or 0) >= SAFE_MODE_AFTER - 1
+            for job in loaded
+            for task in job["tasks"]
+            if task.get("status") in {"queued", "running"}
+        )
+        if self.safe_mode:
+            print("[jobs] 检测到反复中断，本次重启降为单任务续跑")
+            extras.append("本次降为单任务续跑")
+        for job in loaded:
             if job["status"] == "paused":
                 # 暂停是用户意图，重启后继续暂停；但中断的子任务必须退回队列，
                 # 否则「继续」只会把状态改成运行态、实际没有任何任务在跑。
-                self._requeue_interrupted_tasks(job, count_interruptions=False)
+                self._requeue_interrupted_tasks(job, count_interruptions=False, extra=extras)
                 self._jobs[job["id"]] = job
                 db.save_job(self.public_view(job))
                 continue
             if job["status"] not in {"queued", "running"}:
                 self._jobs[job["id"]] = job
                 continue
-            self._requeue_interrupted_tasks(job, count_interruptions=True)
+            self._requeue_interrupted_tasks(job, count_interruptions=True, extra=extras)
             if any(task["status"] == "queued" for task in job["tasks"]):
                 job["status"] = "queued"
                 self._jobs[job["id"]] = job
@@ -345,7 +379,31 @@ class JobQueue:
                 self._jobs[job["id"]] = job
                 db.save_job(self.public_view(job))
 
-    def _requeue_interrupted_tasks(self, job: dict, *, count_interruptions: bool) -> None:
+    @staticmethod
+    def _has_unfinished_tasks(jobs: list[dict]) -> bool:
+        """是否还有没跑完的子任务：没有的话没必要动设备偏好。"""
+        return any(
+            task.get("status") in {"queued", "running"}
+            for job in jobs
+            for task in job["tasks"]
+        )
+
+    @staticmethod
+    def _degrade_purify_device() -> bool:
+        """把净化推理降到 CPU（写进设置，后续启动也稳定）；返回是否发生了降级。"""
+        if purify.device_preference() == "cpu":
+            return False
+        print("[jobs] 上次为异常退出，净化推理本次降级到 CPU 续跑")
+        try:
+            purify.set_device_preference("cpu")
+        except Exception as exc:  # noqa: BLE001 - 降级失败不阻塞续跑
+            print(f"[jobs] 推理设备降级失败（可忽略）：{exc}")
+            return False
+        return True
+
+    def _requeue_interrupted_tasks(
+        self, job: dict, *, count_interruptions: bool, extra: list[str]
+    ) -> None:
         """把中断的子任务退回队列，交回调度器重新分发。
 
         运行中的任务没有分段断点，只能整条重跑；因此这里累计中断次数，
@@ -375,7 +433,7 @@ class JobQueue:
             # 本来就在排队的任务没丢任何进度，保持干净。
             was_interrupted = interrupted or int(task.get("resume_count") or 0) > 0
             task["progress_note"] = (
-                _resume_note(count_interruptions) if was_interrupted else None
+                _resume_note(count_interruptions, extra) if was_interrupted else None
             )
 
     def clear(self, scope: str = "all") -> int:
@@ -440,6 +498,9 @@ class JobQueue:
         job["status"] = "running"
         await self._publish_job(job)
         db.save_job(self.public_view(job))
+        # 多任务并行时给 torch 分线程：默认每个任务都会吃满 CPU 数目级别的线程，
+        # 并发起来就是线程互抢，低配机上直接表现为整体变慢、事件循环长卡顿。
+        parallel.limit_torch_threads(self._slot_capacity())
 
         loop = asyncio.get_running_loop()
 
@@ -468,6 +529,8 @@ class JobQueue:
                         task["elapsed"] = round(
                             time.time() - task.get("started_at", time.time()), 1
                         )
+                        # 有进展就记一笔：守护进程据此判断引擎在忙而不是卡死。
+                        heartbeat.note_progress()
                         try:
                             asyncio.run_coroutine_threadsafe(
                                 self._publish_task(job, task), loop

@@ -5,4 +5,4 @@
 每次测试校验一致性。
 """
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"

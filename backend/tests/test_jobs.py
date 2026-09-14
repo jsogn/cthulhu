@@ -211,6 +211,87 @@ def test_retry_clears_resume_budget():
     assert "resume_count" not in job["tasks"][0]
 
 
+def test_restore_enters_safe_mode_after_repeated_interruptions():
+    """同一个任务被打断两次以上时，本次重启降为单任务续跑。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", resume_count=jobs.SAFE_MODE_AFTER - 1)])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        job = queue.get(job_id)
+        capacity = queue._slot_capacity()
+    finally:
+        db.delete_jobs("all")
+    assert job["tasks"][0]["resume_count"] == jobs.SAFE_MODE_AFTER
+    assert queue.safe_mode is True
+    assert capacity == 1, "反复被中断说明机器扛不住当前并发，应降为单任务"
+    assert "本次降为单任务续跑" in job["tasks"][0]["progress_note"]
+
+
+def test_restore_single_interruption_keeps_normal_concurrency():
+    """只被打断过一次的批次不降并发，避免白丢吞吐。"""
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running")])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        task = queue.get(job_id)["tasks"][0]
+    finally:
+        db.delete_jobs("all")
+    assert task["resume_count"] == 1
+    assert queue.safe_mode is False
+    assert "单任务续跑" not in task["progress_note"]
+
+
+def test_restore_note_keeps_engine_restart_cause(monkeypatch):
+    """续跑说明里带上守护进程给的重启原因，现场反馈才能一眼看懂。"""
+    monkeypatch.setenv("CTHULHU_RESTART_CAUSE", "引擎无响应 200 秒且任务无进展")
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", "/tmp/a.mp4")])
+    try:
+        queue = JobQueue()
+        queue.restore()
+        task = queue.get(job_id)["tasks"][0]
+    finally:
+        db.delete_jobs("all")
+    assert "进程重启，已自动续跑" in task["progress_note"]
+    assert "引擎无响应 200 秒且任务无进展" in task["progress_note"]
+
+
+def test_restore_degrades_purify_device_after_abnormal_exit(monkeypatch):
+    """上次是原生崩溃（异常退出）时，净化推理降级到 CPU 再续跑。"""
+    monkeypatch.setenv("CTHULHU_RESTART_ABNORMAL", "1")
+    monkeypatch.setattr(jobs.purify, "device_preference", lambda: "auto")
+    degraded: list[str] = []
+    monkeypatch.setattr(jobs.purify, "set_device_preference", degraded.append)
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "running", "/tmp/a.mp4")])
+    try:
+        queue = JobQueue()
+        queue.restore()
+    finally:
+        db.delete_jobs("all")
+    assert degraded == ["cpu"], "异常退出后应把推理设备降到 CPU"
+    assert queue.safe_mode is False, "首次崩溃只降设备，不降并发"
+    assert "推理已降级 CPU" in queue.get(job_id)["tasks"][0]["progress_note"]
+
+
+def test_restore_keeps_device_when_nothing_unfinished(monkeypatch):
+    """已经跑完的任务不该因为一次异常退出就改设备偏好。"""
+    monkeypatch.setenv("CTHULHU_RESTART_ABNORMAL", "1")
+    degraded: list[str] = []
+    monkeypatch.setattr(jobs.purify, "set_device_preference", degraded.append)
+    job_id = uuid.uuid4().hex[:12]
+    _save_job(job_id, [_task("t1", "done", "/tmp/a.mp4")], status="done")
+    try:
+        queue = JobQueue()
+        queue.restore()
+    finally:
+        db.delete_jobs("all")
+    assert degraded == []
+    assert queue.get(job_id)["status"] == "done"
+
+
 @needs_ffmpeg
 def test_desensitize_resolves_strategy_and_preset_from_settings(tmp_path):
     """未在任务选项中显式指定时，策略与编码档从设置项解析。"""

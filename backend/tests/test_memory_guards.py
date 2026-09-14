@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 
 import numpy as np
 import pytest
 from scipy.fftpack import dctn
 from scipy.ndimage import median_filter
 
-from cthulhu_backend import planning, samples
+from cthulhu_backend import parallel, planning, samples
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.watermark import detect
 from cthulhu_backend.watermark.qim import MID_BAND
@@ -138,9 +140,13 @@ def test_working_budget_floor_is_256_mib() -> None:
 
 
 def test_working_budget_scales_with_ram_and_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:
-    """预算按物理内存分档（<4GB 40%、大内存 55%），且不超过 32GiB。"""
+    """预算按物理内存分档（<4GB 40%、16GB 45%、大内存 55%），且不超过 32GiB。"""
     monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(1024**3))
     assert planning.memory_budget_bytes() == int(1024**3 * 0.4)
+
+    # 16GB 是现场反馈里出事的那一档：预算给满 55% 会把机器推进 swap。
+    monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(16 * 1024**3))
+    assert planning.memory_budget_bytes() == int(16 * 1024**3 * 0.45)
 
     monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(64 * 1024**3))
     assert planning.memory_budget_bytes() == 32 * 1024**3
@@ -150,3 +156,18 @@ def test_working_budget_falls_back_to_256_mib(monkeypatch: pytest.MonkeyPatch) -
     """平台不支持物理内存查询时（如 Windows）落到 256MiB 兜底。"""
     monkeypatch.setattr(os, "sysconf", _sysconf_with_ram(None))
     assert planning.memory_budget_bytes() == planning.MAX_WORKING_BYTES
+
+
+def test_torch_threads_split_across_slots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """torch 线程按并发额度均分：10 核跑 2 条任务时是 5+5，而不是 10+10 互抢。"""
+    calls: list[int] = []
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(set_num_threads=calls.append))
+    expected = max(1, (os.cpu_count() or 2) // 2)
+    assert parallel.limit_torch_threads(2) == expected
+    assert calls == [expected]
+
+
+def test_torch_thread_limit_degrades_without_torch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """没装 torch（轻量档）时直接跳过，绝不因为限制线程把任务打挂。"""
+    monkeypatch.setitem(sys.modules, "torch", None)
+    assert parallel.limit_torch_threads(2) is None

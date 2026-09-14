@@ -233,9 +233,57 @@ def _taesd_lookup() -> Path | None:
     return _hf_taesd_snapshot()
 
 
+DEVICE_ENV = "CTHULHU_PURIFY_DEVICE"
+DEVICE_SETTING = "purify_device"
+_DEVICES = ("cpu", "mps", "cuda", "auto")
+
+
+def device_preference() -> str:
+    """推理设备偏好：环境变量 > 设置项 > auto（有 GPU 就用，实测快约 3.6 倍）。"""
+    override = (os.environ.get(DEVICE_ENV) or "").strip().lower()
+    if override in _DEVICES:
+        return override
+    try:
+        from cthulhu_backend import db
+
+        stored = str(db.load_settings().get(DEVICE_SETTING) or "").strip().lower()
+    except Exception:  # noqa: BLE001 - 设置读不到时退回默认
+        stored = ""
+    return stored if stored in _DEVICES else "auto"
+
+
+def set_device_preference(device: str) -> None:
+    """落盘设备偏好并卸载已加载的模型，下一次推理按新设备重建。
+
+    现场反馈（2026-09-14）：MPS 路径会在长片清洗中途触发
+    `objc: Cannot form weak reference to instance of class MPSGraph` 直接 SIGABRT，
+    引擎被守护进程拉起后又崩，于是整批任务反复中断。稳定性优先，异常退出后
+    自动落到 CPU 续跑。
+    """
+    from cthulhu_backend import db
+
+    db.save_settings({DEVICE_SETTING: device})
+    reset_model()
+
+
+def reset_model() -> None:
+    """丢弃已加载的模型缓存，下次推理重新按当前偏好加载。"""
+    global _TAESD, _TAESD_FAILED
+    with _LOAD_LOCK:
+        _TAESD = None
+        _TAESD_FAILED = None
+
+
 def _device_and_dtype() -> tuple[str, object]:
     import torch
 
+    preference = device_preference()
+    available = {"cpu": True, "mps": torch.backends.mps.is_available(), "cuda": torch.cuda.is_available()}
+    if preference == "cpu":
+        return "cpu", torch.float32
+    if preference in {"mps", "cuda"}:
+        # 显式指定但本机没有该设备时退回 CPU，而不是让任务直接失败。
+        return (preference, torch.float16) if available[preference] else ("cpu", torch.float32)
     if torch.backends.mps.is_available():
         return "mps", torch.float16
     if torch.cuda.is_available():
