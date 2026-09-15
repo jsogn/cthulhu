@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="Cthulhu · 数字水印与内容指纹研究实验台">
+  <title>Cthulhu · 数字水印与内容指纹研究实验台</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a101e"/>
+      <stop offset="0.55" stop-color="#0e1729"/>
+      <stop offset="1" stop-color="#131d33"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5b7cfa"/>
+      <stop offset="1" stop-color="#9ae6ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5b7cfa" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#5b7cfa" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1b2540" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="300" rx="26" fill="url(#bg)"/>
+  <rect width="1200" height="300" rx="26" fill="url(#grid)" opacity="0.55"/>
+  <circle cx="1085" cy="150" r="230" fill="url(#glow)"/>
+
+  <!-- 水印涟漪装饰：同心环 + 波形，呼应“水印 / 指纹”主题 -->
+  <g fill="none" stroke="#5b7cfa">
+    <circle cx="1080" cy="150" r="46" stroke-opacity="0.42" stroke-width="2"/>
+    <circle cx="1080" cy="150" r="78" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="1080" cy="150" r="110" stroke-opacity="0.16" stroke-width="2"/>
+    <circle cx="1080" cy="150" r="142" stroke-opacity="0.08" stroke-width="2"/>
+  </g>
+  <g stroke="url(#accent)" stroke-linecap="round" stroke-width="3" stroke-opacity="0.85">
+    <path d="M1012 150h34"/>
+    <path d="M1056 132v36"/>
+    <path d="M1066 120v60"/>
+    <path d="M1094 126v48"/>
+    <path d="M1104 138v24"/>
+    <path d="M1114 150h34"/>
+  </g>
+
+  <!-- 标识（与 ui/public/favicon.svg 同源） -->
+  <g transform="translate(80 78)">
+    <rect width="104" height="104" rx="26" fill="#10131a" stroke="#233053" stroke-width="2"/>
+    <g transform="translate(13 13) scale(3.25)" fill="none" stroke="#5b7cfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.5 11L9 7l5 1.2 5 2.4v2.4L9 17l-4.5-3.4V11z"/>
+      <path d="M9 8.2v8.6M14 8.2v8.6M4.5 11l4.5 2.4 5-1.2 5-2.4"/>
+    </g>
+  </g>
+
+  <text x="224" y="146" fill="#f5f8ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="66" font-weight="700" letter-spacing="1.5">Cthulhu</text>
+  <text x="226" y="192" fill="#9db0d4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="25">数字水印 · 内容指纹 · 媒体取证 · 鲁棒性研究实验台</text>
+  <rect x="226" y="212" width="132" height="4" rx="2" fill="url(#accent)"/>
+
+  <text x="226" y="256" fill="#64769a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="19" letter-spacing="0.6">本地离线 · 证据驱动 · 可复现实验</text>
+</svg>
