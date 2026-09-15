@@ -45,8 +45,27 @@ packaging/ffmpeg-win64/
 
 # 系统与编辑器
 .DS_Store
+Thumbs.db
+Desktop.ini
+._*
 *.log
 .env
+.env.*
+!.env.example
 .idea/
 .vscode/
 .playwright-cli/
+
+# 测试覆盖率与本地缓存
+.coverage
+coverage.xml
+htmlcov/
+.nyc_output/
+*.tsbuildinfo
+.eslintcache
+.cache/
+.turbo/
+.pnpm-store/
+
+# 本地代码审计工具状态（Brooks-Lint 等，不代表仓库内容）
+.brooks-lint-history.json

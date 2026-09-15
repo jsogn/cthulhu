@@ -4,7 +4,8 @@
 重排/变速/裁剪，本脚本用 services.run_desensitize 走生产路径重测。
 
 用法：
-  CALIBRATE=1 uv run --project backend python backend/scripts/bench_preset_matrix.py
+  CTHULHU_BENCH_DIR=<基准素材目录> CALIBRATE=1 uv run --project backend python backend/scripts/bench_preset_matrix.py
+  CLIPS=<逗号分隔的视频路径> uv run --project backend python backend/scripts/bench_preset_matrix.py
 """
 
 from __future__ import annotations
@@ -21,11 +22,15 @@ from cthulhu_backend.evaluate import metrics
 from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.watermark import common, dft, dwt, qim, ss
 
+_BENCH_DIR = os.environ.get("CTHULHU_BENCH_DIR", "")
 DEFAULT_CLIPS = [
-    "/Users/alone/Downloads/暗水印测试/AD-下载8.mp4",
-    "/Users/alone/Downloads/暗水印测试/好心邻居：熬百碗粥只为抓替身-B3.mp4",
-    "/Users/alone/Downloads/暗水印测试/好心邻居：熬百碗粥只为抓替身-C6.mp4",
-]
+    os.path.join(_BENCH_DIR, name)
+    for name in (
+        "AD-下载8.mp4",
+        "好心邻居：熬百碗粥只为抓替身-B3.mp4",
+        "好心邻居：熬百碗粥只为抓替身-C6.mp4",
+    )
+] if _BENCH_DIR else []
 SECONDS = 2.0
 BITS = common.payload_bits(1, 64)
 REF = common.SYNC + BITS
@@ -123,7 +128,10 @@ def luma(rgb: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     count = int(SECONDS * 30)
-    clips = os.environ.get("CLIPS", ",".join(DEFAULT_CLIPS)).split(",")
+    clips = [c for c in os.environ.get(
+        "CLIPS", ",".join(DEFAULT_CLIPS)).split(",") if c]
+    if not clips:
+        raise SystemExit("请设置 CTHULHU_BENCH_DIR 或 CLIPS 指定基准素材后重跑")
     preset_filter = set(filter(None, os.environ.get("PRESET_FILTER", "").split(",")))
     variant_filter = set(filter(None, os.environ.get("VARIANT_FILTER", "").split(",")))
     gate_off = os.environ.get("GATE_OFF") == "1"

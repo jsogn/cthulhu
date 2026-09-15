@@ -553,7 +553,7 @@ electron 3 项。注：上面验收写的「后端 296 项」与实际基线不�
 ## 8. 代码健康审计结果与待修项（2026-09-11，Brooks-Lint Health Dashboard）
 
 **综合分 92/100**（Code Quality 100 / Architecture 84 / Tech Debt 93 / Test Quality 94），
-逐条证据见下。历史记录在项目根 `.brooks-lint-history.json`。
+逐条证据见下。历史记录由本地审计工具维护（`.brooks-lint-history.json`，不入库）。
 
 ### 🔴 Critical
 

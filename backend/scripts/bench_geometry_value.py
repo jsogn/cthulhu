@@ -1,7 +1,12 @@
-"""几何武器价值验证：对基准库水印的 BER、PSNR、pHash 一致率，与旋转对照。"""
+"""几何武器价值验证：对基准库水印的 BER、PSNR、pHash 一致率，与旋转对照。
+
+用法：
+  CTHULHU_BENCH_SRC=<720p 基准视频> uv run --project backend python backend/scripts/bench_geometry_value.py
+"""
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 import numpy as np
@@ -11,7 +16,7 @@ from cthulhu_backend.fingerprint import hashes
 from cthulhu_backend.transform import extra_attacks, strategies
 from cthulhu_backend.watermark import common, dft, dwt, qim, ss
 
-SRC = "/Users/alone/Downloads/暗水印测试/AD-下载8.mp4"
+SRC = os.environ.get("CTHULHU_BENCH_SRC", "")
 BITS = common.payload_bits(1, 64)
 REF = common.SYNC + BITS
 
@@ -48,6 +53,8 @@ def phash_agreement(ref: np.ndarray, attacked: np.ndarray) -> float:
 
 
 def main() -> None:
+    if not SRC:
+        raise SystemExit("请设置 CTHULHU_BENCH_SRC 指向基准 720p 视频后重跑")
     gray = luma(decode(SRC, 24).astype(np.float32) / 255.0)
     rng = np.random.default_rng(7)
     watermarks = {

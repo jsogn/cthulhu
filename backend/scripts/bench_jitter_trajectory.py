@@ -7,10 +7,14 @@
 4. 垂直幅度与水平一致（SS/DFT 按行提取，纵向错位不可压缩）。
 
 只读实验：不改动任何业务代码，输出为终端表格。
+
+用法：
+  CTHULHU_BENCH_SRC=<720p 基准视频> uv run --project backend python backend/scripts/bench_jitter_trajectory.py
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 import numpy as np
@@ -20,7 +24,7 @@ from cthulhu_backend.fingerprint import hashes
 from cthulhu_backend.transform import extra_attacks
 from cthulhu_backend.watermark import common, dft, dwt, qim, ss
 
-SRC = "/Users/alone/Downloads/暗水印测试/AD-下载8.mp4"
+SRC = os.environ.get("CTHULHU_BENCH_SRC", "")
 BITS = common.payload_bits(1, 64)
 REF = common.SYNC + BITS
 SEED = 7
@@ -76,6 +80,8 @@ def displacement_stats(
 
 
 def main() -> None:
+    if not SRC:
+        raise SystemExit("请设置 CTHULHU_BENCH_SRC 指向基准 720p 视频后重跑")
     gray = luma(decode(SRC, 24).astype(np.float32) / 255.0)
     watermarks = {
         "SS": (np.stack([ss.embed(f, BITS, seed=0, alpha=0.25) for f in gray]),

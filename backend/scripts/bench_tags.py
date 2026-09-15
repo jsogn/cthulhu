@@ -2,10 +2,12 @@
 
 用法（720p 竖屏素材，默认取 24 帧）：
   uv run --project backend python backend/scripts/bench_tags.py <视频路径>
+  CTHULHU_BENCH_SRC=<视频路径> uv run --project backend python backend/scripts/bench_tags.py
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -61,9 +63,11 @@ def bench(name: str, frames: np.ndarray, fn) -> None:
 
 
 def main() -> None:
-    path = sys.argv[1] if len(sys.argv) > 1 else (
-        "/Users/alone/Downloads/暗水印测试/AD-下载8.mp4"
+    path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
+        "CTHULHU_BENCH_SRC", ""
     )
+    if not path:
+        raise SystemExit("请传入视频路径，或设置 CTHULHU_BENCH_SRC 后重跑")
     frames = decode(path, 24)
     rng = np.random.default_rng(7)
     spoof_bits = watermark_common.payload_bits(1234, 64)

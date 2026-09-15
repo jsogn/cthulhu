@@ -3,6 +3,9 @@
 口径：嵌入 → 候选攻击 → H.264→H.265(CRF28)→H.264 重编码链 → 提取。
 目标：攻击 + 重编码后 BER 仍 ≥0.4（当前已知失败模式：反相关图案被平滑
 重编码抹掉，BER 回落到 0.1~0.15）。
+
+用法：
+  CTHULHU_BENCH_SRC=<720p 基准视频> uv run --project backend python backend/scripts/bench_ss_robust.py
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from cthulhu_backend.media import ffmpeg
 from cthulhu_backend.transform import regenerate
 from cthulhu_backend.watermark import common, ss
 
-SRC = "/Users/alone/Downloads/暗水印测试/AD-下载8.mp4"
+SRC = os.environ.get("CTHULHU_BENCH_SRC", "")
 BITS = common.payload_bits(1, 64)
 REF = common.SYNC + BITS
 
@@ -68,6 +71,8 @@ def smooth_field(shape: tuple[int, int], rng: np.random.Generator) -> np.ndarray
 
 
 def main() -> None:
+    if not SRC:
+        raise SystemExit("请设置 CTHULHU_BENCH_SRC 指向基准 720p 视频后重跑")
     rgb = decode(SRC, 24)
     gray = luma(rgb.astype(np.float32) / 255.0)
     rng = np.random.default_rng(7)

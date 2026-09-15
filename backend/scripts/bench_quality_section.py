@@ -1,7 +1,12 @@
-"""画质优化区的真实作用实测：门控的衰减系数 + 空间降噪对 SS 的破坏力。"""
+"""画质优化区的真实作用实测：门控的衰减系数 + 空间降噪对 SS 的破坏力。
+
+用法：
+  CTHULHU_BENCH_SRC=<720p 基准视频> uv run --project backend python backend/scripts/bench_quality_section.py
+"""
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 import numpy as np
@@ -35,7 +40,10 @@ def ss_ber(frames: np.ndarray) -> float:
 
 
 def main() -> None:
-    frames = decode("/Users/alone/Downloads/暗水印测试/AD-下载8.mp4", 24)
+    src = os.environ.get("CTHULHU_BENCH_SRC", "")
+    if not src:
+        raise SystemExit("请设置 CTHULHU_BENCH_SRC 指向基准 720p 视频后重跑")
+    frames = decode(src, 24)
     rng = np.random.default_rng(7)
 
     # 均衡档 numpy 武器栈（不含神经/人脸），门控前后对比。
