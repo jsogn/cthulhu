@@ -1,11 +1,11 @@
 # Cthulhu 后端（Python / FastAPI sidecar）
 
-> 文档导航：[README](../README.md) · [文档索引](../docs/README.md) · [研究用途与合规声明](../docs/研究用途与合规声明.md) · [产品定位与架构](../docs/产品定位与架构.md) · [实施文档](../docs/实施文档.md) · [发布打包](../docs/发布打包.md)
+> 文档导航：[README](../README.md) · [文档索引](../docs/README.md) · [使用边界与合规声明](../docs/使用边界与合规声明.md) · [产品定位与架构](../docs/产品定位与架构.md) · [实施文档](../docs/实施文档.md) · [发布打包](../docs/发布打包.md)
 
-> **研究用途声明**：本目录代码仅用于数字水印、内容指纹、媒体取证与视频变换的
-> 研究、教学和授权测试。严禁用于规避平台规则、去除版权/溯源水印、侵权搬运、
-> 账号矩阵规避或其他违法违规用途。完整边界见
-> [研究用途与合规声明](../docs/研究用途与合规声明.md)。
+> **使用边界声明**：本目录代码请仅用于合法合规地处理自有或已获授权的素材。
+> 严禁用于规避平台规则、去除版权/溯源水印、侵权搬运、账号矩阵规避或其他
+> 违法违规用途。完整边界见
+> [使用边界与合规声明](../docs/使用边界与合规声明.md)。
 
 前端与 Electron 只通过本目录暴露的 REST + WebSocket 契约交互：桌面端启动时拉起
 该进程，退出时回收；开发模式下由 `pnpm dev` 与 Vite（5173）并行启动，默认监听
@@ -15,7 +15,7 @@
 
 ```bash
 cd backend
-uv sync                 # 研究依赖（numpy/scipy/typer/pytest/ruff）
+uv sync                 # 开发依赖（numpy/scipy/typer/pytest/ruff）
 uv sync --extra purify  # 追加潜空间净化运行时（torch/diffusers）
 
 # 开发服务器（与前端联调）
@@ -40,9 +40,9 @@ uv run python scripts/export_openapi.py   # 契约漂移：openapi.json / ui/src
 | 加速与数值 | `native/`、`native_dct.py`、`numeric.py`、`tiers.py` | 原生加速库加载与降级、数值原语、档位（耗时 / 画质代价）单一真值 |
 
 约定：新增处理类型必须复用任务队列；新算法必须挂进回归门；新模型必须支持缺失
-降级；不把重依赖（如 PyTorch）打进研究构建。
+降级；不把重依赖（如 PyTorch）打进基础构建。
 
-## 研究 CLI
+## CLI
 
 ```bash
 uv run cthulhu gen                 # 生成合成样本（帧 npy + 音频 wav）
@@ -61,7 +61,7 @@ uv run cthulhu purify-status / purify-install      # 潜空间净化运行时状
 ```
 
 具体命令参数见 `uv run cthulhu --help`；命令语义与边界见
-[研究 CLI 说明](../README.md#研究-cli-与实验-api) 与
+[命令行与 API 说明](../README.md#命令行与-api) 与
 [实施文档](../docs/实施文档.md)。
 
 ## 服务端接口
@@ -96,11 +96,11 @@ uv run cthulhu purify-status / purify-install      # 潜空间净化运行时状
 ## 测试与调试
 
 ```bash
-uv run pytest tests -q                 # 全量研究套件（含往返、鲁棒性、持久化）
+uv run pytest tests -q                 # 全量测试套件（含往返、鲁棒性、持久化）
 uv run pytest tests/test_api.py -q     # 单个文件
 uv run ruff check src tests            # 静态检查
 uv run python scripts/export_openapi.py
 ```
 
 报告与中间产物默认写入 `backend/data/`（已在 `.gitignore` 中忽略）。性能与画质
-结论的口径、样本与失败案例见 [研究笔记](../docs/README.md#研究笔记)。
+结论的口径、样本与失败案例见 [实验记录](../docs/README.md#研究记录实验数据留存)。
