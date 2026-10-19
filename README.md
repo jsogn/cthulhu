@@ -16,10 +16,7 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/ui-workbench-dark.webp">
-    <img src="docs/assets/screenshots/ui-workbench-light.webp" alt="Cthulhu 工作台：素材库、真实视频预览和视频去重参数" width="880">
-  </picture>
+  <img src="docs/assets/screenshots/ui-workbench-light.webp" alt="Cthulhu 工作台：素材库、真实视频预览和视频去重参数" width="880">
 </p>
 
 > **使用边界**：仅处理自有或已获授权的视频；严禁用于规避平台规则、去除版权 /
@@ -101,43 +98,6 @@ Cthulhu 是一个本地桌面工作台，把视频导入、播放预览、批量
 - 设置同时处理任务数、滤镜内部精度、处理管线和编码速度档。
 - 选择 H.265 编码使用 CPU 或自动硬编加速。
 - 查询视频处理引擎状态；缺少 FFmpeg 时可在应用内尝试安装或选择本机可执行文件。
-
-## 真实界面
-
-以下截图来自当前桌面版，工作台和对比页使用本地真实视频；任务列表中的个人目录路径
-已做模糊处理。
-
-### 原片与处理产物对比
-
-<p align="center">
-  <img src="docs/assets/screenshots/ui-workbench-compare.webp" alt="Cthulhu 原片与处理产物对比" width="880">
-  <br>
-  <sub>同一时间轴上的滑块对比：左侧为原片，右侧为处理产物</sub>
-</p>
-
-### 任务中心
-
-<p align="center">
-  <img src="docs/assets/screenshots/ui-jobs.webp" alt="Cthulhu 任务中心：真实视频处理记录、状态和输出" width="880">
-</p>
-
-### 去重模板
-
-<p align="center">
-  <img src="docs/assets/screenshots/ui-templates.webp" alt="Cthulhu 去重模板管理" width="880">
-</p>
-
-### 产物管理
-
-<p align="center">
-  <img src="docs/assets/screenshots/ui-products.webp" alt="Cthulhu 产物管理：真实视频产物、大小和来源" width="880">
-</p>
-
-### 设置
-
-<p align="center">
-  <img src="docs/assets/screenshots/ui-settings.webp" alt="Cthulhu 设置：导出目录、并行任务、管线和编码选项" width="880">
-</p>
 
 ## 典型使用流程
 
