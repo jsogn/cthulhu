@@ -59,7 +59,7 @@
 | 路径 | 内容 |
 | :--- | :--- |
 | [baselines/detect-calibration.json](baselines/detect-calibration.json) | 检测阈值校准数据 |
-| [assets/screenshots/](assets/screenshots/) | 文档与 README 使用的产品截图（合成演示素材） |
+| [assets/screenshots/](assets/screenshots/) | 文档与 README 使用的当前桌面版截图（本地真实视频，个人路径已脱敏） |
 
 ## 文档约定
 
