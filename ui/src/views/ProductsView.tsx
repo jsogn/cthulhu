@@ -27,7 +27,7 @@ import { useQueueStore } from "@/stores/queue";
 import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<ProductInfo["kind"], string> = {
-  cleaned: "清洗",
+  cleaned: "去重",
   repaired: "修复",
 };
 
@@ -136,7 +136,7 @@ export default function ProductsView() {
       <div className="view-head">
         <div>
           <div className="view-title">产物管理</div>
-          <div className="view-desc">集中查看清洗产物占用，及时清理不再需要的文件</div>
+          <div className="view-desc">集中查看去重产物占用，及时清理不再需要的文件</div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -198,7 +198,7 @@ export default function ProductsView() {
 
         {products.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            暂无处理产物，清洗或修复后产物会集中出现在这里。
+            暂无处理产物，去重或修复后产物会集中出现在这里。
           </Card>
         ) : (
           <div className="flex flex-col gap-2">

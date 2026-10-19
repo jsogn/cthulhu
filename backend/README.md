@@ -16,7 +16,7 @@
 ```bash
 cd backend
 uv sync                 # 开发依赖（numpy/scipy/typer/pytest/ruff）
-uv sync --extra purify  # 追加潜空间净化运行时（torch/diffusers）
+uv sync --extra purify  # 追加重建运行时（torch/diffusers）
 
 # 开发服务器（与前端联调）
 CTHULHU_AUTH_TOKEN=dev-local uv run --extra purify uvicorn cthulhu_backend.main:app --port 57173 --reload
@@ -34,7 +34,7 @@ uv run python scripts/export_openapi.py   # 契约漂移：openapi.json / ui/src
 | 编排与调度 | `jobs.py`、`services.py`、`planning.py`、`parallel.py`、`heartbeat.py` | 任务队列（排队 / 并行 / 取消 / 暂停 / 续跑）、业务编排、并行度与资源预算 |
 | 变换管线 | `pipeline.py`、`transform/` | 变换原语、策略与档位、分块处理、YUV 快路径、原生滤镜下沉、编码与封装 |
 | 度量与评估 | `similarity/`、`quality.py`、`evaluate/`、`fingerprint/` | 内容 / 运动 / 哈希 / 画质相似度、BER/PSNR/SSIM/VMAF、基准矩阵与回归门 |
-| 检测与分析 | `bitstream/`、`watermark/`、`attacks/`、`baseline.py` | 容器与 SEI 扫描、码流层 QP/GOP 分析、参考水印嵌入与检测、鲁棒性压力测试原语 |
+| 检测与分析 | `bitstream/`、`watermark/`、`attacks/`、`baseline.py` | 容器与 SEI 扫描、码流层 QP/GOP 分析、参考特征嵌入与检测（内部研究）、鲁棒性压力测试原语 |
 | 媒体与素材 | `media/`、`sample_prep/`、`samples.py`、`cache.py` | FFmpeg 调用与内置安装、样本制备与对齐差分、缩略图与分析缓存 |
 | 存储 | `db.py` | SQLite：素材库、模板、任务历史、产物参数快照（`variants`） |
 | 加速与数值 | `native/`、`native_dct.py`、`numeric.py`、`tiers.py` | 原生加速库加载与降级、数值原语、档位（耗时 / 画质代价）单一真值 |
@@ -46,8 +46,8 @@ uv run python scripts/export_openapi.py   # 契约漂移：openapi.json / ui/src
 
 ```bash
 uv run cthulhu gen                 # 生成合成样本（帧 npy + 音频 wav）
-uv run cthulhu harness-video       # 参考水印 × 鲁棒性压力测试矩阵 → BER/PSNR/SSIM
-uv run cthulhu harness-audio       # 回声隐藏水印 × 音频鲁棒性矩阵
+uv run cthulhu harness-video       # 参考特征 × 鲁棒性压力测试矩阵 → BER/PSNR/SSIM
+uv run cthulhu harness-audio       # 回声特征 × 音频鲁棒性矩阵
 uv run cthulhu probe 素材.mp4                # 容器 / 元数据 / SEI 探测
 uv run cthulhu sample-diff clean.mp4 wm.mp4  # 对齐 + 差分报告 + DCT 热图
 uv run cthulhu bitstream 素材.mp4            # 码流层 QP / 码量 / GOP 分析
@@ -57,7 +57,7 @@ uv run cthulhu dedup-fingerprint / dedup-compare   # 判重代理指纹与候选
 uv run cthulhu similarity a.mp4 b.mp4              # 内容 / 运动 / 哈希 / 画质相似度
 uv run cthulhu desensitize in.mp4 out.mp4          # 单文件变换实验
 uv run cthulhu benchmark / calibrate-presets       # 性能基准与预设校准
-uv run cthulhu purify-status / purify-install      # 潜空间净化运行时状态与安装
+uv run cthulhu purify-status / purify-install      # 画面重建运行时状态与安装
 ```
 
 具体命令参数见 `uv run cthulhu --help`；命令语义与边界见

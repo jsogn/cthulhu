@@ -11,7 +11,7 @@ export default function Workbench() {
   const activeId = useMaterialsStore((state) => state.activeId);
 
   const active = materials.find((m) => m.id === activeId) ?? null;
-  const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("清洗去重");
+  const [tab, setTab] = useState<(typeof TAB_KEYS)[number]>("视频去重");
 
   const [frame, setFrame] = useState(132);
   const [playing, setPlaying] = useState(false);

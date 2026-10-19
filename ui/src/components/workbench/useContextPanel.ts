@@ -66,7 +66,7 @@ export function useContextPanel(
     rememberHandledTask(task.id);
     void outputsFlow.refreshOutputs();
     const outName = result.output.split(/[\\/]/).pop() ?? result.output;
-    toast("清洗完成", outName);
+    toast("去重完成", outName);
   }, [jobs, material?.path, outputsFlow.refreshOutputs]);
 
   const runComparePair = (a: string, b: string, leftLabel: string, rightLabel: string) => {

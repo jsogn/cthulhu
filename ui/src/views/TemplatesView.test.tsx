@@ -64,7 +64,7 @@ describe("TemplatesView", () => {
 
     expect(screen.getByText("旋转振幅 0.4°")).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText("如：抖音投流-轻度"), "旋转模板");
+    await user.type(screen.getByPlaceholderText("如：成片交付-轻度"), "旋转模板");
     await user.click(screen.getByRole("button", { name: "保存模板" }));
 
     await waitFor(() => {

@@ -36,7 +36,7 @@ export function useCleanActions(material: Material | undefined) {
       ts,
     );
     try {
-      await enqueueJob(`${material.name} · 清洗去重`, [
+      await enqueueJob(`${material.name} · 视频去重`, [
         {
           kind: "desensitize",
           path: target.path,

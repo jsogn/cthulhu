@@ -18,7 +18,7 @@ import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<string, string> = {
   detect: "检测",
-  desensitize: "清洗去重",
+  desensitize: "视频去重",
   repair: "修复（历史）",
 };
 
@@ -92,7 +92,7 @@ export default function JobsView() {
       <div className="view-head">
         <div>
           <div className="view-title">任务中心</div>
-          <div className="view-desc">所有清洗与修复任务都在这里统一管理</div>
+          <div className="view-desc">所有去重与修复任务都在这里统一管理</div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -133,7 +133,7 @@ export default function JobsView() {
 
         {jobs.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            暂无任务，回到素材处理选择素材并加入队列。
+            暂无任务，回到工作台选择素材并加入队列。
           </Card>
         ) : (
           jobs.map((job) => (

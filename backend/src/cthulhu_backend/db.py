@@ -73,17 +73,22 @@ def _preset_payload(**overrides) -> dict:
 
 # 预置内容签名：改动 PRESET_TEMPLATES 内容必须同时升 PRESET_VERSION 并更新这里，
 # 否则 test_preset_content_signature_matches_version 会失败（审计 R3 的两次真实故障）。
-PRESET_SIGNATURES = {34: "39d4e9a2cc3cf935", 35: "b35382a1d4e64629"}
+PRESET_SIGNATURES = {
+    34: "39d4e9a2cc3cf935",
+    35: "b35382a1d4e64629",
+    36: "b35382a1d4e64629",
+    37: "b35382a1d4e64629",
+}
 
 
-# v35：模板 payload 随参数精简收敛（移除 hsvJitter 等已删字段）后重新播种。
-# v34 起内置四个「大平台深度水印」预设（画质优先/平衡/强力/深度清剿），
-# 全部启用画面重建；旧库里的经典武器模板与旧字段会在下次启动时被替换。
-PRESET_VERSION = 35
+# v37：恢复内置预设的暗水印目标命名，让模板直接说明处理对象与代价；payload 不变。
+# v34 起内置四个暗水印处理预设（画质优先/平衡/强力/深度清剿），
+# 全部启用画面重建；旧库里的旧命名与旧字段会在下次启动时被替换。
+PRESET_VERSION = 37
 
 
 PRESET_TEMPLATES = [
-    # 四个默认模板都以「大平台深度（暗）水印」为目标：全部打开画面重建，
+    # 四个默认模板都以暗水印处理为目标：全部打开画面重建，
     # 区别只在清晰度 / 清除强度的取舍（research §19.1~19.6）。
     # 清晰度字段（长边/批大小/细节回填）来自 tiers.py，预设只写自己的强度与武器。
     {
@@ -285,7 +290,12 @@ def init_db() -> None:
             )
         known_names = tuple(
             preset["name"] for preset in PRESET_TEMPLATES
-        ) + ("快速 · 轻度", "标准 · 均衡", "强力 · 重对抗", "全兵器 · 研究")
+        ) + (
+            "快速 · 轻度",
+            "标准 · 均衡",
+            "强力 · 重对抗",
+            "全兵器 · 研究",
+        )
         placeholders = ",".join("?" for _ in known_names)
         connection.execute(
             f"UPDATE templates SET builtin = 1 WHERE name IN ({placeholders})",

@@ -318,7 +318,7 @@ def test_import_deduplicates_content_and_reuses_cached_hash(tmp_path, monkeypatc
 @needs_ffmpeg
 def test_products_list_and_batch_delete(tmp_path):
     """产物管理：全局清单列出产物，批量删除只清理产物文件与记录。"""
-    product = tmp_path / "src_清洗_20260825_10_00_00.mp4"
+    product = tmp_path / "src_去重_20260825_10_00_00.mp4"
     product.write_bytes(b"fake-product-bytes")
     db.create_variant(
         source=str(tmp_path / "src.mp4"),

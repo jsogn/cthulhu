@@ -14,7 +14,7 @@ afterEach(() => {
 describe("ContextTabs", () => {
   it("渲染全部标签页", () => {
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <ContextTabs setTab={vi.fn()} />
       </Tabs>,
     );
@@ -27,7 +27,7 @@ describe("ContextTabs", () => {
     const user = userEvent.setup();
     const setTab = vi.fn();
     render(
-      <Tabs defaultValue="清洗去重" onValueChange={setTab}>
+      <Tabs defaultValue="视频去重" onValueChange={setTab}>
         <ContextTabs setTab={setTab} />
       </Tabs>,
     );

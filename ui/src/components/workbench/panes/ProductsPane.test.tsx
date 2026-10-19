@@ -35,13 +35,13 @@ describe("ProductsPane", () => {
     renderPane();
     expect(screen.getByText("清洗.mp4")).toBeInTheDocument();
     expect(screen.getByText("修复.mp4")).toBeInTheDocument();
-    expect(screen.getAllByText("清洗")).toHaveLength(1);
+    expect(screen.getAllByText("去重")).toHaveLength(1);
     expect(screen.getAllByText("修复")).toHaveLength(1);
   });
 
   it("空列表展示引导文案", () => {
     renderPane({ outputs: [] });
-    expect(screen.getByText("还没有处理产物，清洗或修复后会自动出现。")).toBeInTheDocument();
+    expect(screen.getByText("还没有处理产物，去重或修复后会自动出现。")).toBeInTheDocument();
   });
 
   it("各操作按钮回传对应回调", async () => {

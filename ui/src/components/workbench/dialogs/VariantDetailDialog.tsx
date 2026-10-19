@@ -49,7 +49,7 @@ export function VariantDetailDialog({ variantDetail, onClose }: VariantDetailDia
               const rows = cleanOptionRows(variantDetail.options);
               return rows.length > 0 ? (
                 <>
-                  <div className="section-title">清洗参数</div>
+                  <div className="section-title">去重参数</div>
                   {rows.map((row) => (
                     <div className="kv-row" key={row.label}>
                       <span>{row.label}</span>

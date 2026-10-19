@@ -94,8 +94,8 @@ export function cleanOutputPath(
   const suffix = index ? `_${index}` : "";
   const fileName =
     naming === "时间戳 + 原文件名"
-      ? `${ts}_${srcName}_清洗${suffix}.mp4`
-      : `${srcName}_清洗_${ts}${suffix}.mp4`;
+      ? `${ts}_${srcName}_去重${suffix}.mp4`
+      : `${srcName}_去重_${ts}${suffix}.mp4`;
   const baseDir = exportDir || "~/Documents/Cthulhu";
   return `${baseDir.replace(/\/+$/, "")}/${fileName}`;
 }

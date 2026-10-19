@@ -21,7 +21,7 @@ afterEach(cleanup);
 describe("CleanPane", () => {
   it("默认展示手动模板与重新编码说明", () => {
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <CleanPane
           material={null}
           templateList={[]}
@@ -33,14 +33,14 @@ describe("CleanPane", () => {
     );
     expect(screen.getByText("不使用模板（手动）")).toBeInTheDocument();
     expect(screen.getByText("画面变换 · 去同步与色彩微扰")).toBeInTheDocument();
-    expect(screen.getByText("去水印 · 画面重建")).toBeInTheDocument();
+    expect(screen.getByText("暗水印处理 · 画面重建")).toBeInTheDocument();
   });
 
   it("提交中禁用执行按钮并回传 runClean", async () => {
     const user = userEvent.setup();
     const runClean = vi.fn();
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <CleanPane
           material={null}
           templateList={[]}
@@ -66,7 +66,7 @@ describe("CleanPane", () => {
       created_at: 1,
     };
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <CleanPane
           material={null}
           templateList={[template]}
@@ -85,7 +85,7 @@ describe("CleanPane", () => {
   it("潜空间净化档位切换会写入边缘与批处理，σ 可调", async () => {
     useCleanPanel.getState().setPurifyOn(true);
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <CleanPane
           material={null}
           templateList={[]}
@@ -119,7 +119,7 @@ describe("CleanPane", () => {
       path: "/tmp/素材.mp4",
     };
     render(
-      <Tabs defaultValue="清洗去重">
+      <Tabs defaultValue="视频去重">
         <CleanPane
           material={material}
           templateList={[]}

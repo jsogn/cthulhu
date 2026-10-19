@@ -68,7 +68,7 @@ export function BatchPopup() {
       const parts: string[] = [];
       if (exported.length) parts.push(`已导出 ${exported.length} 个产物`);
       if (missing.length) parts.push(`${missing.length} 个素材尚无产物`);
-      toast(parts.length ? parts.join(" · ") : "所选素材均未处理，请先清洗");
+      toast(parts.length ? parts.join(" · ") : "所选素材均未处理，请先执行去重");
     } catch (error) {
       toast(error instanceof Error ? error.message : "导出失败");
     }
@@ -102,11 +102,11 @@ export function BatchPopup() {
           ...makeCleanOptions(cleanPanel),
         },
       }));
-      await enqueueJob(`批量清洗 ${targets.length} 个素材`, tasks);
+      await enqueueJob(`批量去重 ${targets.length} 个素材`, tasks);
       toggleSelectAll(ids);
       setBatchOpen(false);
       toast(
-        `已加入批量清洗，共 ${targets.length} 个任务${
+        `已加入批量去重，共 ${targets.length} 个任务${
           skipped > 0 ? `，跳过 ${skipped} 个（缺少本地路径）` : ""
         }`,
       );
@@ -154,7 +154,7 @@ export function BatchPopup() {
       <div className="batch-popup" role="dialog" aria-label="批量操作">
         <span className="batch-count">已选 {ids.length} 个</span>
         <Button size="sm" disabled={!targets.length} onClick={() => setBatchOpen(true)}>
-          批量清洗（{targets.length}）
+          批量去重（{targets.length}）
         </Button>
         {targets.length >= 2 ? (
           <Button
@@ -186,9 +186,9 @@ export function BatchPopup() {
       <AlertDialog open={batchOpen} onOpenChange={setBatchOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>批量清洗 {targets.length} 个素材</AlertDialogTitle>
+            <AlertDialogTitle>批量去重 {targets.length} 个素材</AlertDialogTitle>
             <AlertDialogDescription>
-              将使用当前清洗设置（重新编码 · 当前面板参数）清洗所选素材，
+              将使用当前去重设置（重新编码 · 当前面板参数）处理所选素材，
               开始后可在任务中心查看进度。
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -198,7 +198,7 @@ export function BatchPopup() {
               disabled={batchSubmitting}
               onClick={() => void runBatchClean()}
             >
-              {batchSubmitting ? "入队中…" : "开始清洗"}
+              {batchSubmitting ? "入队中…" : "开始去重"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

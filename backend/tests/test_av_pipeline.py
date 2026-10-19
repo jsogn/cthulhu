@@ -508,11 +508,11 @@ def test_desensitize_preserves_color(tmp_path):
 
 @needs_ffmpeg
 def test_list_outputs_matches_variants(tmp_path):
-    """产物列表应按命名规则匹配清洗/修复两类，最新在前。"""
+    """产物列表应按命名规则匹配去重/修复两类，最新在前。"""
     video = samples.make_cut_video(2, 8, 160, 120, seed=39)
     source = tmp_path / "src.mp4"
     ffmpeg.encode_video(video, str(source), fps=30)
-    cleaned = tmp_path / "src_cleaned_20260101.mp4"
+    cleaned = tmp_path / "src_去重_20260101.mp4"
     repaired = tmp_path / "src_repaired_20260101.mp4"
     for target in (cleaned, repaired):
         ffmpeg.encode_video(video, str(target), fps=30)

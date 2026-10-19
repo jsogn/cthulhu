@@ -9,7 +9,7 @@ import {
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-export const TAB_KEYS = ["清洗去重", "处理产物"] as const;
+export const TAB_KEYS = ["视频去重", "处理产物"] as const;
 
 export type WorkbenchTab = (typeof TAB_KEYS)[number];
 

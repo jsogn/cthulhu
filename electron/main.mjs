@@ -1,5 +1,5 @@
 // Electron 主进程：负责窗口生命周期，并在开发模式下拉起 Python 后端 sidecar。
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -20,6 +20,9 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_DEV = !app.isPackaged;
+const APP_ICON_PATH = IS_DEV
+  ? path.join(__dirname, "..", "packaging", "icons", "icon.png")
+  : path.join(process.resourcesPath, "icon.png");
 const BACKEND_PORT = 57173;
 const DEV_AUTH_TOKEN = "dev-local";
 const VITE_URL = process.env.VITE_DEV_SERVER_URL ?? "http://localhost:5173";
@@ -40,6 +43,10 @@ function getCacheDir() {
 // 必须在 ready 前设置，Chromium 的 Cache/Code Cache/GPUCache 等
 // 才会落到系统缓存目录而不是污染 Application Support。
 app.setPath("sessionData", getCacheDir());
+app.setName("Cthulhu");
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.cthulhu.app");
+}
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let backendProcess = null;
@@ -376,13 +383,23 @@ async function createWindow() {
   await waitForBackend(port);
   startWatchdog(port);
   const backendUrl = `http://127.0.0.1:${port}`;
+  const isMac = process.platform === "darwin";
 
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1280,
     minHeight: 720,
-    title: "Cthulhu · 推广素材处理台",
+    ...(isMac
+      ? {
+          // macOS 使用无原生标题栏窗口：红绿灯直接落在应用顶栏内，
+          // 避免应用上方再多出一条黑框标题栏。
+          titleBarStyle: "hidden",
+          trafficLightPosition: { x: 16, y: 20 },
+        }
+      : {}),
+    icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
+    title: "Cthulhu · 本地视频去重工作台",
     backgroundColor: "#0b0d12",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -406,6 +423,13 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 开发模式下 Electron 默认使用自身图标；显式设置 Dock 图标，
+  // 让本地运行与打包后的 Cthulhu 品牌保持一致。
+  if (process.platform === "darwin" && fs.existsSync(APP_ICON_PATH)) {
+    const appIcon = nativeImage.createFromPath(APP_ICON_PATH);
+    if (!appIcon.isEmpty()) app.dock.setIcon(appIcon);
+  }
+
   ipcMain.handle("dialog:open-directory", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0];

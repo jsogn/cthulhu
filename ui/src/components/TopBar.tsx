@@ -15,13 +15,21 @@ export default function TopBar() {
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <rect x="2" y="4" width="20" height="16" rx="3" />
             <path d="M10 9l5 3-5 3z" />
           </svg>
         </span>
-        <div>
+        <div className="brand-text">
           <div className="brand-name">Cthulhu</div>
+          <div className="brand-subtitle">本地视频去重工作台</div>
         </div>
       </div>
 

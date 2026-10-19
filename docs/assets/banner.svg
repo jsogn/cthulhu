@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="Cthulhu · 本地离线视频处理工作台">
-  <title>Cthulhu · 本地离线视频处理工作台</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="Cthulhu · 本地离线视频去重工作台">
+  <title>Cthulhu · 本地离线视频去重工作台</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0a101e"/>
@@ -23,7 +23,7 @@
   <rect width="1200" height="300" rx="26" fill="url(#grid)" opacity="0.55"/>
   <circle cx="1085" cy="150" r="230" fill="url(#glow)"/>
 
-  <!-- 水印涟漪装饰：同心环 + 波形，呼应“水印 / 指纹”主题 -->
+  <!-- 去重涟漪装饰：同心环 + 波形，呼应素材整理与版本处理主题 -->
   <g fill="none" stroke="#5b7cfa">
     <circle cx="1080" cy="150" r="46" stroke-opacity="0.42" stroke-width="2"/>
     <circle cx="1080" cy="150" r="78" stroke-opacity="0.28" stroke-width="2"/>
@@ -39,17 +39,10 @@
     <path d="M1114 150h34"/>
   </g>
 
-  <!-- 标识（与 ui/public/favicon.svg 同源） -->
-  <g transform="translate(80 78)">
-    <rect width="104" height="104" rx="26" fill="#10131a" stroke="#233053" stroke-width="2"/>
-    <g transform="translate(13 13) scale(3.25)" fill="none" stroke="#5b7cfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4.5 11L9 7l5 1.2 5 2.4v2.4L9 17l-4.5-3.4V11z"/>
-      <path d="M9 8.2v8.6M14 8.2v8.6M4.5 11l4.5 2.4 5-1.2 5-2.4"/>
-    </g>
-  </g>
+  <!-- 品牌图标由 make_icon.py 生成的 icon-104.png 在 banner.png 中合成。 -->
 
   <text x="224" y="146" fill="#f5f8ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="66" font-weight="700" letter-spacing="1.5">Cthulhu</text>
-  <text x="226" y="192" fill="#9db0d4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="25">视频处理 · 画面重建 · 相似度与画质度量</text>
+  <text x="226" y="192" fill="#9db0d4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="25">视频去重 · 画面重建 · 相似度与画质度量</text>
   <rect x="226" y="212" width="132" height="4" rx="2" fill="url(#accent)"/>
 
   <text x="226" y="256" fill="#64769a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif" font-size="19" letter-spacing="0.6">本地离线 · 批量处理 · 全程可复现</text>

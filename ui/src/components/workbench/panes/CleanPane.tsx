@@ -187,7 +187,7 @@ export function CleanPane({
       })
       .catch((error: unknown) => {
         if (active) {
-          setPurifyError(error instanceof Error ? error.message : "净化状态查询失败");
+          setPurifyError(error instanceof Error ? error.message : "画面重建状态查询失败");
         }
       });
     return () => {
@@ -257,7 +257,7 @@ export function CleanPane({
   );
 
   return (
-    <TabsContent value="清洗去重" className="tab-pane">
+    <TabsContent value="视频去重" className="tab-pane">
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-2.5">
           {material ? (
@@ -313,10 +313,11 @@ export function CleanPane({
           <div className="rounded-md bg-muted/50 px-3 py-2">
             <p className="note">
               覆盖空域、DCT 频域、时域、色度与音频回声等常见水印；未知方案建议加强对抗档。
+              暗水印处理需要重建画面，耗时与画质代价明显高于普通去重，请按需开启。
             </p>
           </div>
           <div className="flex min-w-0 flex-col gap-2.5">
-            <div className="section-title">去水印 · 画面重建</div>
+            <div className="section-title">暗水印处理 · 画面重建</div>
             {switchCard(
               "画面重建（去暗水印）",
               "按画面内容重新生成一遍，抹掉嵌进去的暗水印；字幕与人脸是否清楚由下方档位决定",
@@ -501,7 +502,7 @@ export function CleanPane({
               <div>
                 <div className="switch-label">自动画像（内容复杂度自适应）</div>
                 <div className="switch-desc">
-                  按镜头纹理/运动/时序一致性自适应净化强度与时序减法；画面档位（边缘、
+                  按镜头纹理/运动/时序一致性自适应暗水印处理强度与时序减法；画面档位（边缘、
                   细节带宽、字幕增强）按预设执行，不参与自适应
                 </div>
                 <WeaponTags layer="quality" cost="fast" quality="none" />
@@ -851,7 +852,7 @@ export function CleanPane({
             <div className="switch">
               <div>
                 <div className="switch-label">伪水印注入（溯源干扰）</div>
-                <div className="switch-desc">注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测</div>
+                <div className="switch-desc">注入随机干扰水印，对二次嵌入做压力测试 · 仅限授权环境验证</div>
                 <WeaponTags layer="wm" cost="mid" quality="mild" />
               </div>
               <Switch checked={spoof} onCheckedChange={setSpoof} />
@@ -992,7 +993,7 @@ export function CleanPane({
           disabled={cleanSubmitting}
           onClick={runClean}
         >
-          {cleanSubmitting ? "已加入队列" : "执行清洗"}
+          {cleanSubmitting ? "已加入队列" : "执行去重"}
         </Button>
       </div>
     </TabsContent>

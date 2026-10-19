@@ -2,7 +2,7 @@
   "name": "cthulhu-electron",
   "version": "0.6.3",
   "packageManager": "pnpm@11.25.0",
-  "description": "Cthulhu · 本地离线视频处理工作台",
+  "description": "Cthulhu · 本地离线视频去重工作台",
   "author": "cthulhu",
   "private": true,
   "type": "module",
@@ -30,6 +30,10 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "../packaging/icons/icon.png",
+        "to": "icon.png"
+      },
       {
         "from": "../packaging/backend-dist/cthulhu-backend",
         "to": "backend"

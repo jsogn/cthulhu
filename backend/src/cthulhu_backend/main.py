@@ -1,4 +1,4 @@
-"""暗水印清洗台后端入口。
+"""Cthulhu 视频去重工作台后端入口。
 
 开发模式：Electron 以 sidecar 方式拉起 uvicorn，Vite 将 /api 与 /ws 代理到本服务。
 生产模式：本服务额外托管前端构建产物（ui/dist），Electron 窗口直接加载本服务地址。
@@ -137,7 +137,7 @@ def _periodic_thumb_sweep(stop_event: threading.Event) -> None:
             print(f"[thumb-cache] 定时清理失败（可忽略）：{exc}")
 
 
-app = FastAPI(title="暗水印清洗台后端", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(title="Cthulhu 视频去重引擎", version=APP_VERSION, lifespan=lifespan)
 
 
 @app.middleware("http")

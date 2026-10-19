@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { Code, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { frameUrl, mediaUrl } from "@/lib/backend";
-import { fmtFrames } from "@/lib/format";
+import { fmtClock } from "@/lib/format";
 import type { Material } from "@/stores/materials";
 
 const FRAME_MAX = 540;
@@ -317,7 +317,12 @@ export function PreviewPane({
         >
           <SkipForward />
         </Button>
-        <span className="timecode mono">{fmtFrames(frame, fps)}</span>
+        <span
+          className="timecode mono"
+          title={`第 ${frame + 1} 帧 / 共 ${maxFrame + 1} 帧`}
+        >
+          {fmtClock(frame / fps)}
+        </span>
         <div className="timeline-wrap">
           <input
             className="timeline"
@@ -336,7 +341,12 @@ export function PreviewPane({
             }}
           />
         </div>
-        <span className="timecode mono">{fmtFrames(maxFrame, fps)}</span>
+        <span
+          className="timecode mono"
+          title={`共 ${maxFrame + 1} 帧`}
+        >
+          {fmtClock(durationSec ?? (maxFrame + 1) / fps)}
+        </span>
       </div>
 
     </section>

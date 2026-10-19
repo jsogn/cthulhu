@@ -160,16 +160,16 @@ describe("makeCleanOptions", () => {
 describe("cleanOutputPath", () => {
   it("按命名模板拼接输出路径并剥离源后缀", () => {
     expect(cleanOutputPath("/素材/视频.MP4", "原文件名 + 时间戳", "/导出", "20240101")).toBe(
-      "/导出/视频_清洗_20240101.mp4",
+      "/导出/视频_去重_20240101.mp4",
     );
     expect(
       cleanOutputPath("/素材/视频.mov", "时间戳 + 原文件名", "/导出/", "20240101", 2),
-    ).toBe("/导出/20240101_视频_清洗_2.mp4");
+    ).toBe("/导出/20240101_视频_去重_2.mp4");
   });
 
   it("未配置导出目录时回退默认目录", () => {
     expect(cleanOutputPath("/素材/a.mp4", "原文件名 + 时间戳", "", "20240101")).toBe(
-      "~/Documents/Cthulhu/a_清洗_20240101.mp4",
+      "~/Documents/Cthulhu/a_去重_20240101.mp4",
     );
   });
 });

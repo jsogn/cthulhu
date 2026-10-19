@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { fmtSize } from "@/lib/format";
+import { fmtFps, fmtSize } from "@/lib/format";
 import {
   registerLibrary,
   scanImportPath,
@@ -156,7 +156,7 @@ export default function ImportDialog() {
         if (video) {
           dur = fmtDur(video.duration);
           res = `${video.width}×${video.height}`;
-          fps = `${video.fps}fps`;
+          fps = `${fmtFps(video.fps)}fps`;
           duration = video.duration;
         } else {
           const meta = await probeVideo(item.file);
@@ -235,7 +235,7 @@ export default function ImportDialog() {
         name,
         dur: fmtDur(video.duration),
         res: `${video.width}×${video.height}`,
-        fps: `${video.fps}fps`,
+        fps: `${fmtFps(video.fps)}fps`,
         size: fmtSize(record.size),
         codec: video.codec,
         tags: ["本地"],
@@ -265,7 +265,7 @@ export default function ImportDialog() {
           name: file.name,
           dur: fmtDur(file.video.duration),
           res: `${file.video.width}×${file.video.height}`,
-          fps: `${file.video.fps}fps`,
+          fps: `${fmtFps(file.video.fps)}fps`,
           size: fmtSize(file.size),
           codec: file.video.codec,
           tags: ["本地", "文件夹"],

@@ -6,7 +6,7 @@ import {
   unregisterLibrary,
   type LibraryFile,
 } from "@/lib/backend";
-import { fmtSize } from "@/lib/format";
+import { fmtFps, fmtSize } from "@/lib/format";
 
 export interface Material {
   id: string;
@@ -130,7 +130,7 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
         name: file.name,
         dur: missing ? "—" : fmtDur(file.video!.duration),
         res: missing ? "—" : `${file.video!.width}×${file.video!.height}`,
-        fps: missing ? "—" : `${file.video!.fps}fps`,
+        fps: missing ? "—" : `${fmtFps(file.video!.fps)}fps`,
         size: fmtSize(file.size),
         codec: missing ? undefined : file.video!.codec,
         tags: ["本地"],

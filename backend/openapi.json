@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "暗水印清洗台后端",
-    "version": "0.6.1"
+    "title": "Cthulhu 视频去重引擎",
+    "version": "0.6.3"
   },
   "paths": {
     "/api/health": {

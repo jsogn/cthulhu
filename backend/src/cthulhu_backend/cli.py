@@ -24,7 +24,7 @@ from cthulhu_backend.media import container, ffmpeg
 from cthulhu_backend.sample_prep import diff as diff_module
 from cthulhu_backend.watermark import common, detect, dwt, lsb, qim, qim_rep, ss, temporal
 
-app = typer.Typer(help="暗水印研究工具：样本生成与对抗评估")
+app = typer.Typer(help="Cthulhu 视频去重研究工具：样本生成与变换评估")
 
 
 @app.command()

@@ -802,6 +802,7 @@ def _product_candidates(source: str) -> list[Path]:
     }
     source_path = Path(source)
     for pattern in (
+        f"{source_path.stem}_去重*.mp4",
         f"{source_path.stem}_清洗*.mp4",
         f"{source_path.stem}_cleaned*.mp4",
         f"{source_path.stem}_修复*.mp4",
@@ -825,7 +826,7 @@ def _product_kind(path: Path) -> str:
         return "repaired"
     if "_repaired" in name:
         return "repaired"
-    if "_清洗" in name:
+    if "_去重" in name or "_清洗" in name:
         return "cleaned"
     if "_候选" in name:
         return "candidate"
@@ -876,8 +877,11 @@ def delete_output(path: str) -> bool:
         removed_record = db.delete_variant_by_output(path)
         return removed_file or removed_record
     name = target.name
-    if not any(part in name for part in ("_清洗", "_cleaned", "_修复", "_repaired", "_候选")):
-        raise ValueError("仅允许删除清洗/修复/候选产物")
+    if not any(
+        part in name
+        for part in ("_去重", "_清洗", "_cleaned", "_修复", "_repaired", "_候选")
+    ):
+        raise ValueError("仅允许删除去重/修复/候选产物")
     removed_file = False
     if target.is_file():
         target.unlink()
@@ -944,9 +948,10 @@ def delete_products(paths: list[str]) -> dict:
         if db.get_variant_by_output(str(target)):
             continue
         if not any(
-            part in target.name for part in ("_清洗", "_cleaned", "_修复", "_repaired", "_候选")
+            part in target.name
+            for part in ("_去重", "_清洗", "_cleaned", "_修复", "_repaired", "_候选")
         ):
-            raise ValueError("仅允许删除清洗/修复/候选产物")
+            raise ValueError("仅允许删除去重/修复/候选产物")
     removed = 0
     for target in targets:
         if delete_output(str(target)):

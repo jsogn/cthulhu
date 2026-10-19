@@ -1,8 +1,9 @@
 import type { OutputInfo } from "@/lib/backend";
 import { SCHEMA_DEFAULT_TIER } from "@/lib/tiers";
+import { fmtFps } from "@/lib/format";
 
 export const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
-  cleaned: "清洗",
+  cleaned: "去重",
   repaired: "修复",
 };
 
@@ -78,7 +79,7 @@ export function cleanOptionRows(options: Record<string, unknown>): OptionRow[] {
     rows.push({ label: "关键帧间隔", value: `${options.gop} 帧` });
   }
   if (typeof options.fps_out === "number") {
-    rows.push({ label: "输出帧率", value: `${options.fps_out} fps` });
+    rows.push({ label: "输出帧率", value: `${fmtFps(options.fps_out)} fps` });
   }
   if (enabled(options.hardware)) rows.push({ label: "硬件编码", value: "开启" });
   if (enabled(options.skip_vmaf)) rows.push({ label: "画质评估", value: "PSNR/SSIM · 跳过 VMAF" });

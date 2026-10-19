@@ -16,7 +16,7 @@ from cthulhu_backend.version import APP_VERSION
 
 
 def _run_detect(path: str, options: dict, progress=None, stop=None, pause=None) -> dict:
-    """暗水印检测：按阶段汇报进度，并支持在阶段边界及时响应取消。"""
+    """参考检测：按阶段汇报进度，并支持在阶段边界及时响应取消。"""
     return services.run_detect(path, progress_cb=progress, should_stop=stop, pause=pause)
 
 

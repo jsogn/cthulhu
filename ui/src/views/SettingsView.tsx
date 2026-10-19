@@ -154,7 +154,7 @@ export default function SettingsView() {
     ffmpegOk === null
       ? "正在检查…"
       : ffmpegOk
-      ? "已就绪，视频清洗与修复均可正常使用"
+      ? "已就绪，视频去重与修复均可正常使用"
         : "尚未安装，可自动安装或指定本机已有组件";
 
   return (
@@ -186,7 +186,7 @@ export default function SettingsView() {
                 选择目录
               </Button>
             </div>
-            <div className="form-help">清洗产物默认存放目录；批量导出由用户另行选择目标</div>
+            <div className="form-help">去重产物默认存放目录；批量导出由用户另行选择目标</div>
           </div>
           <div className="form-field">
             <Label>产物命名规则</Label>
@@ -199,7 +199,7 @@ export default function SettingsView() {
                 <SelectItem value="时间戳 + 原文件名">时间戳 + 原文件名（不覆盖）</SelectItem>
               </SelectContent>
             </Select>
-            <div className="form-help">清洗产物文件名格式，两种规则都不会覆盖已有产物</div>
+            <div className="form-help">去重产物文件名格式，两种规则都不会覆盖已有产物</div>
           </div>
           <div className="form-field">
             <Label>同时处理任务数</Label>
@@ -216,7 +216,7 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">
-              任务中心按此额度统一调度所有清洗与修复任务；数值越高越快，占用资源越多
+              任务中心按此额度统一调度所有去重与修复任务；数值越高越快，占用资源越多
             </div>
           </div>
           <div className="form-field">
@@ -260,7 +260,7 @@ export default function SettingsView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="medium">标准（画质优先）</SelectItem>
-                <SelectItem value="veryfast">快速（体积更小，清洗效果相当）</SelectItem>
+                <SelectItem value="veryfast">快速（体积更小，去重效果相当）</SelectItem>
               </SelectContent>
             </Select>
             <div className="form-help">仅作用于 H.264 软件编码，H.265 硬编不受影响</div>
@@ -347,7 +347,6 @@ export default function SettingsView() {
             )}
           </div>
         </div>
-        <p className="settings-footnote">本工具仅用于处理你拥有或有使用权的视频，处理结果请自行复核。</p>
       </div>
     </>
   );

@@ -185,7 +185,7 @@ export default function TemplatesView() {
   const useTemplate = (template: TemplateInfo) => {
     queueTemplate({ id: template.id, name: template.name, payload: payloadOf(template) });
     setView("workbench");
-    toast(`已套用模板：${template.name}`, "参数已回填到右侧，可调整后执行清洗");
+    toast(`已套用模板：${template.name}`, "参数已回填到右侧，可调整后执行去重");
   };
 
   type SwitchKey = keyof Pick<
@@ -587,7 +587,7 @@ export default function TemplatesView() {
       <div className="view-head">
         <div>
           <div className="view-title">去重模板管理</div>
-          <div className="view-desc">保存完整去重参数，点击「使用」在素材处理页一键回填</div>
+          <div className="view-desc">保存完整去重参数，点击「使用」在工作台一键回填</div>
         </div>
         <Button onClick={openCreate}>+ 新建模板</Button>
       </div>
@@ -629,7 +629,7 @@ export default function TemplatesView() {
                     </b>
                   </div>
                   <div className="tpl-row">
-                    <span>潜空间净化 / 嵌入域</span>
+                    <span>暗水印处理 / 嵌入域</span>
                     <b>
                       {(payload.purifyStrength ?? 0) > 0 ? "开" : "关"} /{" "}
                       {(payload.embeddingStrength ?? 0) > 0 ? "开" : "关"}
@@ -679,7 +679,7 @@ export default function TemplatesView() {
                 <Label>模板名称</Label>
                 <Input
                   className="h-9"
-                  placeholder="如：抖音投流-轻度"
+                  placeholder="如：成片交付-轻度"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -779,12 +779,15 @@ export default function TemplatesView() {
               )}
               {switchRow("强音频重混", "变调+EQ 倾斜+底噪，配合音频指纹开关生效", "audio", "fast", "heavy", "audioStrong")}
 
-              <div className="section-title">去水印 · 画面重建</div>
+              <div className="section-title">暗水印处理 · 画面重建</div>
+              <p className="form-help">
+                暗水印处理会重建画面，耗时与画质代价明显高于普通去重，按需开启。
+              </p>
               {purifyRow}
               {embeddingRow}
               {switchRow(
                 "自动画像（内容复杂度自适应）",
-                "按镜头纹理/运动/时序一致性自适应净化强度与时序减法；边缘、细节带宽与字幕增强按上方档位执行，不参与自适应",
+                "按镜头纹理/运动/时序一致性自适应暗水印处理强度与时序减法；边缘、细节带宽与字幕增强按上方档位执行，不参与自适应",
                 "quality",
                 "fast",
                 "none",
@@ -860,7 +863,7 @@ export default function TemplatesView() {
                   label: (value) => `量化步长 ${value}`,
                 },
               )}
-              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对抗上传后二次嵌入 · 需投流实测", "wm", "mid", "mild", "spoof")}
+              {switchRow("伪水印注入（溯源干扰）", "注入随机干扰水印，对二次嵌入做压力测试 · 仅限授权环境验证", "wm", "mid", "mild", "spoof")}
               {sliderRow(
                 "神经对抗（DINOv2 判重代理）",
                 "黑盒攻击 DINOv2 判重描述子，压拷贝检测 embedding · 较慢",
