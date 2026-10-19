@@ -1,11 +1,5 @@
 // 时间与体积等展示格式化工具。
 
-export function nowStr(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 export function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1048576) return `${Math.round(bytes / 1024)}KB`;

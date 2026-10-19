@@ -219,7 +219,7 @@ export interface CleanPanelState {
 const near = (value: number, target: number) => Math.abs(value - target) < 1e-6;
 
 /** 仅用于模板回填时判断它是否恰好等于某个快捷预设；运行期不靠数值反推。 */
-export function detectPresetBase(state: CleanPanelState): PresetBase {
+function detectPresetBase(state: CleanPanelState): PresetBase {
   const { quality, balanced, strong } = TIER_BY_ID;
   if (
     state.purifyOn &&

@@ -548,47 +548,6 @@
         }
       }
     },
-    "/api/audio/analyze": {
-      "post": {
-        "summary": "Audio Analyze",
-        "description": "音频分析：波形、对数频谱与回声隐藏置信度。",
-        "operationId": "audio_analyze_api_audio_analyze_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PathRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Audio Analyze Api Audio Analyze Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/desensitize": {
       "post": {
         "summary": "Desensitize",

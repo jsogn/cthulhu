@@ -1,6 +1,6 @@
 """API 与队列共享的请求契约。
 
-DesensitizeOptions 是清洗选项的唯一权威定义：直接端点、任务队列与
+DesensitizeOptions 是去重选项的唯一权威定义：直接端点、任务队列与
 前端生成类型都从这里派生，避免 Python/TS 两侧手写副本漂移。
 """
 
@@ -36,7 +36,7 @@ _DEPRECATED_INPUT_KEYS = frozenset(
 
 
 class DesensitizeOptions(BaseModel):
-    """清洗选项集：snake_case 为唯一字段名，未知字段直接报错。"""
+    """去重选项集：snake_case 为唯一字段名，未知字段直接报错。"""
 
     model_config = ConfigDict(extra="forbid")
 

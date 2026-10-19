@@ -10,7 +10,7 @@ import { CleanPane } from "@/components/workbench/panes/CleanPane";
 import { ProductsPane } from "@/components/workbench/panes/ProductsPane";
 import { useContextPanel } from "@/components/workbench/useContextPanel";
 
-export interface ContextProps {
+interface ContextProps {
   tab: WorkbenchTab;
   setTab: (tab: WorkbenchTab) => void;
   onStartCompare: (left: string, right: string, leftLabel: string, rightLabel: string) => void;

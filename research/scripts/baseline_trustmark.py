@@ -119,7 +119,7 @@ def apply_attack(name: str, img: Image.Image, rng: np.random.Generator) -> Image
         out = np.stack(
             [
                 geometric.crop_rotate_rescale(
-                    arr[None, ..., c], crop_frac=0.05, angle=0.5, rescale=0.99
+                    arr[None, ..., c], crop_frac=0.05, angle=0.5
                 )[0]
                 for c in range(3)
             ],
@@ -129,7 +129,7 @@ def apply_attack(name: str, img: Image.Image, rng: np.random.Generator) -> Image
         out = np.stack(
             [
                 geometric.crop_rotate_rescale(
-                    arr[None, ..., c], crop_frac=0.10, angle=1.5, rescale=0.95
+                    arr[None, ..., c], crop_frac=0.10, angle=1.5
                 )[0]
                 for c in range(3)
             ],

@@ -1,4 +1,4 @@
-"""SQLite 持久层：设置、模板、审计日志与任务历史。"""
+"""SQLite 持久层：设置、模板、任务、素材库、产物与分析缓存。"""
 
 from __future__ import annotations
 

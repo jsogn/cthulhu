@@ -7,7 +7,7 @@ export const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   repaired: "修复（历史）",
 };
 
-export type OptionRow = { label: string; value: string };
+type OptionRow = { label: string; value: string };
 
 // 产物参数可视化：把 snake_case 原始参数翻译成用户能看懂的中文摘要。
 const ANTI_TAG_LABELS: [string, string][] = [

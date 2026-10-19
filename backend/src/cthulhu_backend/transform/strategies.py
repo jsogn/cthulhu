@@ -64,7 +64,6 @@ class TransformStrategy(Protocol):
     """画面变换策略接口：对已解码帧块应用脱敏变换。"""
 
     name: str
-    description: str
 
     def apply(
         self,
@@ -79,7 +78,6 @@ class ThoroughStrategy:
     """现状重方案：完整逐像素变换，序列与既有管线逐行一致。"""
 
     name = "thorough"
-    description = "完整逐像素变换（现状管线，优化前原样保留）"
     frame_dtype = "float32"
 
     def apply(
@@ -286,7 +284,6 @@ class FastStrategy:
     """
 
     name = "fast"
-    description = "快速档：uint8 端到端 + 查表/LUT/PIL 原语（A/B 验证中）"
     frame_dtype = "uint8"
 
     def apply(

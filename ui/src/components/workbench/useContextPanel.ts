@@ -49,7 +49,7 @@ export function useContextPanel(
   const outputsFlow = useOutputsFlow(material);
   const cleanActions = useCleanActions(material);
 
-  // 清洗任务完成后：刷新产物列表并提示。
+  // 去重任务完成后：刷新产物列表并提示。
   useEffect(() => {
     const task = jobs
       .flatMap((job) => job.tasks)

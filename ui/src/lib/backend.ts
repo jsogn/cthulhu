@@ -104,11 +104,6 @@ export async function getHealth(timeoutMs = 3000): Promise<HealthInfo> {
   }
 }
 
-export async function checkHealth(timeoutMs = 3000): Promise<boolean> {
-  const health = await getHealth(timeoutMs);
-  return health.ok;
-}
-
 export interface FfmpegInstallState {
   status: "idle" | "downloading" | "installed" | "failed";
   detail: string;
@@ -264,32 +259,10 @@ export interface DetectReport {
   hits?: string[];
 }
 
-/** 清洗选项：由 OpenAPI 生成的请求契约派生（path/output 之外的字段）。 */
+/** 去重选项：由 OpenAPI 生成的请求契约派生（path/output 之外的字段）。 */
 export type DesensitizeOptions = Partial<
   Omit<components["schemas"]["DesensitizeRequest"], "path" | "output">
 >;
-
-export interface AudioAnalysis {
-  sample_rate: number;
-  duration: number;
-  echo_score: number;
-  waveform: number[];
-  spectrum: number[];
-}
-
-/** 分析视频音轨：波形、频谱与回声隐藏置信度。 */
-export async function analyzeAudio(path: string): Promise<AudioAnalysis> {
-  const res = await apiFetch("/api/audio/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data as { detail?: string } | null)?.detail ?? `音频分析失败（${res.status}）`);
-  }
-  return res.json();
-}
 
 export interface DesensitizeReport {
   input: string;
@@ -310,7 +283,7 @@ export interface DesensitizeReport {
   } | null;
 }
 
-/** 清洗任务完成后的完整结果（含画质校验指标）。 */
+/** 去重任务完成后的完整结果（含画质校验指标）。 */
 export interface DesensitizeJobResult {
   output: string;
   similarity_after?: { content_cosine: number };

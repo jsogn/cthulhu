@@ -1,5 +1,5 @@
 """客观指标（评估层）：PSNR / SSIM / BER 由中立层 `quality` 提供，本模块补齐
-依赖 ffmpeg、配准与对齐的部分（对齐 PSNR/SSIM、VMAF、时序稳定性等）。"""
+依赖 ffmpeg、配准与对齐的部分（对齐 PSNR/VMAF、帧匹配 PSNR/SSIM 等）。"""
 
 from __future__ import annotations
 
@@ -28,15 +28,6 @@ def aligned_psnr(reference: np.ndarray, candidate: np.ndarray) -> float:
     ref_c = ref[margin:-margin, margin:-margin]
     cand_c = rolled[margin:-margin, margin:-margin]
     return psnr(ref_c, cand_c)
-
-
-def aligned_ssim(reference: np.ndarray, candidate: np.ndarray) -> float:
-    ref = np.asarray(reference, dtype=np.float64)
-    cand = np.asarray(candidate, dtype=np.float64)
-    dy, dx = estimate_shift(ref, cand)
-    rolled = np.roll(np.roll(cand, dy, axis=0), dx, axis=1)
-    margin = max(8, abs(dy) + 1, abs(dx) + 1)
-    return ssim(ref[margin:-margin, margin:-margin], rolled[margin:-margin, margin:-margin])
 
 
 def aligned_vmaf(
@@ -179,12 +170,6 @@ def matched_psnr(ref: np.ndarray, mov: np.ndarray, matches: np.ndarray) -> float
     return float(min(np.mean(finite), 60.0))
 
 
-def temporal_aligned_ssim(original: np.ndarray, processed: np.ndarray) -> float:
-    """时间对齐 SSIM：处理帧逐帧匹配原始最近帧后计算结构相似度。"""
-    ref, mov, matches = temporal_match(original, processed)
-    return matched_ssim(ref, mov, matches)
-
-
 def matched_ssim(ref: np.ndarray, mov: np.ndarray, matches: np.ndarray) -> float:
     """基于已匹配帧对的 SSIM（供一次性匹配后复用）。
 
@@ -207,11 +192,3 @@ def matched_ssim(ref: np.ndarray, mov: np.ndarray, matches: np.ndarray) -> float
         total += ssim(reference, candidate)
         count += 1
     return total / max(count, 1)
-
-
-def temporal_stability(frames: np.ndarray) -> float:
-    """画面稳定性：相邻抽样帧的平均绝对差（越小越稳，可检测闪烁/抖动）。"""
-    array = np.asarray(frames, dtype=np.float32)
-    if len(array) < 2:
-        return 0.0
-    return float(np.abs(np.diff(array, axis=0)).mean())

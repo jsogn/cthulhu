@@ -22,7 +22,6 @@ from scipy.fft import dctn, rfft
 
 from cthulhu_backend.media import ffmpeg
 
-HASH_BITS = 64
 _WINDOWS = [(8.0, 14), (0.25, 14), (0.5, 14), (0.75, 14), (None, 14)]  # 五个采样窗口
 
 # 无关联内容的经验距离锚点（来自不同素材对实测），用于把绝对距离归一到 0~1。

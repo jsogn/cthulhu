@@ -1,4 +1,4 @@
-"""GUI 后端 API：检测 / 相似度 / 内容脱敏，任务进度经事件广播推送。"""
+"""GUI 后端 API：检测 / 相似度 / 视频去重，任务进度经事件广播推送。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 from typing import Annotated, Literal
 
-import numpy as np
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
@@ -30,7 +29,6 @@ from cthulhu_backend.schemas import (
     TemplatePayload,
 )
 from cthulhu_backend.transform import purify
-from cthulhu_backend.watermark import detect as watermark_detect
 
 router = APIRouter(prefix="/api")
 
@@ -456,34 +454,6 @@ async def import_video(file: Annotated[UploadFile, File()]) -> dict:
     )
 
 
-@router.post("/audio/analyze")
-def audio_analyze(request: PathRequest) -> dict:
-    """音频分析：波形、对数频谱与回声隐藏置信度。"""
-    # 波形取音轨开头、频谱与回声置信度均为统计口径，只解码前 120 秒，
-    # 避免长视频整轨 float64 解码造成数百 MB 瞬时峰值。
-    audio = ffmpeg.decode_audio(request.path, max_seconds=120)
-    if audio is None:
-        raise HTTPException(status_code=404, detail="该视频没有音轨")
-    signal, sample_rate = audio
-    step = max(1, sample_rate // 100)
-    waveform = [round(float(v), 4) for v in signal[::step][:1000]]
-    spectrum = np.abs(np.fft.rfft(signal))
-    freqs = np.fft.rfftfreq(len(signal), 1.0 / sample_rate)
-    bands: list[float] = []
-    edges = np.geomspace(max(float(freqs[1]), 20.0), sample_rate / 2, 33)
-    for index in range(32):
-        mask = (freqs >= edges[index]) & (freqs < edges[index + 1])
-        bands.append(float(np.mean(spectrum[mask])))
-    peak = max(bands) or 1.0
-    return {
-        "sample_rate": sample_rate,
-        "duration": round(len(signal) / sample_rate, 2),
-        "echo_score": round(watermark_detect.audio_scores(signal, sample_rate)["echo"], 4),
-        "waveform": waveform,
-        "spectrum": [round(band / peak, 4) for band in bands],
-    }
-
-
 @router.post("/desensitize")
 async def desensitize(request: DesensitizeRequest) -> dict:
     await broker.publish({"type": "task:start", "task": "desensitize", "path": request.path})
@@ -587,7 +557,7 @@ def ffmpeg_install_status() -> dict:
 
 @router.post("/jobs", status_code=202)
 async def create_job(request: JobRequest) -> dict:
-    # 清洗任务在入队时就校验选项，拼错字段名或越界参数直接 422，
+    # 去重任务在入队时就校验选项，拼错字段名或越界参数直接 422，
     # 避免把坏任务放进后台慢慢失败。
     for task in request.tasks:
         if task.kind == "desensitize":
@@ -601,7 +571,7 @@ async def create_job(request: JobRequest) -> dict:
             except ValidationError as exc:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"清洗任务参数无效：{exc.errors()[0]['msg']}",
+                    detail=f"去重任务参数无效：{exc.errors()[0]['msg']}",
                 ) from exc
     settings = db.load_settings()
     try:

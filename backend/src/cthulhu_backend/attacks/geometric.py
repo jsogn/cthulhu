@@ -10,7 +10,6 @@ def crop_rotate_rescale(
     frames: np.ndarray,
     crop_frac: float = 0.05,
     angle: float = 0.5,
-    rescale: float = 0.99,
 ) -> np.ndarray:
     out = []
     h, w = frames.shape[1:]

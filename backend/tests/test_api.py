@@ -73,21 +73,6 @@ def test_detect_includes_blind_scores(tmp_path):
 
 
 @needs_ffmpeg
-def test_audio_analyze_returns_waveform_and_spectrum(tmp_path):
-    """音频分析接口返回波形、频谱与回声置信度。"""
-    video = samples.make_video_frames(8, 160, 120, seed=21)
-    audio = samples.make_audio(1.0, seed=21)
-    path = tmp_path / "av.mp4"
-    ffmpeg.encode_video_with_audio(video, audio, str(path), fps=30)
-    response = client.post("/api/audio/analyze", json={"path": str(path)})
-    assert response.status_code == 200
-    payload = response.json()
-    assert len(payload["waveform"]) > 0
-    assert len(payload["spectrum"]) == 32
-    assert 0 <= payload["echo_score"] <= 1
-
-
-@needs_ffmpeg
 def test_import_scan_folder(tmp_path):
     sub = tmp_path / "sub"
     sub.mkdir()

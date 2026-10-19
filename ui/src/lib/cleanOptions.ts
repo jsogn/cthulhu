@@ -4,11 +4,9 @@ import type { CleanPanelState } from "@/stores/cleanPanel";
 // 基础微扰与裁剪为固定保守值：微扰实测收益接近噪声，裁剪幅度在 3%~4% 附近
 // 到达收益拐点且非单调，因此不做连续调节，只保留「重新构图」开关。
 export const FIXED_PERTURB = 0.15;
-export const FIXED_GAMMA = 0.03 + 0.2 * FIXED_PERTURB;
-export const FIXED_BRIGHTNESS = 0.02 + 0.06 * FIXED_PERTURB;
 export const FIXED_CROP = 0.03;
 
-/** 从清洗设置单源组装后端清洗参数（每次调用生成独立随机种子）。 */
+/** 从去重设置单源组装后端去重参数（每次调用生成独立随机种子）。 */
 export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
   return {
     reorder: false,
@@ -81,7 +79,7 @@ export function makeCleanOptions(state: CleanPanelState): DesensitizeOptions {
   };
 }
 
-/** 清洗产物输出路径：始终写入导出目录，绝不与源视频同目录。 */
+/** 去重产物输出路径：始终写入导出目录，绝不与源视频同目录。 */
 export function cleanOutputPath(
   srcPath: string,
   naming: string,
