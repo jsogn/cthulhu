@@ -4,7 +4,7 @@ import { fmtFps } from "@/lib/format";
 
 export const OUTPUT_KIND_LABEL: Record<OutputInfo["kind"], string> = {
   cleaned: "去重",
-  repaired: "修复",
+  repaired: "修复（历史）",
 };
 
 export type OptionRow = { label: string; value: string };

@@ -74,11 +74,12 @@
    `backend/src/cthulhu_backend/version.py`，其余清单由
    `backend/scripts/sync_version.py` 派生，文档不再重复维护版本号。
 5. **图片资产**：截图统一放在 `docs/assets/screenshots/`，文件命名
-   `ui-<视图>.png`；提交前确认画面不含真实素材、真实路径与个人信息。
+   `ui-<视图>.webp`（如 `ui-workbench-light.webp`）；提交前确认画面素材在
+   授权范围内，且不含真实路径与个人信息。
 
 ## 文档状态一览
 
-为避免读者误用过期结论，历史文档在正文首段标注状态：
+为避免读者误用过期结论，历史文档应在正文首段标注日期或状态；下表为统一状态口径：
 
 | 状态 | 含义 |
 | :--- | :--- |

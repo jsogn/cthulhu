@@ -122,7 +122,7 @@ export default function App() {
       if (health.ok && !health.ffmpeg) {
         toast(
           "未检测到 FFmpeg",
-          "去重与修复功能将不可用，请在「设置」查看安装指引",
+          "去重功能将不可用，请在「设置」查看安装指引",
         );
       }
     });

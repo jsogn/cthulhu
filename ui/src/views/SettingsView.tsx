@@ -154,7 +154,7 @@ export default function SettingsView() {
     ffmpegOk === null
       ? "正在检查…"
       : ffmpegOk
-      ? "已就绪，视频去重与修复均可正常使用"
+      ? "已就绪，视频去重可正常使用"
         : "尚未安装，可自动安装或指定本机已有组件";
 
   return (
@@ -216,7 +216,7 @@ export default function SettingsView() {
               </SelectContent>
             </Select>
             <div className="form-help">
-              任务中心按此额度统一调度所有去重与修复任务；数值越高越快，占用资源越多
+              任务中心按此额度统一调度所有去重任务；数值越高越快，占用资源越多
             </div>
           </div>
           <div className="form-field">

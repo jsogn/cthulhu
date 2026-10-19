@@ -1,6 +1,8 @@
 {
   "name": "cthulhu",
   "version": "0.6.3",
+  "description": "Cthulhu · 本地离线视频去重工作台",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {

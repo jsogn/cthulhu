@@ -11,7 +11,7 @@
     "dev": "electron .",
     "start": "electron .",
     "test": "node --test supervisor.test.mjs",
-    "dist": "electron-builder --mac"
+    "dist": "electron-builder"
   },
   "devDependencies": {
     "electron": "^37.2.0",

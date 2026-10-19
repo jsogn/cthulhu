@@ -28,7 +28,7 @@ export function ProductsPane({
         <div className="flex min-w-0 flex-col gap-2.5">
           {outputs.length === 0 ? (
             <p className="note">
-              还没有处理产物，去重或修复后会自动出现。
+              还没有处理产物，去重后会自动出现。
             </p>
           ) : (
             <>

@@ -28,7 +28,7 @@ import { openInFolder, toast } from "@/stores/toasts";
 
 const KIND_LABEL: Record<ProductInfo["kind"], string> = {
   cleaned: "去重",
-  repaired: "修复",
+  repaired: "修复（历史）",
 };
 
 type SortKey = "time" | "size";
@@ -70,7 +70,7 @@ export default function ProductsView() {
     }
   };
 
-  // 任务数变化时自动刷新：清洗/修复任务结束会新增产物，无需手动点刷新。
+  // 任务数变化时自动刷新：去重任务结束会新增产物，无需手动点刷新。
   const activeTasks = jobs.reduce(
     (sum, job) =>
       sum +
@@ -198,7 +198,7 @@ export default function ProductsView() {
 
         {products.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            暂无处理产物，去重或修复后产物会集中出现在这里。
+            暂无处理产物，去重后产物会集中出现在这里。
           </Card>
         ) : (
           <div className="flex flex-col gap-2">

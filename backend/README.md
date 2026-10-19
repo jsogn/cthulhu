@@ -15,7 +15,7 @@
 
 ```bash
 cd backend
-uv sync                 # 开发依赖（numpy/scipy/typer/pytest/ruff）
+uv sync                 # 基础依赖 + 开发依赖（pytest/ruff）
 uv sync --extra purify  # 追加重建运行时（torch/diffusers）
 
 # 开发服务器（与前端联调）
@@ -40,7 +40,7 @@ uv run python scripts/export_openapi.py   # 契约漂移：openapi.json / ui/src
 | 加速与数值 | `native/`、`native_dct.py`、`numeric.py`、`tiers.py` | 原生加速库加载与降级、数值原语、档位（耗时 / 画质代价）单一真值 |
 
 约定：新增处理类型必须复用任务队列；新算法必须挂进回归门；新模型必须支持缺失
-降级；不把重依赖（如 PyTorch）打进基础构建。
+降级；研究用重依赖不进入基础安装，桌面打包通过 `purify` extra 带入重建运行时。
 
 ## CLI
 
@@ -61,7 +61,7 @@ uv run cthulhu purify-status / purify-install      # 画面重建运行时状态
 ```
 
 具体命令参数见 `uv run cthulhu --help`；命令语义与边界见
-[命令行与 API 说明](../README.md#命令行与-api) 与
+[使用边界与合规声明](../docs/使用边界与合规声明.md) 与
 [实施文档](../docs/实施文档.md)。
 
 ## 服务端接口

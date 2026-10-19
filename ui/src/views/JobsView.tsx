@@ -92,7 +92,7 @@ export default function JobsView() {
       <div className="view-head">
         <div>
           <div className="view-title">任务中心</div>
-          <div className="view-desc">所有去重与修复任务都在这里统一管理</div>
+          <div className="view-desc">所有去重任务都在这里统一管理</div>
         </div>
         <div className="flex gap-2">
           <Button
