@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.webp?v=2" alt="Cthulhu · 本地视频去重工作台" width="880">
+  <img src="docs/assets/banner.webp?v=3" alt="Cthulhu · 本地视频去重工作台" width="880">
 </p>
 
 <p align="center">
